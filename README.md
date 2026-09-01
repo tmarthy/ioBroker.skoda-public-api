@@ -12,7 +12,20 @@
 
 ## skoda-public-api adapter for ioBroker
 
-Liest und steuert Škoda-Fahrzeuge über die offizielle MyŠkoda Public API
+Read and control Škoda vehicles via the official MyŠkoda Public API.
+
+> **Work in progress — not usable yet.** See [HANDOFF.md](HANDOFF.md) for the current
+> state, how to run the development mock, and what comes next.
+> The design rationale lives in [docs/design-decisions.md](docs/design-decisions.md),
+> the roadmap in [docs/implementation-plan.md](docs/implementation-plan.md).
+
+### The one constraint that shapes everything
+
+The API allows **20 requests per hour per API key**. There is a single read endpoint,
+eight command endpoints, no push, no webhooks, and no operation-status endpoint — a
+command returns `202 Accepted` and you learn the outcome only from a later poll, which
+costs quota again. Near-real-time monitoring is not possible with this API, and neither
+is PV surplus charging with current modulation. Plan accordingly.
 
 ## Developer manual
 This section is intended for the developer. It can be deleted later.
