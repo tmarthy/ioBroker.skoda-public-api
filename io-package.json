@@ -1,0 +1,106 @@
+{
+	"common": {
+		"name": "skoda-public-api",
+		"version": "0.0.1",
+		"news": {
+			"0.0.1": {
+				"en": "initial release",
+				"de": "Erstveröffentlichung",
+				"ru": "Начальная версия",
+				"pt": "lançamento inicial",
+				"nl": "Eerste uitgave",
+				"fr": "Première version",
+				"it": "Versione iniziale",
+				"es": "Versión inicial",
+				"pl": "Pierwsze wydanie",
+				"uk": "Початкова версія",
+				"zh-cn": "首次出版"
+			}
+		},
+		"titleLang": {
+			"en": "Škoda Public API",
+			"de": "Öffentliche API von Škoda",
+			"ru": "Публичный API Шкоды",
+			"pt": "API pública Škoda",
+			"nl": "Škoda openbare API",
+			"fr": "API publique Skoda",
+			"it": "API pubblica Škoda",
+			"es": "API pública de Škoda",
+			"pl": "Publiczne API Skody",
+			"uk": "Шкода публічний API",
+			"zh-cn": "斯柯达公共 API"
+		},
+		"desc": {
+			"en": "Liest und steuert Škoda-Fahrzeuge über die offizielle MyŠkoda Public API",
+			"de": "Liest und steuert Škoda-Fahrzeuge über die offizielle MyŠkoda Public API",
+			"ru": "Liest und steuert Škoda-Fahrzeuge über die offizielle MyŠkoda Public API",
+			"pt": "Liest und steuert Škoda-Fahrzeuge über die offizielle MyŠkoda Public API",
+			"nl": "Beste en beste Škoda-fahrzeuge over de officiële MyŠkoda Public API",
+			"fr": "Liest et Steuert Škoda-Fahrzeuge über die Offizielle MyŠkoda Public API",
+			"it": "Leggi e guida la tua Škoda-Fahrzeuge su die MyŠkoda Public API ufficiale",
+			"es": "Liest und steuert Škoda-Fahrzeuge über die oficial MyŠkoda Public API",
+			"pl": "Liest und steuert Škoda-Fahrzeuge über die offizielle MyŠkoda Public API",
+			"uk": "List und steuert Škoda-Fahrzeuge über die offizielle MyŠkoda Public API",
+			"zh-cn": "与 Škoda-Fahrzeuge 一起使用 MyŠkoda Public API"
+		},
+		"authors": ["Thomas Marthy <261668002+tmarthy@users.noreply.github.com>"],
+		"keywords": ["skoda", "enyaq", "vehicle", "electric vehicle", "charging", "myskoda"],
+		"licenseInformation": {
+			"type": "free",
+			"license": "MIT"
+		},
+		"platform": "Javascript/Node.js",
+		"icon": "skoda-public-api.png",
+		"enabled": true,
+		"extIcon": "https://raw.githubusercontent.com/tmarthy/ioBroker.skoda-public-api/main/admin/skoda-public-api.png",
+		"readme": "https://github.com/tmarthy/ioBroker.skoda-public-api/blob/main/README.md",
+		"loglevel": "info",
+		"tier": 3,
+		"mode": "daemon",
+		"type": "vehicle",
+		"compact": true,
+		"connectionType": "cloud",
+		"dataSource": "poll",
+		"adminUI": {
+			"config": "json"
+		},
+		"dependencies": [
+			{
+				"js-controller": ">=6.0.11"
+			}
+		],
+		"globalDependencies": [
+			{
+				"admin": ">=7.0.23"
+			}
+		]
+	},
+	"native": {
+		"option1": true,
+		"option2": "42"
+	},
+	"objects": [],
+	"instanceObjects": [
+		{
+			"_id": "info",
+			"type": "channel",
+			"common": {
+				"name": "Information"
+			},
+			"native": {}
+		},
+		{
+			"_id": "info.connection",
+			"type": "state",
+			"common": {
+				"role": "indicator.connected",
+				"name": "Device or service connected",
+				"type": "boolean",
+				"read": true,
+				"write": false,
+				"def": false
+			},
+			"native": {}
+		}
+	]
+}
