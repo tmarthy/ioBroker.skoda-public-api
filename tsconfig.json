@@ -8,6 +8,10 @@
 		// the compilation is configured in tsconfig.build.json
 		"noEmit": true,
 
+		// @tsconfig/node22 setzt "types": ["node"] und blendet damit die Mocha-Typen aus,
+		// obwohl @iobroker/testing sie mitliefert. Ohne diese Zeile schlaegt "npm run check" fehl.
+		"types": ["node", "mocha"],
+
 		// check JS files, but do not compile them => tsconfig.build.json
 		"allowJs": true,
 		"checkJs": true,

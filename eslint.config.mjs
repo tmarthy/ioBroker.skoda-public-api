@@ -8,6 +8,8 @@ export default [
 		// specify files to exclude from linting here
 		ignores: [
 			'.dev-server/',
+			// Generat aus der OpenAPI-Spec - wird von 'npm run codegen' erzeugt.
+			'src/**/*.generated.ts',
 			'.vscode/',
 			'*.test.js',
 			'test/**/*.js',

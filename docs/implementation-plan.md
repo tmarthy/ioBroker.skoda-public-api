@@ -115,7 +115,23 @@ Die beiden `docs/`-Dateien und `spec/skoda-openapi.json` wandern mit ins Repo.
 **Fertig, wenn:** `npm run test:package` grün, `dev-server watch` startet die
 Instanz, Admin unter `http://localhost:8081` erreichbar.
 
-### Phase 1 — Spec, Codegen, Spec-Wächter · M
+### Phase 1 — Spec, Codegen, Spec-Wächter · M · **erledigt**
+
+> **Abweichungen von der ursprünglichen Planung:**
+> - Die Werkzeuge sind `.mjs` statt `.ts`. `openapi-typescript` v7 ist ESM-only, und
+>   ein TS-Runner für Skripte, die nie ausgeliefert werden, wäre eine Abhängigkeit
+>   ohne Gegenwert.
+> - Overlay und Generat werden **zur Laufzeit** in `resolveCommon()` zusammengeführt,
+>   nicht beim Generieren. So kann der Codegen jederzeit neu laufen, ohne
+>   handgepflegte Werte zu überschreiben — und die Zusammenführung ist testbar.
+> - Der Prosa-Parser für Aufzählungswerte deckt vier Formate ab statt einem
+>   (Aufzählungspunkte, Klammerliste, Backticks, Kommaliste). Damit entstehen
+>   27 von 27 Aufzählungen automatisch; keine muss von Hand gepflegt werden.
+> - `tsconfig.json` brauchte `"types": ["node", "mocha"]`. `@tsconfig/node22` setzt
+>   `"types": ["node"]` und blendet damit die Mocha-Typen aus — `npm run check` war
+>   schon aus dem Generator heraus rot.
+> - Generierte Dateien sind von ESLint und Prettier ausgenommen.
+
 
 1. `tools/generate-types.ts`: lädt `spec/skoda-openapi.json`, **entfernt vorher die
    Eigenschaft `tings` aus `Charging` und `ChargingProfile`** (Fehler in Škodas

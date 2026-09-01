@@ -1,0 +1,55 @@
+# Waechter fuer die MyŠkoda Public API.
+#
+# Die API traegt `version: v0` und die Dokumentation kuendigt Aenderungen ausdruecklich an.
+# Ohne diesen Job erfaehrt man von einer Aenderung erst durch einen Fehlerbericht.
+name: Check Škoda API spec
+
+on:
+  schedule:
+    # Montags 05:17 UTC - krumme Minute, damit der Lauf nicht in der vollen Stunde untergeht.
+    - cron: '17 5 * * 1'
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  check-spec:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22.x
+
+      - name: Compare checked-in spec against live API
+        id: compare
+        run: node tools/check-spec.mjs
+        continue-on-error: true
+
+      - name: Open an issue when the spec changed
+        if: steps.compare.outcome == 'failure' && hashFiles('spec-diff.md') != ''
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          # Nur ein offenes Issue gleichzeitig - sonst entsteht jede Woche ein neues.
+          existing=$(gh issue list --label api-spec --state open --json number --jq '.[0].number // empty')
+          if [ -n "$existing" ]; then
+            gh issue comment "$existing" --body-file spec-diff.md
+            echo "Bestehendes Issue #$existing kommentiert."
+          else
+            gh label create api-spec --description "Änderungen an der Škoda Public API" --color D93F0B --force
+            gh issue create \
+              --title "Škoda Public API spec has changed" \
+              --label api-spec \
+              --body-file spec-diff.md
+          fi
+
+      - name: Fail the run when the spec changed
+        if: steps.compare.outcome == 'failure'
+        run: |
+          echo "Die eingecheckte Spec weicht von der Live-API ab - siehe Issue." >&2
+          exit 1
