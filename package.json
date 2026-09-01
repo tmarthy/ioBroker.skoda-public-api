@@ -1,7 +1,7 @@
 {
   "name": "iobroker.skoda-public-api",
   "version": "0.0.1",
-  "description": "Liest und steuert Škoda-Fahrzeuge über die offizielle MyŠkoda Public API",
+  "description": "Read and control Škoda vehicles via the official MyŠkoda Public API",
   "author": {
     "name": "Thomas Marthy",
     "email": "261668002+tmarthy@users.noreply.github.com"
