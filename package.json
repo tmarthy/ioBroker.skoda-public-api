@@ -61,7 +61,7 @@
     "prebuild:ts": "rimraf build",
     "build:ts": "build-adapter ts",
     "watch:ts": "build-adapter ts --watch",
-    "test:ts": "mocha --config test/mocharc.custom.json src/**/*.test.ts",
+    "test:ts": "mocha --config test/mocharc.custom.json \"src/**/*.test.ts\" \"test/**/*.test.ts\"",
     "test:package": "mocha test/package --exit",
     "test:integration": "mocha test/integration --exit",
     "test": "npm run test:ts && npm run test:package",
@@ -70,7 +70,8 @@
     "translate": "translate-adapter",
     "release": "release-script",
     "codegen": "node tools/generate-types.mjs && node tools/generate-objectdefs.mjs",
-    "check:spec": "node tools/check-spec.mjs"
+    "check:spec": "node tools/check-spec.mjs",
+    "mock": "ts-node --project tsconfig.json test/mock/cli.ts"
   },
   "bugs": {
     "url": "https://github.com/tmarthy/ioBroker.skoda-public-api/issues"

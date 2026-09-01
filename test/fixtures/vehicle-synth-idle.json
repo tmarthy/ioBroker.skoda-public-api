@@ -1,0 +1,114 @@
+{
+  "description": "Enyaq, geparkt, Kabel nicht eingesteckt, nichts aktiv.",
+  "note": "SYNTHETISCH - aus der OpenAPI-Spec konstruiert, nicht am Fahrzeug aufgenommen. Wird durch eine echte Aufnahme (tools/capture-fixtures.mjs) ersetzt, sobald verfuegbar. fuelStatus und auxiliaryHeating fehlen absichtlich: ein BEV liefert sie nicht (siehe E13).",
+  "status": 200,
+  "body": {
+    "vehicle": {
+      "vin": "TMBJB9NY5RF999999",
+      "name": "Enyaq",
+      "licensePlate": "1MB 1234",
+      "renderUrl": "https://example.invalid/render/vehicle.png",
+      "status": {
+        "overall": {
+          "doorsLocked": "YES",
+          "locked": "YES",
+          "doors": "CLOSED",
+          "windows": "CLOSED",
+          "lights": "OFF",
+          "reliableLockStatus": "LOCKED"
+        },
+        "detail": {
+          "sunroof": "CLOSED",
+          "trunk": "CLOSED",
+          "bonnet": "CLOSED"
+        },
+        "carCapturedTimestamp": "2026-09-01T18:12:07Z"
+      },
+      "odometer": {
+        "mileageInKm": 24817,
+        "carCapturedTimestamp": "2026-09-01T18:12:07Z"
+      },
+      "parkingPosition": {
+        "state": "PARKED",
+        "gpsCoordinates": {
+          "latitude": 47.3769,
+          "longitude": 8.5417
+        },
+        "formattedAddress": "Musterstrasse 1, 8000 Zuerich, Schweiz"
+      },
+      "airConditioning": {
+        "state": "OFF",
+        "targetTemperature": {
+          "value": 21.5,
+          "unit": "CELSIUS"
+        },
+        "airConditioningWithoutExternalPower": true,
+        "airConditioningAtUnlock": false,
+        "windowHeating": {
+          "enabled": true,
+          "front": "OFF",
+          "rear": "OFF"
+        },
+        "carCapturedTimestamp": "2026-09-01T18:12:07Z"
+      },
+      "activeVentilation": {
+        "state": "OFF",
+        "durationInSeconds": 600,
+        "carCapturedTimestamp": "2026-09-01T18:12:07Z"
+      },
+      "charging": {
+        "isVehicleInSavedLocation": true,
+        "status": {
+          "state": "CONNECT_CABLE",
+          "chargeType": "OFF",
+          "battery": {
+            "stateOfChargeInPercent": 63,
+            "remainingCruisingRangeInMeters": 271000
+          }
+        },
+        "settings": {
+          "targetStateOfChargeInPercent": 80,
+          "batteryCareModeTargetValueInPercent": 80,
+          "preferredChargeMode": "MANUAL",
+          "availableChargeModes": ["MANUAL", "TIMER"],
+          "chargingCareMode": "ACTIVATED",
+          "autoUnlockPlugWhenCharged": "PERMANENT",
+          "maxChargeCurrentAc": "MAXIMUM",
+          "maxChargeCurrentAcAmpere": 32
+        },
+        "carCapturedTimestamp": "2026-09-01T18:12:07Z"
+      },
+      "chargingProfiles": {
+        "profiles": [
+          {
+            "id": 1,
+            "name": "Zuhause",
+            "settings": {
+              "maxChargingCurrent": "MAXIMUM",
+              "minBatteryStateOfCharge": {
+                "enabled": true,
+                "minimumBatteryStateOfChargeInPercent": 20
+              },
+              "targetStateOfChargeInPercent": 80,
+              "autoUnlockPlugWhenCharged": "PERMANENT"
+            },
+            "preferredChargingTimes": [
+              { "id": 1, "enabled": true, "startTime": "22:00", "endTime": "06:00" }
+            ],
+            "timers": [
+              { "id": 1, "enabled": false, "time": "07:00", "type": "RECURRING", "recurringOn": ["MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY"] }
+            ]
+          }
+        ],
+        "currentVehiclePositionProfile": {
+          "id": 1,
+          "name": "Zuhause",
+          "targetStateOfChargeInPercent": 80,
+          "nextChargingTime": "22:00"
+        },
+        "carCapturedTimestamp": "2026-09-01T18:12:07Z"
+      }
+    },
+    "errors": []
+  }
+}

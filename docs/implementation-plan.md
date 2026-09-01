@@ -164,7 +164,38 @@ Instanz, Admin unter `http://localhost:8081` erreichbar.
 **Fertig, wenn:** `npm run codegen` erzeugt beide Dateien, `npm run build`
 kompiliert fehlerfrei, der Spec-Wächter läuft manuell durch.
 
-### Phase 2 — Fixtures und Mock-Server · M
+### Phase 2 — Fixtures und Mock-Server · M · **Mock erledigt, Fixtures offen**
+
+> **Stand:** Mock-Server, Aufnahmewerkzeug und ein synthetisches Basis-Fixture stehen;
+> 41 Tests decken Quota-Buchhaltung, alle Fehlerfamilien, `include`-Filterung und
+> Befehlswirkung ab. Offen sind die echten Aufnahmen — die brauchen das Fahrzeug.
+>
+> **Aufnahme am Fahrzeug** (jede Aufnahme kostet einen Request aus dem Stundenbudget):
+>
+> ```
+> export SKODA_API_KEY='...'      # aus der MyŠkoda-App
+> export SKODA_VIN='...'
+> node tools/capture-fixtures.mjs idle              "Geparkt, Kabel ab"
+> node tools/capture-fixtures.mjs plugged           "Kabel dran, laedt nicht"
+> node tools/capture-fixtures.mjs charging          "Laedt gerade"
+> node tools/capture-fixtures.mjs climatising       "Klimatisierung laeuft"
+> ```
+>
+> Das Werkzeug anonymisiert VIN, Kennzeichen, Fahrzeugname, Adresse und Koordinaten
+> und bricht ab, falls danach noch eine Spur der echten VIN oder des Schluessels in
+> der Datei steht. Schluessel und VIN werden nie protokolliert.
+>
+> Danach `test/fixtures/vehicle-synth-idle.json` durch `vehicle-idle.json` ersetzen
+> (im Mock via `fixture: 'idle'`) und das synthetische Fixture behalten, solange es
+> Faelle abdeckt, die am eigenen Fahrzeug nicht auftreten.
+
+**Abweichung von der Planung:** Der Mock kennt 13 Szenarien statt der geplanten elf —
+`bad-request` entsteht bereits aus einem unbekannten `include`-Wert und braucht keinen
+Schalter, dafuer sind `not-found`, `gateway-timeout` und `partial-data` eigenstaendig
+schaltbar. Die Zuordnung Antwortteil ↔ Fehlertyp (`CHARGING_UNAVAILABLE` usw.) liegt in
+`src/lib/api/parts.ts`, nicht im Mock: Der StateWriter braucht sie in Phase 5 ebenfalls,
+und ein Test haelt sie gegen die Spec-Beschreibung.
+
 
 Vorgezogen, weil alle folgenden Phasen ihn brauchen (E12).
 

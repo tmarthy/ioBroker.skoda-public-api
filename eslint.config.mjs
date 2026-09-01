@@ -24,6 +24,15 @@ export default [
 		],
 	},
 	{
+		// Testcode und Testdoppel: Die tragenden Teile sind ausfuehrlich kommentiert,
+		// aber jedes Feld einer Options-Schnittstelle im Mock einzeln zu bedoken bringt
+		// keinen Erkenntnisgewinn und verwaessert die Kommentare, die wirklich zaehlen.
+		files: ['test/**/*.ts', 'src/**/*.test.ts'],
+		rules: {
+			'jsdoc/require-jsdoc': 'off',
+		},
+	},
+	{
 		// you may disable some 'jsdoc' warnings - but using jsdoc is highly recommended
 		// as this improves maintainability. jsdoc warnings will not block build process.
 		rules: {
