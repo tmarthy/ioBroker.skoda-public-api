@@ -36,7 +36,7 @@ class SkodaPublicApi extends utils.Adapter {
    * Is called when databases are connected and adapter received configuration.
    */
   async onReady() {
-    this.setState("info.connection", false, true);
+    await this.setState("info.connection", false, true);
     this.log.debug("config option1: ${this.config.option1}");
     this.log.debug("config option2: ${this.config.option2}");
     await this.setObjectNotExistsAsync("testVariable", {
