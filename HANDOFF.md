@@ -230,9 +230,16 @@ zweites Mal hineinläuft oder eine Korrektur versehentlich zurückdreht.
    ist Englisch, Deutsch wird von Hand gesetzt, der Rest maschinell daraus.
    `titleLang` bleibt in allen Sprachen `Škoda Public API` — ein Produktname wird nicht
    übersetzt.
-7. **`build/` steht unter Versionskontrolle** (Vorgabe des Generators). Jede Änderung an
-   `src/` erzeugt dadurch zusätzlich einen Diff im Kompilat. Umstellen wäre möglich
-   (`prepack`-Build, `build/` ignorieren), ist aber bewusst noch nicht entschieden.
+7. **`build/` ist bewusst *nicht* versioniert** — abweichend von der Generator-Vorgabe
+   für TypeScript-Adapter. Stattdessen erzeugt das `prepare`-Skript das Kompilat
+   überall dort, wo es gebraucht wird: bei `npm ci` in der CI, bei `npm install` in der
+   Entwicklung, bei `npm pack`/`npm publish` und bei einer Installation über eine
+   git-URL. Beides ist nachgemessen. **`build/` nicht wieder einchecken** — es würde bei
+   jeder Änderung an `src/` einen zweiten Diff erzeugen.
+   Einzige verbliebene Lücke: Eine Installation direkt aus einem GitHub-*Tarball*
+   (statt über npm oder eine git-URL) führt `prepare` nicht aus und bekäme kein
+   Kompilat. Der übliche Weg `iob url …` installiert über eine git-URL und ist davon
+   nicht betroffen.
 8. **Generierte Dateien sind von ESLint und Prettier ausgenommen** (`src/**/*.generated.ts`).
    Nicht wieder einschließen — das erzeugt 738 Formatierungsfehler.
 
