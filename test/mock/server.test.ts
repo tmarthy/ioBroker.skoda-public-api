@@ -42,7 +42,22 @@ describe('Mock der Skoda-API', () => {
 			const body = (await res.json()) as any;
 			expect(body.vehicle.vin).to.equal(DEFAULT_VIN);
 			expect(body.vehicle.charging.status.state).to.equal('CONNECT_CABLE');
-			expect(body.errors).to.deep.equal([]);
+			expect(body).to.not.have.property('errors');
+		});
+
+		it('laesst errors bei fehlerfreier Antwort ganz weg statt ein leeres Array zu senden', async () => {
+			// Am 2026-09-02 an einem echten Enyaq nachgemessen: Die Antwort enthaelt dann
+			// nur `vehicle`. Wer `body.errors.map(...)` schreibt, faellt hier auf die Nase -
+			// und genau deshalb darf der Mock nicht nachsichtiger sein als die API.
+			const body = (await (await get()).json()) as any;
+			expect(body).to.not.have.property('errors');
+			expect(Object.keys(body)).to.deep.equal(['vehicle']);
+		});
+
+		it('sendet errors nur, wenn tatsaechlich etwas fehlt', async () => {
+			mock.scenario = 'partial-data';
+			const body = (await (await get()).json()) as any;
+			expect(body.errors).to.be.an('array').with.length.greaterThan(0);
 		});
 
 		it('laesst Teile weg, die das Fahrzeug nicht liefert, ohne sie zu melden', async () => {
@@ -50,7 +65,7 @@ describe('Mock der Skoda-API', () => {
 			// Das Fixture ist ein BEV: kein Kraftstoff, keine Standheizung.
 			expect(body.vehicle).to.not.have.property('fuelStatus');
 			expect(body.vehicle).to.not.have.property('auxiliaryHeating');
-			expect(body.errors).to.be.empty;
+			expect(body).to.not.have.property('errors');
 		});
 
 		it('meldet ausdruecklich angeforderte, nicht unterstuetzte Teile als Fehler', async () => {

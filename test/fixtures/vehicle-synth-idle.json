@@ -1,6 +1,6 @@
 {
-  "description": "Enyaq, geparkt, Kabel nicht eingesteckt, nichts aktiv.",
-  "note": "SYNTHETISCH - aus der OpenAPI-Spec konstruiert, nicht am Fahrzeug aufgenommen. Wird durch eine echte Aufnahme (tools/capture-fixtures.mjs) ersetzt, sobald verfuegbar. fuelStatus und auxiliaryHeating fehlen absichtlich: ein BEV liefert sie nicht (siehe E13).",
+  "description": "Fahrzeug mit vollem Funktionsumfang, geparkt, Kabel nicht eingesteckt.",
+  "note": "SYNTHETISCH - aus der OpenAPI-Spec konstruiert. Deckt bewusst Felder ab, die der echte Enyaq NICHT liefert (activeVentilation, chargeType, currentVehiclePositionProfile, maxChargeCurrentAcAmpere, airConditioningWithoutExternalPower) sowie ein leeres errors-Array. Die echte Aufnahme liegt in vehicle-idle.json und ist der Standard des Mocks.",
   "status": 200,
   "body": {
     "vehicle": {
@@ -70,7 +70,10 @@
           "targetStateOfChargeInPercent": 80,
           "batteryCareModeTargetValueInPercent": 80,
           "preferredChargeMode": "MANUAL",
-          "availableChargeModes": ["MANUAL", "TIMER"],
+          "availableChargeModes": [
+            "MANUAL",
+            "TIMER"
+          ],
           "chargingCareMode": "ACTIVATED",
           "autoUnlockPlugWhenCharged": "PERMANENT",
           "maxChargeCurrentAc": "MAXIMUM",
@@ -93,10 +96,27 @@
               "autoUnlockPlugWhenCharged": "PERMANENT"
             },
             "preferredChargingTimes": [
-              { "id": 1, "enabled": true, "startTime": "22:00", "endTime": "06:00" }
+              {
+                "id": 1,
+                "enabled": true,
+                "startTime": "22:00",
+                "endTime": "06:00"
+              }
             ],
             "timers": [
-              { "id": 1, "enabled": false, "time": "07:00", "type": "RECURRING", "recurringOn": ["MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY"] }
+              {
+                "id": 1,
+                "enabled": false,
+                "time": "07:00",
+                "type": "RECURRING",
+                "recurringOn": [
+                  "MONDAY",
+                  "TUESDAY",
+                  "WEDNESDAY",
+                  "THURSDAY",
+                  "FRIDAY"
+                ]
+              }
             ]
           }
         ],

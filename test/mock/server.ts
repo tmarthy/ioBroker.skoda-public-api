@@ -229,7 +229,7 @@ export class MockSkodaApi {
 		this.options = {
 			apiKey: options.apiKey ?? DEFAULT_API_KEY,
 			vin: options.vin ?? DEFAULT_VIN,
-			fixture: options.fixture ?? 'synth-idle',
+			fixture: options.fixture ?? 'idle',
 			rateLimit: options.rateLimit ?? 20,
 			windowSeconds: options.windowSeconds ?? 3600,
 			keyExpiresInDays: options.keyExpiresInDays ?? 90,
@@ -593,7 +593,13 @@ export class MockSkodaApi {
 			}
 		}
 
-		this.send(res, req, 200, { vehicle, errors }, { consumesQuota: true });
+		// Die echte API laesst `errors` bei einer fehlerfreien Antwort **ganz weg** -
+		// sie sendet kein leeres Array. Am 2026-09-02 an einem echten Enyaq nachgemessen.
+		// Wuerde der Mock hier immer ein Array liefern, waere er nachsichtiger als die
+		// Wirklichkeit und ein `body.errors.map(...)` bestuende jeden Test und schluege
+		// erst im Betrieb fehl.
+		const body = errors.length > 0 ? { vehicle, errors } : { vehicle };
+		this.send(res, req, 200, body, { consumesQuota: true });
 	}
 
 	private handleCommand(req: IncomingMessage, res: ServerResponse, url: URL, domain: string, action: string): void {

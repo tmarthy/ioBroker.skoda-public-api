@@ -1,6 +1,6 @@
 # Handoff — ioBroker.skoda-public-api
 
-**Stand: 2026-09-01, nach Phase 2.** Diese Datei ist der Einstieg für jeden, der die
+**Stand: 2026-09-02, nach Phase 2, erste echte Aufnahme vorhanden.** Diese Datei ist der Einstieg für jeden, der die
 Arbeit übernimmt oder nach einer Pause wieder aufnimmt. Sie beschreibt, wo das Projekt
 steht, was als Nächstes ansteht und welche Fallstricke bereits bekannt sind.
 
@@ -142,10 +142,34 @@ Beispielwerte und **bricht ab, falls danach noch eine Spur der echten VIN oder d
 Schlüssels in der Datei steht.** Schlüssel und VIN erscheinen in keiner Ausgabe. Nebenbei
 meldet es den Budgetstand und das Ablaufdatum des Schlüssels.
 
-Bis dahin arbeitet alles gegen `test/fixtures/vehicle-synth-idle.json` — ein aus der
-OpenAPI-Spec konstruiertes Enyaq-Fixture. Es enthält bewusst **kein** `fuelStatus` und
-**kein** `auxiliaryHeating`, weil ein BEV die nicht liefert; damit ist die verzögerte
-Objektanlage (E13) von Anfang an im Test.
+`test/fixtures/vehicle-idle.json` ist die erste echte Aufnahme (2026-09-02) und der
+Standard des Mocks. `vehicle-synth-idle.json` bleibt daneben als Fahrzeug mit vollem
+Funktionsumfang: Es enthält absichtlich Felder, die dieser Enyaq **nicht** liefert, damit
+auch deren Code-Pfade getestet werden.
+
+#### Was dieser Enyaq tatsächlich liefert
+
+Gemessen am 2026-09-02, nicht aus der Spec abgeleitet:
+
+| Teil | vorhanden |
+|---|---|
+| `status`, `odometer`, `parkingPosition` | ja |
+| `airConditioning`, `charging`, `chargingProfiles` | ja |
+| `fuelStatus` | nein — BEV |
+| `auxiliaryHeating` | nein |
+| `activeVentilation` | **nein** |
+
+**Damit sind von den acht Befehlsendpunkten nur vier nutzbar:** `charging/start`,
+`charging/stop`, `air-conditioning/start`, `air-conditioning/stop`. Standheizung und
+aktive Belüftung fallen für dieses Fahrzeug weg — die Fähigkeitserkennung aus E13/E15
+legt die zugehörigen Zustände gar nicht erst an.
+
+Auch **innerhalb** vorhandener Blöcke fehlen Felder: `charging.status.chargeType`,
+`charging.settings.maxChargeCurrentAcAmpere`,
+`airConditioning.airConditioningWithoutExternalPower`,
+`chargingProfiles.currentVehiclePositionProfile` und
+`minBatteryStateOfCharge.enabled` waren allesamt nicht in der Antwort. Optionalität gilt
+auf jeder Ebene, nicht nur für die grossen Blöcke.
 
 ---
 
@@ -242,6 +266,12 @@ zweites Mal hineinläuft oder eine Korrektur versehentlich zurückdreht.
    nicht betroffen.
 8. **Generierte Dateien sind von ESLint und Prettier ausgenommen** (`src/**/*.generated.ts`).
    Nicht wieder einschließen — das erzeugt 738 Formatierungsfehler.
+9. **`errors` fehlt in einer fehlerfreien Antwort ganz** — die API sendet *kein* leeres
+   Array, entgegen dem Beispiel in Škodas eigener Dokumentation. Am 2026-09-02 an einem
+   echten Fahrzeug nachgemessen. `body.errors.map(...)` läuft deshalb im Betrieb auf einen
+   `TypeError`, obwohl alle Tests grün sind. Immer `body.errors ?? []`. Der generierte Typ
+   hat `errors?` bereits als optional, der Compiler erzwingt es also — und der Mock bildet
+   das Verhalten seit dieser Messung nach. **Den Mock hier nicht "aufräumen".**
 
 ---
 

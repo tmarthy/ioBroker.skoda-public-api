@@ -1,0 +1,163 @@
+{
+  "description": "Geparkt, Kabel ab",
+  "note": "Anonymisiert durch tools/capture-fixtures.mjs. VIN, Kennzeichen, Name, Adresse und Koordinaten sind Beispielwerte.",
+  "status": 200,
+  "body": {
+    "vehicle": {
+      "airConditioning": {
+        "state": "OFF",
+        "airConditioningAtUnlock": false,
+        "carCapturedTimestamp": "2026-09-02T18:12:42Z",
+        "targetTemperature": {
+          "value": 23,
+          "unit": "CELSIUS"
+        },
+        "windowHeating": {
+          "enabled": true,
+          "front": "OFF",
+          "rear": "OFF"
+        }
+      },
+      "charging": {
+        "isVehicleInSavedLocation": true,
+        "carCapturedTimestamp": "2026-09-02T18:12:43Z",
+        "settings": {
+          "autoUnlockPlugWhenCharged": "OFF",
+          "availableChargeModes": [
+            "MANUAL"
+          ],
+          "batteryCareModeTargetValueInPercent": 80,
+          "chargingCareMode": "ACTIVATED",
+          "maxChargeCurrentAc": "MAXIMUM",
+          "preferredChargeMode": "MANUAL",
+          "targetStateOfChargeInPercent": 100
+        },
+        "status": {
+          "battery": {
+            "remainingCruisingRangeInMeters": 352000,
+            "stateOfChargeInPercent": 73
+          },
+          "chargePowerInKw": 0,
+          "fullyChargedAt": "2026-09-02T05:22:49Z",
+          "remainingTimeToFullyChargedInMinutes": 0,
+          "state": "CONNECT_CABLE"
+        }
+      },
+      "chargingProfiles": {
+        "profiles": [
+          {
+            "id": 1,
+            "name": "Zu Hause",
+            "settings": {
+              "autoUnlockPlugWhenCharged": "PERMANENT",
+              "maxChargingCurrent": "REDUCED",
+              "minBatteryStateOfCharge": {
+                "minimumBatteryStateOfChargeInPercent": 30
+              },
+              "targetStateOfChargeInPercent": 80
+            },
+            "preferredChargingTimes": [
+              {
+                "id": 1,
+                "enabled": false,
+                "startTime": "20:00",
+                "endTime": "06:00"
+              },
+              {
+                "id": 2,
+                "enabled": false,
+                "startTime": "20:00",
+                "endTime": "06:00"
+              },
+              {
+                "id": 3,
+                "enabled": false,
+                "startTime": "22:00",
+                "endTime": "06:00"
+              },
+              {
+                "id": 4,
+                "enabled": false,
+                "startTime": "22:00",
+                "endTime": "06:00"
+              }
+            ],
+            "timers": [
+              {
+                "id": 1,
+                "enabled": false,
+                "type": "RECURRING",
+                "recurringOn": [
+                  "MONDAY",
+                  "TUESDAY",
+                  "WEDNESDAY",
+                  "THURSDAY",
+                  "FRIDAY"
+                ],
+                "time": "07:00"
+              },
+              {
+                "id": 2,
+                "enabled": false,
+                "type": "RECURRING",
+                "recurringOn": [
+                  "SATURDAY",
+                  "SUNDAY"
+                ],
+                "time": "09:00"
+              },
+              {
+                "id": 3,
+                "enabled": false,
+                "type": "RECURRING",
+                "recurringOn": [
+                  "MONDAY",
+                  "TUESDAY",
+                  "WEDNESDAY",
+                  "THURSDAY",
+                  "FRIDAY",
+                  "SATURDAY",
+                  "SUNDAY"
+                ],
+                "time": "07:00"
+              }
+            ]
+          }
+        ],
+        "carCapturedTimestamp": "2026-09-02T18:12:38.316Z"
+      },
+      "licensePlate": "1MB 1234",
+      "name": "Enyaq",
+      "odometer": {
+        "mileageInKm": 30069,
+        "carCapturedTimestamp": "2026-09-02T18:12:49.301Z"
+      },
+      "parkingPosition": {
+        "state": "PARKED",
+        "formattedAddress": "Musterstrasse 1, 8000 Zuerich, Schweiz",
+        "gpsCoordinates": {
+          "latitude": 47.3769,
+          "longitude": 8.5417
+        }
+      },
+      "renderUrl": "https://example.invalid/render/vehicle.png",
+      "status": {
+        "overall": {
+          "doorsLocked": "YES",
+          "locked": "YES",
+          "doors": "CLOSED",
+          "windows": "CLOSED",
+          "lights": "OFF",
+          "reliableLockStatus": "LOCKED"
+        },
+        "detail": {
+          "sunroof": "CLOSED",
+          "trunk": "CLOSED",
+          "bonnet": "CLOSED"
+        },
+        "carCapturedTimestamp": "2026-09-02T18:12:49.274Z"
+      },
+      "vin": "TMBJB9NY5RF999999"
+    }
+  }
+}
