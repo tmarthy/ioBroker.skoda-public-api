@@ -1,6 +1,6 @@
 # Handoff — ioBroker.skoda-public-api
 
-**Stand: 2026-09-02, nach Phase 2, erste echte Aufnahme vorhanden.** Diese Datei ist der Einstieg für jeden, der die
+**Stand: 2026-09-02, nach Phase 2.** Auf GitHub, CI grün, erste echte Fahrzeugaufnahme vorhanden. Diese Datei ist der Einstieg für jeden, der die
 Arbeit übernimmt oder nach einer Pause wieder aufnimmt. Sie beschreibt, wo das Projekt
 steht, was als Nächstes ansteht und welche Fallstricke bereits bekannt sind.
 
@@ -56,19 +56,42 @@ Ziel-SoC setzen, Ladeprofile ändern, Schlüssel automatisch erneuern.
 | 7 | CommandQueue → **Meilenstein 2: steuernder Adapter** | offen |
 | 8–12 | Admin-UI, Schlüsselablauf, Tests/CI, Doku, Release | offen |
 
-Letzter vollständig grüner Lauf (2026-09-01):
+Letzter vollständig grüner Lauf (2026-09-02):
 
 ```
-npm run check          tsc --noEmit, fehlerfrei
-npm run lint           0 Fehler, 0 Warnungen
-npm run test:ts        41 Tests
-npm run test:package   57 Tests
-npm run build          Type-Check und esbuild fehlerfrei
-npm run check:spec     eingecheckte Spec deckungsgleich mit der Live-API
-npm run codegen        reproduzierbar (identische Prüfsummen bei erneutem Lauf)
+npm run check            tsc --noEmit, fehlerfrei
+npm run lint             0 Fehler, 0 Warnungen
+npm run test:ts          43 Tests
+npm run test:package     57 Tests
+npm run test:integration  1 Test  (startet den Adapter in einer echten ioBroker-Instanz)
+npm run build            Type-Check und esbuild fehlerfrei
+npm run check:spec       eingecheckte Spec deckungsgleich mit der Live-API
+npm run codegen          reproduzierbar (identische Prüfsummen bei erneutem Lauf)
 ```
 
-Fünf Commits auf `main`, kein Remote konfiguriert. Nichts ist veröffentlicht.
+Elf Commits auf `main`, gepusht nach
+`https://github.com/tmarthy/ioBroker.skoda-public-api` (**privat**).
+Nichts ist auf npm veröffentlicht; der Deploy-Job im Release-Workflow ist
+auskommentiert, wie `create-adapter` ihn ausliefert.
+
+### Stand der CI
+
+Vier Workflows, alle nachweislich sauber (Lauf 33676066653, keine Annotations):
+
+| Workflow | Auslöser | Stand |
+|---|---|---|
+| `Test and Release` | Push auf `main`, Tags, PRs | ✓ 7 Jobs: `check-and-lint` plus `adapter-tests` auf Ubuntu, macOS und Windows × Node 22 und 24 |
+| `Check Škoda API spec` | **nur** `schedule` (Mo 05:17 UTC) und `workflow_dispatch` | ✓ manuell geprüft, „Spec unveraendert" |
+| `Auto-Merge Dependabot PRs` | `pull_request_target` | noch nie gelaufen — wartet auf den ersten Dependabot-PR (monatlich am 21.) |
+| Deploy | Tag `v*` | auskommentiert, bis ein `NPM_TOKEN` hinterlegt ist |
+
+**Der Spec-Wächter läuft bei einem Push nicht mit.** Wer ihn nach einer Änderung
+prüfen will, muss ihn von Hand auslösen: Actions → *Check Škoda API spec* →
+*Run workflow*.
+
+Der `adapter-tests`-Job ist die belastbare Absicherung der `build/`-Umstellung
+(siehe Fallstrick 7): Er läuft mit `npm ci` ohne expliziten Build-Schritt, in
+sechs OS/Node-Kombinationen. Windows braucht dafür 4–5 Minuten, der Rest gut eine.
 
 ---
 
@@ -115,6 +138,23 @@ lassen.
 - `npx iobroker-dev-server run default` startet eine vollständige ioBroker-Instanz unter
   `.dev-server/` (301 MB, gitignoriert), Admin auf Port 8081.
 
+### Zugang zu GitHub
+
+- **`credential.helper` ist ausschließlich lokal in diesem Repo gesetzt** (`osxkeychain`).
+  Global ist keiner konfiguriert — andere Repositories fragen den Schlüsselbund also gar
+  nicht erst. Genau darin besteht die Abschottung; sie hängt nicht an `useHttpPath`.
+  `credential.useHttpPath` war ursprünglich zusätzlich gesetzt und hat den Zugriff
+  **blockiert**: Der Eintrag wurde beim ersten Push pfadlos abgelegt, während git nach
+  einem pfadgebundenen fragte. Nicht wieder einschalten, ohne den Eintrag neu anzulegen.
+- Das Token ist ein **fine-grained PAT**, beschränkt auf dieses eine Repository, mit
+  *Contents: Read and write* und *Workflows: Read and write*. Ohne die zweite
+  Berechtigung weist GitHub jeden Push zurück, der Dateien unter `.github/workflows/`
+  anlegt oder ändert — auch den allerersten.
+- `gh` ist eingerichtet (`gh auth status`) und der bequemste Weg, CI-Läufe zu prüfen:
+  `gh run list`, `gh run view <id>`, `gh run watch <id> --exit-status`.
+  Annotations stehen im `ANNOTATIONS`-Block von `gh run view` — fehlt der Block, gab es
+  keine.
+
 ---
 
 ## 4. Was gerade blockiert
@@ -130,12 +170,19 @@ export SKODA_API_KEY='...' && export SKODA_VIN='...' && node tools/capture-fixtu
 
 Vier Aufnahmen sind vorgesehen, jede kostet einen Request aus den 20:
 
-| Name | Zustand des Fahrzeugs |
-|---|---|
-| `idle` | geparkt, Kabel nicht eingesteckt |
-| `plugged` | Kabel dran, lädt nicht |
-| `charging` | lädt gerade |
-| `climatising` | Klimatisierung läuft |
+| Name | Zustand des Fahrzeugs | Stand |
+|---|---|---|
+| `idle` | geparkt, Kabel nicht eingesteckt | **vorhanden** (2026-09-02) |
+| `plugged` | Kabel dran, lädt nicht | offen |
+| `charging` | lädt gerade | offen |
+| `climatising` | Klimatisierung läuft | offen |
+
+`charging` ist die wertvollste der offenen: Dort zeigt sich, welche Felder erst beim
+Laden erscheinen (`chargeType`, `chargingRateInKilometersPerHour`, ein sinnvolles
+`fullyChargedAt`) — und wie hoch die tatsächliche Ladeleistung ist. Letzteres beantwortet
+die offene Frage, ob das Ladeprofil „Zu Hause" mit `maxChargingCurrent: REDUCED` am
+gespeicherten Standort greift oder ob die globale Einstellung `MAXIMUM` gewinnt. Für das
+Überschussladen ist das die entscheidende Zahl (siehe E3).
 
 Das Werkzeug ersetzt VIN, Kennzeichen, Fahrzeugname, Adresse und Koordinaten durch
 Beispielwerte und **bricht ab, falls danach noch eine Spur der echten VIN oder des
@@ -266,7 +313,14 @@ zweites Mal hineinläuft oder eine Korrektur versehentlich zurückdreht.
    nicht betroffen.
 8. **Generierte Dateien sind von ESLint und Prettier ausgenommen** (`src/**/*.generated.ts`).
    Nicht wieder einschließen — das erzeugt 738 Formatierungsfehler.
-9. **`errors` fehlt in einer fehlerfreien Antwort ganz** — die API sendet *kein* leeres
+9. **GitHub-Actions-Versionen im Blick behalten.** GitHub kündigt Node-Laufzeiten ab und
+   meldet das als Warnung an einem sonst grünen Lauf. Zuletzt betroffen:
+   `actions/checkout@v4` und `actions/setup-node@v4` (auf `@v5` gehoben). Eine Warnung im
+   Job `check-and-lint` stammt **nicht** aus unserem Workflow — der ruft `checkout` gar
+   nicht selbst auf —, sondern aus dem Inneren von `ioBroker/testing-action-check`
+   (auf `@v2` gehoben). Dependabot pflegt `github-actions` monatlich am 21., spätere
+   Sprünge kommen also als geprüfter Pull Request.
+10. **`errors` fehlt in einer fehlerfreien Antwort ganz** — die API sendet *kein* leeres
    Array, entgegen dem Beispiel in Škodas eigener Dokumentation. Am 2026-09-02 an einem
    echten Fahrzeug nachgemessen. `body.errors.map(...)` läuft deshalb im Betrieb auf einen
    `TypeError`, obwohl alle Tests grün sind. Immer `body.errors ?? []`. Der generierte Typ
@@ -296,6 +350,10 @@ prüft explizit, dass in keiner erzeugten Meldung VIN oder Schlüssel auftauchen
 
 Der Mock aus Phase 2 liefert alle nötigen Fälle bereits auf Kommando — die Tests der
 HTTP-Schicht laufen gegen ihn, nicht gegen Fixtures allein.
+
+Beim Auswerten der Antwort **immer `body.errors ?? []`** schreiben (Fallstrick 10). Der
+generierte Typ hat `errors?` als optional, der Compiler erzwingt den Guard also — aber
+nur, solange niemand ihn mit `!` oder einer Typzusicherung übergeht.
 
 ---
 
