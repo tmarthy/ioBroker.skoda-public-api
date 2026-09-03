@@ -48,7 +48,7 @@ Ziel-SoC setzen, Ladeprofile ändern, Schlüssel automatisch erneuern.
 |---|---|---|
 | 0 | Projektgerüst, dev-server | **fertig** |
 | 1 | Spec, Codegen, Spec-Wächter | **fertig** |
-| 2 | Mock-Server, Aufnahmewerkzeug | **fertig**, echte Fixtures offen |
+| 2 | Mock-Server, Aufnahmewerkzeug, Fixtures | **fertig** |
 | 3 | HTTP-Schicht (`sanitize`, Fehler-Union, Client) | offen — **als Nächstes** |
 | 4 | QuotaManager | offen |
 | 5 | StateWriter | offen |
@@ -61,7 +61,7 @@ Letzter vollständig grüner Lauf (2026-09-02):
 ```
 npm run check            tsc --noEmit, fehlerfrei
 npm run lint             0 Fehler, 0 Warnungen
-npm run test:ts          43 Tests
+npm run test:ts          66 Tests
 npm run test:package     57 Tests
 npm run test:integration  1 Test  (startet den Adapter in einer echten ioBroker-Instanz)
 npm run build            Type-Check und esbuild fehlerfrei
@@ -157,9 +157,9 @@ lassen.
 
 ---
 
-## 4. Was gerade blockiert
+## 4. Fixtures und was sie über die API verraten
 
-**Die echten Fixtures. Dafür wird das Fahrzeug gebraucht.** Alles andere läuft weiter.
+**Nichts blockiert mehr.** Alle vier geplanten Aufnahmen liegen vor.
 
 Nach dem Erzeugen eines API-Schlüssels in der MyŠkoda-App (Version 8.16 oder neuer,
 Menüpunkt API-Schlüssel, gebunden an die dort ausgewählten Fahrzeuge):
@@ -172,17 +172,44 @@ Vier Aufnahmen sind vorgesehen, jede kostet einen Request aus den 20:
 
 | Name | Zustand des Fahrzeugs | Stand |
 |---|---|---|
-| `idle` | geparkt, Kabel nicht eingesteckt | **vorhanden** (2026-09-02) |
-| `plugged` | Kabel dran, lädt nicht | offen |
-| `charging` | lädt gerade | offen |
-| `climatising` | Klimatisierung läuft | offen |
+| `idle` | geparkt, Kabel nicht eingesteckt | vorhanden |
+| `plugged` | Kabel dran, lädt nicht | vorhanden |
+| `charging` | lädt gerade | vorhanden |
+| `climatising` | Klimatisierung läuft | vorhanden |
 
-`charging` ist die wertvollste der offenen: Dort zeigt sich, welche Felder erst beim
-Laden erscheinen (`chargeType`, `chargingRateInKilometersPerHour`, ein sinnvolles
-`fullyChargedAt`) — und wie hoch die tatsächliche Ladeleistung ist. Letzteres beantwortet
-die offene Frage, ob das Ladeprofil „Zu Hause" mit `maxChargingCurrent: REDUCED` am
-gespeicherten Standort greift oder ob die globale Einstellung `MAXIMUM` gewinnt. Für das
-Überschussladen ist das die entscheidende Zahl (siehe E3).
+**Alle vier liegen vor** (2026-09-03). Damit ist Phase 2 vollständig abgeschlossen.
+`test/fixtures.test.ts` hält sie fortlaufend gegen das aus der Spec erzeugte Modell —
+über alle vier Aufnahmen gab es weder unbekannte Pfade noch unbekannte
+Aufzählungswerte noch Typkonflikte. Der Prosa-Parser aus Phase 1 hat also richtig geraten.
+
+#### Was die Aufnahmen über die API verraten
+
+1. **Die tatsächliche Ladeleistung beträgt 5 kW** (`chargePowerInKw: 5`,
+   `chargingRateInKilometersPerHour: 31`), nicht die 11 kW, die `maxChargeCurrentAc:
+   MAXIMUM` vermuten ließe. Damit ist die offene Frage aus E3 beantwortet: Bang-Bang-
+   Überschussladen ist bei diesem Fahrzeug wesentlich brauchbarer als befürchtet. Ob die
+   Begrenzung vom Ladeprofil „Zu Hause" (`maxChargingCurrent: REDUCED`) oder vom
+   fremden Lademanagement der Bosch-Wallbox kommt, ist damit nicht geklärt — für die
+   Auslegung der Regelung zählt die gemessene Zahl.
+2. **`isVehicleInSavedLocation` ist als „steht zuhause"-Signal unbrauchbar.** Der Wert
+   springt zwischen `true` und `false`, obwohl der Kilometerstand über drei Aufnahmen
+   identisch bleibt (30085) und `parkingPosition.state` durchgehend `PARKED` meldet. In
+   der Stichprobe korreliert er mit `charging.status.state`, nicht mit dem Ort. **Für
+   Geofencing die Koordinaten aus `parkingPosition.gpsCoordinates` verwenden**, nicht
+   dieses Flag.
+3. **Zeitstempel kommen in unterschiedlicher Genauigkeit** — beobachtet wurden 0, 2, 3
+   und **9** Nachkommastellen (`2026-09-03T17:51:16.013958607Z`, Nanosekunden).
+   `Date.parse` verkraftet alle und schneidet auf Millisekunden ab. Ein
+   **Zeichenketten-Vergleich zweier Zeitstempel ist damit unzuverlässig** — relevant für
+   den Frische-Backoff in Phase 6, der `carCapturedTimestamp` über mehrere Polls
+   vergleicht: **immer nach Millisekunden parsen.**
+4. **Manche Felder erscheinen nur in bestimmten Zuständen:** `chargeType` und
+   `chargingRateInKilometersPerHour` nur beim Laden,
+   `estimatedReachOfTargetTemperatureAt` nur bei laufender Klimatisierung.
+   `fullyChargedAt` und `remainingTimeToFullyChargedInMinutes` tauchen in `idle` mit
+   **veralteten Werten aus dem letzten Ladevorgang** auf (Zeitpunkt in der
+   Vergangenheit, 0 Minuten) und fehlen in `plugged` ganz. Vorhandensein eines Feldes
+   sagt nichts über seine Aktualität.
 
 Das Werkzeug ersetzt VIN, Kennzeichen, Fahrzeugname, Adresse und Koordinaten durch
 Beispielwerte und **bricht ab, falls danach noch eine Spur der echten VIN oder des

@@ -164,11 +164,13 @@ Instanz, Admin unter `http://localhost:8081` erreichbar.
 **Fertig, wenn:** `npm run codegen` erzeugt beide Dateien, `npm run build`
 kompiliert fehlerfrei, der Spec-Wächter läuft manuell durch.
 
-### Phase 2 — Fixtures und Mock-Server · M · **Mock erledigt, Fixtures offen**
+### Phase 2 — Fixtures und Mock-Server · M · **erledigt**
 
-> **Stand:** Mock-Server, Aufnahmewerkzeug und ein synthetisches Basis-Fixture stehen;
-> 41 Tests decken Quota-Buchhaltung, alle Fehlerfamilien, `include`-Filterung und
-> Befehlswirkung ab. Offen sind die echten Aufnahmen — die brauchen das Fahrzeug.
+> **Stand:** vollstaendig. Mock-Server, Aufnahmewerkzeug und alle vier echten
+> Aufnahmen liegen vor; 66 Tests decken Quota-Buchhaltung, alle Fehlerfamilien,
+> `include`-Filterung, Befehlswirkung und den Abgleich der Aufnahmen gegen das
+> Generat ab. Was die echten Daten ueber die API verraten, steht in HANDOFF.md,
+> Abschnitt 4.
 >
 > **Aufnahme am Fahrzeug** (jede Aufnahme kostet einen Request aus dem Stundenbudget):
 >
