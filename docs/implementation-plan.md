@@ -264,7 +264,32 @@ prüft explizit, dass in keiner erzeugten Meldung VIN oder Key auftauchen.
 Beides liegt vor: `errors.test.ts` prüft die Tabelle Zeile für Zeile,
 `client.test.ts` dieselben Zeilen noch einmal gegen echte HTTP-Antworten des Mocks.
 
-### Phase 4 — QuotaManager · M
+### Phase 4 — QuotaManager · M · **erledigt**
+
+> **Abweichungen von der ursprünglichen Planung:**
+> - `recordResponse(meta)` statt `recordResponse(headers, consumedQuota)`. Der Client
+>   wertet die `RateLimit-*`-Header bereits aus; ein zweiter Parser wäre eine zweite
+>   Stelle, die bei einer Änderung nachgezogen werden muss. Der Manager kennt damit
+>   Schicht 1, wie es der Datenfluss vorsieht.
+> - `tryAcquire()` liefert bei einer Ablehnung neben `waitMs` auch einen `reason`
+>   (`reserve`, `exhausted`, `startup-guard`). Sonst müsste Phase 6 für die Logzeile
+>   „warum kein Poll?" dieselbe Bedingung noch einmal auswerten.
+> - **Das „minimale Intervall" ist eine Sperrfrist nach dem Start, kein dauerhafter
+>   Mindestabstand.** Als dauerhafter Abstand (Fenster ÷ Limit = 3 min) würde er den
+>   Verifikations-Poll 60 s nach einem Befehl blockieren, den die Tabelle in Phase 6
+>   ausdrücklich vorsieht. Er gilt deshalb nur für den ersten Request eines frischen
+>   Prozesses — genau dort, wo die Neustartschleife entsteht — und für Polls wie
+>   Befehle gleichermaßen.
+> - **Gespeichert wird beim Absetzen des Requests, nicht erst bei der Antwort**, und
+>   zwar der um die laufenden Requests verminderte Stand. Ein Absturz zwischen Request
+>   und Antwort ist der Fall, gegen den die Persistenz gebaut ist; würde erst die
+>   Antwort speichern, bliebe er unsichtbar.
+> - Laufende Requests werden mitgezählt (`inFlight`), damit zwei gleichzeitig
+>   abgesetzte Requests nicht beide denselben Reststand sehen.
+> - Die Persistenz hängt an einer Schnittstelle `QuotaStore`, nicht an einer
+>   Adapter-Instanz: Der Manager kennt kein ioBroker, und die Tests brauchen keins.
+>   **Offen bleibt die Anbindung an `info.rateLimit.*` — sie kommt in Phase 6 mit der
+>   Verdrahtung in `main.ts`.**
 
 Zustand: `limit`, `remaining`, `resetAt`, `lastRequestAt`.
 Quelle der Wahrheit sind **immer die Response-Header**, nie die eigene Zählung —
@@ -287,6 +312,9 @@ snapshot(): { limit, remaining, resetAt, reserveFree }
 **Fertig, wenn:** Unit-Tests für: Reserve wird nie von Polls unterschritten;
 `429` reduziert `remaining` nicht; `401`/`403` reduzieren `remaining` nicht;
 `503` reduziert `remaining`; Zustand übersteht einen simulierten Neustart.
+Alle fünf liegen vor, dazu die Neustartschleife selbst als Test (30 Starts in 90
+Sekunden setzen genau einen Request ab) und das Zusammenspiel mit Client und Mock:
+Der Poll hält von selbst an, bevor die API mit `429` antworten muss.
 
 ### Phase 5 — StateWriter · M
 

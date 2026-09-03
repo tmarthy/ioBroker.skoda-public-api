@@ -1,6 +1,6 @@
 # Handoff — ioBroker.skoda-public-api
 
-**Stand: 2026-09-03, nach Phase 3.** Auf GitHub, CI grün, alle vier Fahrzeugaufnahmen und die HTTP-Schicht vorhanden. Diese Datei ist der Einstieg für jeden, der die
+**Stand: 2026-09-03, nach Phase 4.** Auf GitHub, CI grün, alle vier Fahrzeugaufnahmen, HTTP-Schicht und QuotaManager vorhanden. Diese Datei ist der Einstieg für jeden, der die
 Arbeit übernimmt oder nach einer Pause wieder aufnimmt. Sie beschreibt, wo das Projekt
 steht, was als Nächstes ansteht und welche Fallstricke bereits bekannt sind.
 
@@ -50,8 +50,8 @@ Ziel-SoC setzen, Ladeprofile ändern, Schlüssel automatisch erneuern.
 | 1 | Spec, Codegen, Spec-Wächter | **fertig** |
 | 2 | Mock-Server, Aufnahmewerkzeug, Fixtures | **fertig** |
 | 3 | HTTP-Schicht (`sanitize`, Fehler-Union, Client) | **fertig** |
-| 4 | QuotaManager | offen — **als Nächstes** |
-| 5 | StateWriter | offen |
+| 4 | QuotaManager | **fertig** (Anbindung an `info.rateLimit.*` in Phase 6) |
+| 5 | StateWriter | offen — **als Nächstes** |
 | 6 | PollScheduler → **Meilenstein 1: lesender Adapter** | offen |
 | 7 | CommandQueue → **Meilenstein 2: steuernder Adapter** | offen |
 | 8–12 | Admin-UI, Schlüsselablauf, Tests/CI, Doku, Release | offen |
@@ -61,7 +61,7 @@ Letzter vollständig grüner Lauf (2026-09-03):
 ```
 npm run check            tsc --noEmit, fehlerfrei
 npm run lint             0 Fehler, 0 Warnungen
-npm run test:ts          146 Tests
+npm run test:ts          172 Tests
 npm run test:package     57 Tests
 npm run test:integration  1 Test  (startet den Adapter in einer echten ioBroker-Instanz)
 npm run build            Type-Check und esbuild fehlerfrei
@@ -296,8 +296,8 @@ Client direkt auf.
 | `src/lib/api/client.ts` | HTTP-Schicht, `ApiResult<T>` samt `meta` | fertig |
 | `src/lib/api/errors.ts` | `problem+json` → typisierte Fehler-Union | fertig |
 | `src/lib/api/sanitize.ts` | VIN- und Schlüssel-Maskierung | fertig |
-| `src/lib/quota/QuotaManager.ts` | Budget, Reserve, Persistenz | **Phase 4** |
-| `src/lib/states/StateWriter.ts` | JSON → States | Phase 5 |
+| `src/lib/quota/QuotaManager.ts` | Budget, Reserve, `QuotaStore`-Port | fertig |
+| `src/lib/states/StateWriter.ts` | JSON → States | **Phase 5** |
 | `src/lib/scheduler/PollScheduler.ts` | Kadenz, Frische-Backoff | Phase 6 |
 | `src/lib/commands/CommandQueue.ts` | Soll-Zustand, Coalescing, TTL | Phase 7 |
 | `src/main.ts` | noch die Generator-Vorlage, tut nichts | Phase 6 |
@@ -372,30 +372,58 @@ zweites Mal hineinläuft oder eine Korrektur versehentlich zurückdreht.
 
 ## 7. Der nächste Schritt
 
-**Phase 4 — QuotaManager.** Braucht das Fahrzeug nicht und kann sofort beginnen.
+**Phase 5 — StateWriter.** Braucht das Fahrzeug nicht; die vier Aufnahmen sind der
+Prüfstein.
 
-Die HTTP-Schicht liefert alles, was er dafür braucht: Jeder Aufruf von `getVehicle()`
-und `sendCommand()` gibt ein `ApiResult<T>` zurück, und darin steckt `meta` mit
+Er läuft den JSON-Baum der Antwort ab und legt Objekte **nur für vorhandene Pfade** an
+(E13) — einmal pro Pfad gemerkt, danach nur noch `setStateChanged`. Das `common` kommt
+aus `objectDefs.generated.ts`, überschrieben von `objectOverlay.ts`; beide werden zur
+Laufzeit in `resolveCommon()` zusammengeführt, das gibt es bereits. Unbekannte Pfade
+bekommen einen geratenen Typ, `role: 'state'` und eine Warnung ins Log — sie sind der
+Hinweis auf eine Spec-Änderung.
 
-- `rateLimit` (`limit`, `remaining`, `resetInSeconds`) aus den `RateLimit-*`-Headern
-  jeder Antwort — auch der fehlerhaften,
-- `apiKeyExpiresAt` als `Date` aus `X-API-Key-Expires-At` (für Phase 9),
-- `consumedQuota` als Schätzung nach der Fehlertabelle.
+Die drei Regeln, die dabei leicht untergehen:
 
-**Quelle der Wahrheit sind die Header, nicht die eigene Zählung.** `consumedQuota` ist
-nur die Überbrückung bis zur nächsten Antwort — und beim Netzwerkfehler eine bewusst
-konservative Annahme (dort fehlen die Header ganz, `rateLimit` ist dann `undefined`).
+- **Fehlende Teile nicht auf `null` setzen** (E8). Letzter Wert bleibt stehen,
+  Quality-Flag auf „nicht gut", `errors[]` als JSON nach `info.lastErrors`. Ohne das
+  flackert die VIS bei jeder unvollständigen Antwort.
+- **`<vin>.info.dataAge`** in Sekunden aus `carCapturedTimestamp` — sonst hält man
+  tagealte Werte für aktuelle. Der Zeitstempel wird **nach Millisekunden geparst**,
+  nie als Zeichenkette verglichen (0 bis 9 Nachkommastellen, siehe Abschnitt 4).
+- **Ladeprofile ID-basiert** (E16): `chargingProfiles.profiles.<id>.*`, darunter
+  `timersJson` und `preferredChargingTimesJson` als JSON-States.
 
-Was der Client absichtlich **nicht** tut und was deshalb in Phase 4 und 6 gehört:
-zurückhalten, wiederholen, warten. Er setzt genau einen Request ab, auch bei
-`remaining: 0`. Jeder Fehler trägt dafür `retryable`, `maxRetries` und `retryAfterMs`
-aus der Fehlertabelle mit — die Tabelle also nicht ein zweites Mal abtippen, sondern die
-Felder auswerten.
+Dazu die Befehls-States **aus derselben Fähigkeitserkennung** wie die Lese-States: kein
+`auxiliaryHeating`-Block in der Antwort, also auch keine zugehörigen Buttons (E15). Für
+diesen Enyaq heißt das vier nutzbare Befehle statt acht.
 
-**Fertig, wenn:** Reserve wird nie von Polls unterschritten; `429`, `401` und `403`
-reduzieren `remaining` nicht, `503` schon; der Zustand übersteht einen simulierten
-Neustart (Persistenz in `info.rateLimit.*` gegen die Neustartschleife, die sonst 20
-Requests in 90 Sekunden verbrennt).
+**Fertig, wenn:** Für jedes Fixture aus Phase 2 entsteht der erwartete Objektbaum
+(Snapshot-Test), und ein zweiter Durchlauf mit identischen Daten schreibt keinen
+einzigen State.
+
+### Offen aus Phase 4, fällig in Phase 6
+
+Der QuotaManager persistiert über die Schnittstelle `QuotaStore` (`load()`/`save()` mit
+`limit`, `remaining`, `resetAt`, `lastRequestAt`). **Die Umsetzung auf
+`info.rateLimit.*` fehlt noch** — sie braucht die Adapter-Instanz und gehört deshalb zur
+Verdrahtung in Phase 6. Wer in Phase 5 ohnehin die `info.*`-States anlegt, kann sie
+dort mitnehmen; der Port ist absichtlich winzig. Ohne diese Anbindung greift die
+Sperrfrist gegen die Neustartschleife nicht.
+
+### Was aus Phase 4 zu wissen ist
+
+- **Der Ablauf ist immer derselbe:** `tryAcquire('poll' | 'command')` fragen, bei `ok`
+  den Request absetzen, danach **immer** `recordResponse(result.meta)` melden — auch im
+  Fehlerfall. Wer das auslässt, blockiert den Platz dauerhaft.
+- Eine Ablehnung liefert `waitMs` und `reason`: `reserve` (nur noch die Befehlsreserve
+  übrig, gilt nur für Polls), `exhausted` (Budget leer) oder `startup-guard`
+  (Sperrfrist nach dem Neustart, drei Minuten seit dem letzten Request).
+- **Der Manager rechnet nicht mit, er glaubt den Headern.** `remaining` wird nur aus
+  einer Antwort gesetzt; `snapshot().confirmed` sagt, ob die Zahl bestätigt oder
+  geschätzt ist. Nur ohne Header (Netzwerkfehler) zählt er selbst herunter.
+- Polls stoppen bei `remaining <= commandReserve` (Vorgabe 6), Befehle laufen bis 0.
+  Gegen den Mock heißt das: 14 Polls, dann hält der Adapter von selbst an — die API
+  muss nie mit `429` antworten.
 
 ### Was aus Phase 3 zu wissen ist
 
