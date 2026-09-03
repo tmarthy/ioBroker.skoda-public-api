@@ -1,6 +1,6 @@
 # Handoff — ioBroker.skoda-public-api
 
-**Stand: 2026-09-03, nach Phase 4.** Auf GitHub, CI grün, alle vier Fahrzeugaufnahmen, HTTP-Schicht und QuotaManager vorhanden. Diese Datei ist der Einstieg für jeden, der die
+**Stand: 2026-09-03, nach Phase 5.** Auf GitHub, CI grün. Die drei Schichten unter `main.ts` stehen: HTTP-Schicht, QuotaManager, StateWriter. Diese Datei ist der Einstieg für jeden, der die
 Arbeit übernimmt oder nach einer Pause wieder aufnimmt. Sie beschreibt, wo das Projekt
 steht, was als Nächstes ansteht und welche Fallstricke bereits bekannt sind.
 
@@ -51,8 +51,8 @@ Ziel-SoC setzen, Ladeprofile ändern, Schlüssel automatisch erneuern.
 | 2 | Mock-Server, Aufnahmewerkzeug, Fixtures | **fertig** |
 | 3 | HTTP-Schicht (`sanitize`, Fehler-Union, Client) | **fertig** |
 | 4 | QuotaManager | **fertig** (Anbindung an `info.rateLimit.*` in Phase 6) |
-| 5 | StateWriter | offen — **als Nächstes** |
-| 6 | PollScheduler → **Meilenstein 1: lesender Adapter** | offen |
+| 5 | StateWriter | **fertig** |
+| 6 | PollScheduler → **Meilenstein 1: lesender Adapter** | offen — **als Nächstes** |
 | 7 | CommandQueue → **Meilenstein 2: steuernder Adapter** | offen |
 | 8–12 | Admin-UI, Schlüsselablauf, Tests/CI, Doku, Release | offen |
 
@@ -61,7 +61,7 @@ Letzter vollständig grüner Lauf (2026-09-03):
 ```
 npm run check            tsc --noEmit, fehlerfrei
 npm run lint             0 Fehler, 0 Warnungen
-npm run test:ts          172 Tests
+npm run test:ts          201 Tests
 npm run test:package     57 Tests
 npm run test:integration  1 Test  (startet den Adapter in einer echten ioBroker-Instanz)
 npm run build            Type-Check und esbuild fehlerfrei
@@ -297,10 +297,11 @@ Client direkt auf.
 | `src/lib/api/errors.ts` | `problem+json` → typisierte Fehler-Union | fertig |
 | `src/lib/api/sanitize.ts` | VIN- und Schlüssel-Maskierung | fertig |
 | `src/lib/quota/QuotaManager.ts` | Budget, Reserve, `QuotaStore`-Port | fertig |
-| `src/lib/states/StateWriter.ts` | JSON → States | **Phase 5** |
-| `src/lib/scheduler/PollScheduler.ts` | Kadenz, Frische-Backoff | Phase 6 |
+| `src/lib/states/StateWriter.ts` | JSON → States, `StateApi`-Port | fertig |
+| `src/lib/states/commandDefs.ts` | Domäne ↔ Antwortblock, Soll/Ist-Werte | fertig |
+| `src/lib/scheduler/PollScheduler.ts` | Kadenz, Frische-Backoff | **Phase 6** |
 | `src/lib/commands/CommandQueue.ts` | Soll-Zustand, Coalescing, TTL | Phase 7 |
-| `src/main.ts` | noch die Generator-Vorlage, tut nichts | Phase 6 |
+| `src/main.ts` | noch die Generator-Vorlage, tut nichts | **Phase 6** |
 
 ---
 
@@ -372,43 +373,70 @@ zweites Mal hineinläuft oder eine Korrektur versehentlich zurückdreht.
 
 ## 7. Der nächste Schritt
 
-**Phase 5 — StateWriter.** Braucht das Fahrzeug nicht; die vier Aufnahmen sind der
-Prüfstein.
+**Phase 6 — PollScheduler. Das ist Meilenstein 1: der lesende Adapter.** Damit fällt
+auch die Verdrahtung in `main.ts` an, die bisher bewusst unangetastet blieb — die
+Generator-Vorlage tut noch nichts.
 
-Er läuft den JSON-Baum der Antwort ab und legt Objekte **nur für vorhandene Pfade** an
-(E13) — einmal pro Pfad gemerkt, danach nur noch `setStateChanged`. Das `common` kommt
-aus `objectDefs.generated.ts`, überschrieben von `objectOverlay.ts`; beide werden zur
-Laufzeit in `resolveCommon()` zusammengeführt, das gibt es bereits. Unbekannte Pfade
-bekommen einen geratenen Typ, `role: 'state'` und eine Warnung ins Log — sie sind der
-Hinweis auf eine Spec-Änderung.
+| Zustand | Intervall |
+|---|---|
+| Basis | 15 min (konfigurierbar, Untergrenze 5) |
+| Aktiv (`CHARGING` oder Klima ≠ `OFF`) | 5 min (Untergrenze 3) |
+| Nach Befehl | ein Verifikations-Poll nach 60 s, danach 10 min aktive Kadenz |
+| Frische-Backoff | Verdoppelung bei unverändertem `carCapturedTimestamp`, Deckel 60 min |
 
-Die drei Regeln, die dabei leicht untergehen:
+Der **Frische-Backoff ist der größte Einzelhebel**: Ein schlafendes Auto liefert bei
+jedem Poll denselben Zeitstempel — schneller zu pollen bringt null Information und
+kostet volles Budget. Der Vergleich läuft über `Date.parse`, nie über die Zeichenkette
+(0 bis 9 Nachkommastellen, Abschnitt 4). Ändert sich der Zeitstempel, sofort zurück auf
+Basis.
 
-- **Fehlende Teile nicht auf `null` setzen** (E8). Letzter Wert bleibt stehen,
-  Quality-Flag auf „nicht gut", `errors[]` als JSON nach `info.lastErrors`. Ohne das
-  flackert die VIS bei jeder unvollständigen Antwort.
-- **`<vin>.info.dataAge`** in Sekunden aus `carCapturedTimestamp` — sonst hält man
-  tagealte Werte für aktuelle. Der Zeitstempel wird **nach Millisekunden geparst**,
-  nie als Zeichenkette verglichen (0 bis 9 Nachkommastellen, siehe Abschnitt 4).
-- **Ladeprofile ID-basiert** (E16): `chargingProfiles.profiles.<id>.*`, darunter
-  `timersJson` und `preferredChargingTimesJson` als JSON-States.
+Erster Poll **ohne** `include` — das ist die Fähigkeitserkennung (E13) —, danach mit der
+gelernten Liste, abzüglich `parkingPosition`, falls abgeschaltet (E14). Bei mehreren
+VINs reihum aus demselben Bucket (E9).
 
-Dazu die Befehls-States **aus derselben Fähigkeitserkennung** wie die Lese-States: kein
-`auxiliaryHeating`-Block in der Antwort, also auch keine zugehörigen Buttons (E15). Für
-diesen Enyaq heißt das vier nutzbare Befehle statt acht.
+**Fertig, wenn:** Der Adapter läuft gegen den Mock über eine simulierte Stunde, bleibt
+unter 20 Requests, füllt den Objektbaum und drosselt sich beim schlafenden Auto messbar
+herunter.
 
-**Fertig, wenn:** Für jedes Fixture aus Phase 2 entsteht der erwartete Objektbaum
-(Snapshot-Test), und ein zweiter Durchlauf mit identischen Daten schreibt keinen
-einzigen State.
+### Was bei der Verdrahtung mitzunehmen ist
 
-### Offen aus Phase 4, fällig in Phase 6
+Zwei Enden warten in `main.ts` auf ihren Anschluss — beide sind klein, beide fallen
+sonst hinten runter:
 
-Der QuotaManager persistiert über die Schnittstelle `QuotaStore` (`load()`/`save()` mit
-`limit`, `remaining`, `resetAt`, `lastRequestAt`). **Die Umsetzung auf
-`info.rateLimit.*` fehlt noch** — sie braucht die Adapter-Instanz und gehört deshalb zur
-Verdrahtung in Phase 6. Wer in Phase 5 ohnehin die `info.*`-States anlegt, kann sie
-dort mitnehmen; der Port ist absichtlich winzig. Ohne diese Anbindung greift die
-Sperrfrist gegen die Neustartschleife nicht.
+1. **`QuotaStore` auf `info.rateLimit.*`.** Der QuotaManager persistiert über eine
+   Schnittstelle mit `load()`/`save()` (`limit`, `remaining`, `resetAt`,
+   `lastRequestAt`). Ohne die Umsetzung greift die Sperrfrist gegen die
+   Neustartschleife **nicht** — und genau die verbrennt sonst 20 Requests in
+   90 Sekunden.
+2. **`StateApi` auf die Adapter-Instanz.** Der StateWriter erwartet vier Methoden plus
+   Logger; ein Test beweist bereits zur Übersetzungszeit, dass `ioBroker.Adapter` sie
+   erfüllt. `new StateWriter({ api: this })` genügt.
+
+Dazu die Instanzkonfiguration: `main.ts` liest noch `option1`/`option2` aus der
+Generator-Vorlage. Die echten Felder kommen in Phase 8 — bis dahin reichen Konstanten
+oder ein vorgezogener `native`-Block.
+
+### Was aus Phase 5 zu wissen ist
+
+- **Der Objektbaum entsteht nur aus dem, was in der Antwort steht** (E13). Es gibt kein
+  Vorab-Anlegen und **kein Löschen**. Der Snapshot-Test hält den Baum der echten
+  Aufnahme als Liste von 76 Objekten fest — wer den Writer ändert, sieht dort sofort,
+  was dazukommt oder verschwindet.
+- **Fehlende Teile behalten ihren Wert und bekommen das Quality-Flag** `0x01` (E8).
+  Markiert wird nur, was die API in `errors[]` gemeldet hat; ein per `include` nicht
+  angefordertes Teil gilt nicht als gestört. Kommt es zurück, hebt ein unbedingtes
+  `setState` die Markierung wieder auf.
+- **Die Befehls-States entstehen aus derselben Fähigkeitserkennung** (E15):
+  `<vin>.<block>.enabled` als Soll-Schalter, `.start` und `.stop` als Knöpfe — aber nur
+  für Blöcke, die in der Antwort stehen. Für diesen Enyaq sind das `charging` und
+  `airConditioning`, nicht `auxiliaryHeating` und `activeVentilation`.
+- Der Writer schreibt `enabled` mit `ack: true` (das ist der Ist-Zustand). Was ein
+  Nutzer mit `ack: false` hineinschreibt, ist der Soll-Zustand und Sache der
+  CommandQueue in Phase 7. `commandDefs.ts` trägt dafür bereits die Zuordnung Domäne ↔
+  Block samt der Werte, bei denen `enabled` true ist.
+- **Unbekannte Pfade werden angelegt, nicht verworfen** — mit geratenem Typ, `role:
+  'state'` und genau einer Warnung. Sie sind der Hinweis, dass Skoda die Spec erweitert
+  hat und `npm run codegen` fällig ist. Die Warnung enthält keine VIN (E14).
 
 ### Was aus Phase 4 zu wissen ist
 

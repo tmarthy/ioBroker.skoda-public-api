@@ -316,7 +316,31 @@ Alle fünf liegen vor, dazu die Neustartschleife selbst als Test (30 Starts in 9
 Sekunden setzen genau einen Request ab) und das Zusammenspiel mit Client und Mock:
 Der Poll hält von selbst an, bevor die API mit `429` antworten muss.
 
-### Phase 5 — StateWriter · M
+### Phase 5 — StateWriter · M · **erledigt**
+
+> **Abweichungen von der ursprünglichen Planung:**
+> - Der Writer schreibt gegen eine schmale Schnittstelle `StateApi` (vier Methoden plus
+>   Logger) statt gegen eine Adapter-Instanz. Ein Test beweist zur Übersetzungszeit,
+>   dass eine echte `ioBroker.Adapter` sie erfüllt — sonst fiele das erst bei der
+>   Verdrahtung in Phase 6 auf.
+> - Zusätzlich zu den in E16 genannten Profil-States entsteht ein `settingsJson`.
+>   Sonst wäre `settings.maxChargingCurrent` nirgends sichtbar — ausgerechnet der Wert,
+>   an dem die Wirksamkeit des Überschussladens hängt (E3). Ein Objektbaum entsteht
+>   dadurch nicht; das entspricht der Überschrift von E16, „JSON darunter".
+> - **Das Quality-Flag wird nur für Teile gesetzt, die die API in `errors[]` gemeldet
+>   hat.** Ein Teil, das per `include` gar nicht angefordert wurde, fehlt nicht — es
+>   wurde nur nicht aufgefrischt. Sonst würde jeder Poll mit gelernter `include`-Liste
+>   abgeschaltete Teile (z. B. die Parkposition, E14) dauerhaft als gestört markieren.
+> - Beim Zurückkommen eines Teils wird die Qualität mit einem unbedingten `setState`
+>   wieder auf „gut" gesetzt. `setStateChanged` allein schreibt bei unverändertem Wert
+>   nicht — das Flag bliebe stehen, obwohl der Wert wieder frisch ist.
+> - `info.dataAge` bezieht sich auf den **jüngsten** `carCapturedTimestamp` der
+>   Antwort: Er beantwortet „wann hat das Auto zuletzt etwas gemeldet".
+> - Zustände, die der Adapter selbst bildet (`info.*`, `parkingPosition.position`, die
+>   Profilebene), laufen über einen eigenen Weg und lösen deshalb **keine** Warnung
+>   über eine geänderte Spec aus.
+> - Die Zuordnung Domäne ↔ Antwortblock steht in `src/lib/states/commandDefs.ts`, weil
+>   Phase 7 sie ebenfalls braucht (Endpunktpfad und Soll/Ist-Vergleich).
 
 - Läuft den JSON-Baum ab, legt Objekte **nur für vorhandene Pfade** an (E13),
   einmal pro Pfad gemerkt, danach nur noch `setStateChanged` (E16).
@@ -338,6 +362,9 @@ Der Poll hält von selbst an, bevor die API mit `429` antworten muss.
 **Fertig, wenn:** Für jedes Fixture aus Phase 2 erzeugt der Writer den erwarteten
 Objektbaum (Snapshot-Test), und ein zweiter Durchlauf mit identischen Daten
 schreibt keinen einzigen State.
+Beides liegt vor: Der Baum der echten Aufnahme steht als ausgeschriebene Liste von
+76 Objekten im Test, alle fünf Aufnahmen werden zusätzlich Feld für Feld gegen die
+erzeugten Zustände gehalten, und der zweite Durchlauf schreibt nachweislich nichts.
 
 ### Phase 6 — PollScheduler · M · **Meilenstein 1: lesender Adapter**
 
