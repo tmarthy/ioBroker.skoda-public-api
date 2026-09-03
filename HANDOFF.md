@@ -1,6 +1,6 @@
 # Handoff — ioBroker.skoda-public-api
 
-**Stand: 2026-09-03, nach Phase 5.** Auf GitHub, CI grün. Die drei Schichten unter `main.ts` stehen: HTTP-Schicht, QuotaManager, StateWriter. Diese Datei ist der Einstieg für jeden, der die
+**Stand: 2026-09-03, nach Phase 6 — Meilenstein 1 ist erreicht: der Adapter liest.** Auf GitHub, CI grün. Alle vier Schichten stehen und sind in `main.ts` verdrahtet. Diese Datei ist der Einstieg für jeden, der die
 Arbeit übernimmt oder nach einer Pause wieder aufnimmt. Sie beschreibt, wo das Projekt
 steht, was als Nächstes ansteht und welche Fallstricke bereits bekannt sind.
 
@@ -50,18 +50,19 @@ Ziel-SoC setzen, Ladeprofile ändern, Schlüssel automatisch erneuern.
 | 1 | Spec, Codegen, Spec-Wächter | **fertig** |
 | 2 | Mock-Server, Aufnahmewerkzeug, Fixtures | **fertig** |
 | 3 | HTTP-Schicht (`sanitize`, Fehler-Union, Client) | **fertig** |
-| 4 | QuotaManager | **fertig** (Anbindung an `info.rateLimit.*` in Phase 6) |
+| 4 | QuotaManager | **fertig** |
 | 5 | StateWriter | **fertig** |
-| 6 | PollScheduler → **Meilenstein 1: lesender Adapter** | offen — **als Nächstes** |
-| 7 | CommandQueue → **Meilenstein 2: steuernder Adapter** | offen |
-| 8–12 | Admin-UI, Schlüsselablauf, Tests/CI, Doku, Release | offen |
+| 6 | PollScheduler, Verdrahtung → **Meilenstein 1: lesender Adapter** | **fertig** |
+| 7 | CommandQueue → **Meilenstein 2: steuernder Adapter** | offen — **als Nächstes** |
+| 8 | Admin-UI | teilweise (in Phase 6 vorgezogen), offen: Verbindungstest, Übersetzungen |
+| 9–12 | Schlüsselablauf, Tests/CI, Doku, Release | offen |
 
 Letzter vollständig grüner Lauf (2026-09-03):
 
 ```
 npm run check            tsc --noEmit, fehlerfrei
 npm run lint             0 Fehler, 0 Warnungen
-npm run test:ts          201 Tests
+npm run test:ts          247 Tests
 npm run test:package     57 Tests
 npm run test:integration  1 Test  (startet den Adapter in einer echten ioBroker-Instanz)
 npm run build            Type-Check und esbuild fehlerfrei
@@ -132,6 +133,12 @@ SKODA_API_BASE_URL=http://127.0.0.1:8099 npx iobroker-dev-server run default
 Bewusst nicht in der Admin-UI: Ein sichtbares Feld „API-Server" lädt dazu ein, den
 Adapter samt Schlüssel auf einen fremden Host zeigen zu lassen. Eine unbrauchbare URL
 fällt beim Erzeugen des Clients auf, nicht erst beim ersten Request.
+
+**Die Instanz konfigurieren:** API-Schlüssel und VIN gehören in die Admin-UI
+(`http://localhost:8081` → Instanzen → Skoda Public API). Der Schlüssel steht unter
+`encryptedNative` — **nicht im Objektbrowser eintragen**, dort landet er im Klartext
+und wird beim Start als verschlüsselt behandelt (Fallstrick 12). Gegen den Mock sind
+das `mock-api-key` und `TMBJB9NY5RF999999`.
 
 ### Umgebung
 
@@ -299,9 +306,13 @@ Client direkt auf.
 | `src/lib/quota/QuotaManager.ts` | Budget, Reserve, `QuotaStore`-Port | fertig |
 | `src/lib/states/StateWriter.ts` | JSON → States, `StateApi`-Port | fertig |
 | `src/lib/states/commandDefs.ts` | Domäne ↔ Antwortblock, Soll/Ist-Werte | fertig |
-| `src/lib/scheduler/PollScheduler.ts` | Kadenz, Frische-Backoff | **Phase 6** |
+| `src/lib/api/vehicleData.ts` | `newestCapturedAt()`, `detectParts()` | fertig |
+| `src/lib/config.ts` | Instanzkonfiguration prüfen und umrechnen | fertig |
+| `src/lib/quota/AdapterQuotaStore.ts` | Quota-Zustand in `info.rateLimit.*` | fertig |
+| `src/lib/scheduler/PollScheduler.ts` | Kadenz, Frische-Backoff, `include` | fertig |
+| `test/helpers/fakeAdapter.ts` | Adapter-Doppel für die Tests | fertig |
 | `src/lib/commands/CommandQueue.ts` | Soll-Zustand, Coalescing, TTL | Phase 7 |
-| `src/main.ts` | noch die Generator-Vorlage, tut nichts | **Phase 6** |
+| `src/main.ts` | Lifecycle, Verdrahtung der vier Schichten | fertig |
 
 ---
 
@@ -368,106 +379,94 @@ zweites Mal hineinläuft oder eine Korrektur versehentlich zurückdreht.
    der Nutzer des Schlüssels nicht ausführen darf. Ab Phase 4 sind ohnehin die
    `RateLimit-*`-Header die Quelle der Wahrheit; `consumesQuota` ist nur die Schätzung
    bis zur nächsten Antwort.
+12. **Der API-Schlüssel steht unter `encryptedNative`.** js-controller entschlüsselt
+   ihn beim Start — ein von Hand im Objektbrowser eingetragener Klartextwert wird
+   dabei zu Unsinn und die API antwortet mit `403`. Schlüssel und S-PIN deshalb
+   ausschließlich über die Admin-UI setzen. Ein Test, der eine Instanz selbst
+   konfiguriert (Phase 10), muss den Wert mit dem Systemschlüssel aus `system.config`
+   verschlüsseln.
 
 ---
 
 ## 7. Der nächste Schritt
 
-**Phase 6 — PollScheduler. Das ist Meilenstein 1: der lesende Adapter.** Damit fällt
-auch die Verdrahtung in `main.ts` an, die bisher bewusst unangetastet blieb — die
-Generator-Vorlage tut noch nichts.
+**Phase 7 — CommandQueue. Das ist Meilenstein 2: der steuernde Adapter.**
 
-| Zustand | Intervall |
-|---|---|
-| Basis | 15 min (konfigurierbar, Untergrenze 5) |
-| Aktiv (`CHARGING` oder Klima ≠ `OFF`) | 5 min (Untergrenze 3) |
-| Nach Befehl | ein Verifikations-Poll nach 60 s, danach 10 min aktive Kadenz |
-| Frische-Backoff | Verdoppelung bei unverändertem `carCapturedTimestamp`, Deckel 60 min |
+Der Adapter liest bereits; was fehlt, ist der Weg zurück. Die Queue nimmt Schreibvorgänge
+auf `<vin>.<block>.enabled` (Soll) und `<vin>.<block>.start|stop` (erzwungen) entgegen
+und setzt sie ab, sobald Budget da ist.
 
-Der **Frische-Backoff ist der größte Einzelhebel**: Ein schlafendes Auto liefert bei
-jedem Poll denselben Zeitstempel — schneller zu pollen bringt null Information und
-kostet volles Budget. Der Vergleich läuft über `Date.parse`, nie über die Zeichenkette
-(0 bis 9 Nachkommastellen, Abschnitt 4). Ändert sich der Zeitstempel, sofort zurück auf
-Basis.
+- **Idempotenz:** Soll gleich Ist → kein Request, Ergebnis `COALESCED`.
+- **Coalescing:** Ein neuer Soll-Wert ersetzt den wartenden Eintrag derselben Domäne.
+  Entspricht der neue Soll dem Ist, verfällt der Eintrag ersatzlos. Grund: Bang-Bang
+  auf einer PV-Anlage produziert Schaltnervosität, und gedämpft wird sie an der einzigen
+  Stelle, die das Budget kennt (E5).
+- **TTL 10 Minuten** (`commandTtl`, steht schon in der Konfiguration). Ist `Retry-After`
+  länger als die Rest-TTL: sofort `EXPIRED`, statt Budget für einen Befehl auszugeben,
+  den niemand mehr will (E15).
+- `air-conditioning/start` baut den Body aus den gepufferten States
+  `targetTemperature` und `airConditioningWithoutExternalPower`;
+  `auxiliary-heating/start` nimmt den S-PIN **aus der Instanzkonfiguration, niemals aus
+  einem State** (E6/E14). Der Client maskiert ihn bereits in jeder Meldung, wenn er ihm
+  als `secrets` übergeben wird — `main.ts` tut das.
+- Ergebnis nach `info.lastCommand.{name,timestamp,result,problemType}`, `ack=true` bei
+  erfolgreicher Übergabe an die API. **`ack=true` heißt „an die API übergeben", nicht
+  „das Auto hat es getan"** — mehr weiß der Adapter wegen `202` ohne Status-Endpunkt
+  nicht (E6).
 
-Erster Poll **ohne** `include` — das ist die Fähigkeitserkennung (E13) —, danach mit der
-gelernten Liste, abzüglich `parkingPosition`, falls abgeschaltet (E14). Bei mehreren
-VINs reihum aus demselben Bucket (E9).
+**Fertig, wenn:** `enabled=true`, dann innerhalb der TTL `enabled=false` → null Requests,
+Ergebnis `COALESCED`. Und: `enabled=true` bei leerem Budget → `QUEUED`, Ausführung nach
+dem Zurücksetzen des Fensters.
 
-**Fertig, wenn:** Der Adapter läuft gegen den Mock über eine simulierte Stunde, bleibt
-unter 20 Requests, füllt den Objektbaum und drosselt sich beim schlafenden Auto messbar
-herunter.
+### Was für Phase 7 schon bereitliegt
 
-### Was bei der Verdrahtung mitzunehmen ist
+- **`quota.tryAcquire('command')`** geht bis `remaining === 0` durch, während Polls
+  schon bei der Reserve anhalten. Danach **immer** `recordResponse(result.meta)`.
+- **`client.sendCommand(vin, domain, action, body?)`** liefert `ok: true` bei `202`.
+  Jeder Fehler trägt `retryable`, `maxRetries` und `retryAfterMs` aus der Fehlertabelle
+  — die Tabelle also nicht abtippen, sondern die Felder auswerten.
+- **`scheduler.requestVerificationPoll(vin)`** zieht den nächsten Poll auf 60 Sekunden
+  vor und hält danach zehn Minuten die aktive Kadenz. Genau dafür ist die Methode da.
+- **`commandDefs.ts`** trägt Domäne ↔ Antwortblock, den Pfad zum Ist-Zustand und die
+  Werte, bei denen `enabled` true ist. Der StateWriter legt die Befehls-States daraus
+  an — und nur für Blöcke, die das Fahrzeug liefert (E15).
+- **`main.ts` muss `subscribeStates` ergänzen.** Bisher abonniert der Adapter nichts;
+  die Befehls-States sind zwar schreibbar, aber niemand hört zu.
+- `commandTtl` und `spin` stehen bereits in der Instanzkonfiguration und in
+  `readConfig()`.
 
-Zwei Enden warten in `main.ts` auf ihren Anschluss — beide sind klein, beide fallen
-sonst hinten runter:
+### Was aus Phase 6 zu wissen ist
 
-1. **`QuotaStore` auf `info.rateLimit.*`.** Der QuotaManager persistiert über eine
-   Schnittstelle mit `load()`/`save()` (`limit`, `remaining`, `resetAt`,
-   `lastRequestAt`). Ohne die Umsetzung greift die Sperrfrist gegen die
-   Neustartschleife **nicht** — und genau die verbrennt sonst 20 Requests in
-   90 Sekunden.
-2. **`StateApi` auf die Adapter-Instanz.** Der StateWriter erwartet vier Methoden plus
-   Logger; ein Test beweist bereits zur Übersetzungszeit, dass `ioBroker.Adapter` sie
-   erfüllt. `new StateWriter({ api: this })` genügt.
+- **Der Scheduler schreibt keine States.** Er reicht die Antwort über `onVehicleData`
+  nach oben, wo `main.ts` den StateWriter eingehängt hat. Wer das umdreht, hebt die
+  Schichtung auf.
+- **`tick()` ist der ganze Motor:** Es führt alle fälligen Polls aus und liefert die
+  Zeit bis zum nächsten. `start()` hängt das an die Zeitgeber der Adapter-Instanz. Tests
+  brauchen deshalb keine echten Timer, sondern stellen die Uhr um den Rückgabewert vor.
+- **Der Frische-Backoff greift im Befehlsfenster nicht.** Dass ein Auto 60 Sekunden nach
+  einem Befehl noch nichts gemeldet hat, ist der Normalfall.
+- **`404` setzt eine VIN dauerhaft aus, `401`/`403` drosseln auf einmal pro Stunde**
+  und setzen `info.connection` auf false. Bei `429` bleibt die Verbindung bestehen — ein
+  leeres Budget ist Normalbetrieb (E10).
+- Die Kadenz-Untergrenzen (5 min, 3 min) stehen im Scheduler **und** in `readConfig()`.
+  Beide Wege sollen sich das Budget nicht zerlegen können.
 
-Dazu die Instanzkonfiguration: `main.ts` liest noch `option1`/`option2` aus der
-Generator-Vorlage. Die echten Felder kommen in Phase 8 — bis dahin reichen Konstanten
-oder ein vorgezogener `native`-Block.
+### Was aus den Phasen 3 bis 5 zu wissen ist
 
-### Was aus Phase 5 zu wissen ist
-
-- **Der Objektbaum entsteht nur aus dem, was in der Antwort steht** (E13). Es gibt kein
-  Vorab-Anlegen und **kein Löschen**. Der Snapshot-Test hält den Baum der echten
-  Aufnahme als Liste von 76 Objekten fest — wer den Writer ändert, sieht dort sofort,
-  was dazukommt oder verschwindet.
-- **Fehlende Teile behalten ihren Wert und bekommen das Quality-Flag** `0x01` (E8).
-  Markiert wird nur, was die API in `errors[]` gemeldet hat; ein per `include` nicht
-  angefordertes Teil gilt nicht als gestört. Kommt es zurück, hebt ein unbedingtes
-  `setState` die Markierung wieder auf.
-- **Die Befehls-States entstehen aus derselben Fähigkeitserkennung** (E15):
-  `<vin>.<block>.enabled` als Soll-Schalter, `.start` und `.stop` als Knöpfe — aber nur
-  für Blöcke, die in der Antwort stehen. Für diesen Enyaq sind das `charging` und
-  `airConditioning`, nicht `auxiliaryHeating` und `activeVentilation`.
-- Der Writer schreibt `enabled` mit `ack: true` (das ist der Ist-Zustand). Was ein
-  Nutzer mit `ack: false` hineinschreibt, ist der Soll-Zustand und Sache der
-  CommandQueue in Phase 7. `commandDefs.ts` trägt dafür bereits die Zuordnung Domäne ↔
-  Block samt der Werte, bei denen `enabled` true ist.
-- **Unbekannte Pfade werden angelegt, nicht verworfen** — mit geratenem Typ, `role:
-  'state'` und genau einer Warnung. Sie sind der Hinweis, dass Skoda die Spec erweitert
-  hat und `npm run codegen` fällig ist. Die Warnung enthält keine VIN (E14).
-
-### Was aus Phase 4 zu wissen ist
-
-- **Der Ablauf ist immer derselbe:** `tryAcquire('poll' | 'command')` fragen, bei `ok`
-  den Request absetzen, danach **immer** `recordResponse(result.meta)` melden — auch im
-  Fehlerfall. Wer das auslässt, blockiert den Platz dauerhaft.
-- Eine Ablehnung liefert `waitMs` und `reason`: `reserve` (nur noch die Befehlsreserve
-  übrig, gilt nur für Polls), `exhausted` (Budget leer) oder `startup-guard`
-  (Sperrfrist nach dem Neustart, drei Minuten seit dem letzten Request).
-- **Der Manager rechnet nicht mit, er glaubt den Headern.** `remaining` wird nur aus
-  einer Antwort gesetzt; `snapshot().confirmed` sagt, ob die Zahl bestätigt oder
-  geschätzt ist. Nur ohne Header (Netzwerkfehler) zählt er selbst herunter.
-- Polls stoppen bei `remaining <= commandReserve` (Vorgabe 6), Befehle laufen bis 0.
-  Gegen den Mock heißt das: 14 Polls, dann hält der Adapter von selbst an — die API
-  muss nie mit `429` antworten.
-
-### Was aus Phase 3 zu wissen ist
-
-- **Jede Meldung ist maskiert.** `sanitize()` läuft über alles, was `errors.ts` und
-  `client.ts` erzeugen. Wer eine eigene Meldung baut, die eine URL, eine VIN oder den
-  Schlüssel enthalten könnte, nimmt `createSanitizer()` — nie eine rohe URL.
+- **Jede Meldung der HTTP-Schicht ist maskiert** (E14). Wer selbst eine Meldung baut,
+  die eine URL, eine VIN oder ein Geheimnis enthalten könnte, nimmt `createSanitizer()`.
+  Der Scheduler kürzt VINs im Log auf die letzten vier Zeichen.
 - **`vehicleErrors(response)`** ist die einzige Stelle, die `errors ?? []` umsetzt
-  (Fallstrick 10). Der Client normalisiert die Antwort nicht; der optionale Typ bleibt
-  als Wächter stehen.
-- **Die beiden `429` unterscheiden sich nur am `type`**, nicht am Status und nicht an
-  den `RateLimit-*`-Headern: `rate-limit-exceeded` darf geduldig warten
-  (`maxRetries: Infinity`, begrenzt durch die TTL des Befehls),
+  (Fallstrick 10). Der Client normalisiert die Antwort nicht.
+- **Die beiden `429` unterscheiden sich nur am `type`.** `rate-limit-exceeded` darf
+  geduldig warten (`maxRetries: Infinity`, begrenzt durch die TTL des Befehls),
   `vehicle-not-accepting-requests` kommt vom Auto und höchstens dreimal.
-- **`unexpected`** ist der Auffangfall für alles, was in keine Zeile der Tabelle passt
-  (`about:blank` bei `401`, ein `200` ohne `vehicle`, HTML von einem Proxy). Er wird nie
-  wiederholt.
+- **Der QuotaManager glaubt den Headern, nicht seiner eigenen Rechnung.** `remaining`
+  wird nur aus einer Antwort gesetzt; `snapshot().confirmed` sagt, ob die Zahl bestätigt
+  oder geschätzt ist.
+- **Der StateWriter legt nur an, was in der Antwort steht, und löscht nie.** Fehlende
+  Teile behalten ihren Wert und bekommen Quality `0x01`; unbekannte Pfade werden mit
+  geratenem Typ angelegt und einmal gemeldet.
 
 ---
 

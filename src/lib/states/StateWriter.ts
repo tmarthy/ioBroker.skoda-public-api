@@ -20,6 +20,7 @@
  *    Lese-States (E15): Kein `auxiliaryHeating` in der Antwort, kein Schalter dafuer.
  */
 import { vehicleErrors } from '../api/client';
+import { newestCapturedAt } from '../api/vehicleData';
 import { partFromErrorType } from '../api/parts';
 import type { VehicleResponse } from '../api/types';
 import { COMMAND_DEFS } from './commandDefs';
@@ -510,7 +511,7 @@ export class StateWriter {
 	private async writeInfo(vin: string, vehicle: Record<string, unknown>, response: VehicleResponse): Promise<void> {
 		await this.ensureChannel(vin, 'info', 'Adapter information');
 
-		const captured = newestTimestamp(vehicle);
+		const captured = newestCapturedAt(vehicle);
 		if (captured !== undefined) {
 			await this.writeDerived(vin, 'info.dataAge', Math.max(0, Math.round((this.now() - captured) / 1000)), {
 				name: 'Age of the newest vehicle data',
@@ -594,33 +595,4 @@ function readPath(node: Record<string, unknown>, path: string): unknown {
 		current = (current as Record<string, unknown>)[key];
 	}
 	return current;
-}
-
-/**
- * Sucht den juengsten `carCapturedTimestamp` im Antwortbaum.
- *
- * Geparst wird nach Millisekunden und nicht als Zeichenkette verglichen: An den
- * Zeitstempeln dieser API haengen 0 bis 9 Nachkommastellen.
- *
- * @param node Ein Teilbaum der Antwort.
- * @returns Der juengste Zeitpunkt in Millisekunden, oder undefined.
- */
-function newestTimestamp(node: Record<string, unknown>): number | undefined {
-	let newest: number | undefined;
-	for (const [key, value] of Object.entries(node)) {
-		if (key === 'carCapturedTimestamp' && typeof value === 'string') {
-			const at = Date.parse(value);
-			if (!Number.isNaN(at) && (newest === undefined || at > newest)) {
-				newest = at;
-			}
-			continue;
-		}
-		if (typeof value === 'object' && value !== null && !Array.isArray(value)) {
-			const nested = newestTimestamp(value as Record<string, unknown>);
-			if (nested !== undefined && (newest === undefined || nested > newest)) {
-				newest = nested;
-			}
-		}
-	}
-	return newest;
 }

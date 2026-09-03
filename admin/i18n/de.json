@@ -1,5 +1,22 @@
 {
-	"option1": "Option1",
-	"option2": "Option2",
-	"skoda-public-api adapter settings": "Adaptereinstellungen für skoda-public-api"
+	"skoda-public-api adapter settings": "Adaptereinstellungen für skoda-public-api",
+	"API key": "API-Schlüssel",
+	"Created in the MyŠkoda app (version 8.16 or newer) under \"API key\". The key is bound to the vehicles selected there and expires after a while.": "Wird in der MyŠkoda-App (ab Version 8.16) unter \"API-Schlüssel\" erzeugt. Der Schlüssel gilt nur für die dort ausgewählten Fahrzeuge und läuft nach einiger Zeit ab.",
+	"Vehicles": "Fahrzeuge",
+	"The API offers no vehicle list - every VIN has to be entered by hand.": "Die API kennt keine Fahrzeugliste - jede VIN muss von Hand eingetragen werden.",
+	"VIN": "VIN",
+	"Label": "Bezeichnung",
+	"Base interval (min)": "Grundintervall (min)",
+	"20 requests per hour is the hard limit. Below 5 minutes is not accepted.": "20 Requests pro Stunde sind das harte Limit. Unter 5 Minuten wird nicht angenommen.",
+	"Interval while charging or climatising (min)": "Intervall beim Laden oder Klimatisieren (min)",
+	"Maximum interval for a sleeping vehicle (min)": "Längstes Intervall bei schlafendem Fahrzeug (min)",
+	"A parked vehicle reports the same timestamp over and over. Polling it faster costs quota and yields nothing.": "Ein geparktes Fahrzeug meldet immer denselben Zeitstempel. Schneller zu fragen kostet Budget und bringt nichts.",
+	"Requests reserved for commands": "Für Befehle reservierte Requests",
+	"Polling stops once only this many requests are left, so a command still gets through.": "Das Polling hält an, sobald nur noch so viele Requests übrig sind - damit ein Befehl noch durchkommt.",
+	"Command lifetime (min)": "Lebensdauer eines Befehls (min)",
+	"A queued command that could not be sent within this time is discarded.": "Ein wartender Befehl, der in dieser Zeit nicht abgesetzt werden konnte, verfällt.",
+	"S-PIN (auxiliary heating only)": "S-PIN (nur für die Standheizung)",
+	"Only needed for vehicles with an auxiliary heater. Never store it in a state.": "Nur für Fahrzeuge mit Standheizung nötig. Er gehört niemals in einen State.",
+	"Read parking position": "Parkposition auslesen",
+	"When switched off the position is not even requested from the API.": "Abgeschaltet wird die Position gar nicht erst bei der API angefordert."
 }

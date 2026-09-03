@@ -366,7 +366,38 @@ Beides liegt vor: Der Baum der echten Aufnahme steht als ausgeschriebene Liste v
 76 Objekten im Test, alle fünf Aufnahmen werden zusätzlich Feld für Feld gegen die
 erzeugten Zustände gehalten, und der zweite Durchlauf schreibt nachweislich nichts.
 
-### Phase 6 — PollScheduler · M · **Meilenstein 1: lesender Adapter**
+### Phase 6 — PollScheduler · M · **Meilenstein 1: lesender Adapter** · **erledigt**
+
+> **Abweichungen von der ursprünglichen Planung:**
+> - **Der Scheduler schreibt keine States.** Er reicht die Antwort über `onVehicleData`
+>   nach oben; `main.ts` hängt dort den StateWriter ein. Sonst würde Schicht 3 die
+>   Schicht 4 aufrufen und das Architekturbild wäre nur noch ein Bild.
+> - `tick()` ist öffentlich: Es führt alle fälligen Polls aus und liefert die Zeit bis
+>   zum nächsten. Damit führen die Tests die Uhr selbst, ohne echte Zeitgeber. `start()`
+>   hängt die Schleife an die Zeitgeber der Adapter-Instanz, die ioBroker beim Entladen
+>   ohnehin aufräumt.
+> - **Während des Befehlsfensters greift der Frische-Backoff nicht.** Dass ein Fahrzeug
+>   60 Sekunden nach einem Befehl noch nichts gemeldet hat, ist der Normalfall — und
+>   genau deshalb wird ja nachgesehen. Ohne diese Ausnahme verdoppelt der
+>   Verifikations-Poll das Intervall, statt den Erfolg zu prüfen.
+> - **Ist die Parkposition abgeschaltet, geht schon der erste Poll mit `include`
+>   hinaus** (E14: gar nicht erst anfordern). Die Fähigkeitserkennung läuft dann über
+>   die `*_UNSUPPORTED`-Einträge in `errors[]` statt über die schlichte Abwesenheit.
+> - `*_UNSUPPORTED` streicht ein Teil **dauerhaft** aus der `include`-Liste;
+>   `*_DISABLED` und `*_UNAVAILABLE` nicht — beides kann morgen wieder gehen.
+> - `404` setzt die betroffene VIN dauerhaft aus, `401`/`403` drosseln auf einmal pro
+>   Stunde und setzen `info.connection` auf false (E10). Bei `429` bleibt die Verbindung
+>   ausdrücklich bestehen.
+> - Die Instanzkonfiguration wird in `src/lib/config.ts` geprüft und umgerechnet — ohne
+>   Adapter-Instanz testbar. Eine falsche VIN wird mit ihrer **Zeilennummer** gemeldet,
+>   nicht mit ihrem Wert: Sie ist meist die echte mit einem Tippfehler (E14).
+> - **Aus Phase 8 vorgezogen:** `native`-Vorgaben in `io-package.json`,
+>   `encryptedNative`/`protectedNative` und ein `admin/jsonConfig.json` mit genau den
+>   Feldern, die der lesende Adapter braucht. Ohne das hätte die alte Demo-UI beim
+>   ersten Speichern die Konfiguration überschrieben. Offen bleibt für Phase 8: der
+>   „Verbindung testen"-Button und die Übersetzungen außer Deutsch.
+> - Das Zusammenspiel **in einer echten ioBroker-Instanz** weist erst Phase 10 nach; in
+>   Phase 6 sind es der Startup-Test und die simulierte Stunde gegen den Mock.
 
 | Zustand | Intervall |
 |---|---|
@@ -387,6 +418,9 @@ Bei mehreren VINs: reihum aus demselben Bucket.
 **Fertig, wenn:** Der Adapter läuft gegen den Mock über eine simulierte Stunde,
 bleibt unter 20 Requests, füllt den Objektbaum und drosselt sich beim schlafenden
 Auto messbar herunter.
+Liegt vor, und zwar als A/B: Das schlafende Auto kostet bei fünf Minuten Grundkadenz
+weniger als zwölf Requests und landet im Deckel von 60 Minuten, das wache bleibt in
+der Kadenz — und in beiden Fällen steht die Befehlsreserve am Ende noch.
 
 ### Phase 7 — CommandQueue · M · **Meilenstein 2: steuernder Adapter**
 
@@ -408,7 +442,12 @@ Auto messbar herunter.
 `enabled=false` -> null Requests, Ergebnis `COALESCED`. Und: `enabled=true` bei
 leerem Budget -> `QUEUED`, Ausführung nach Reset.
 
-### Phase 8 — Admin-UI · S
+### Phase 8 — Admin-UI · S · **teilweise in Phase 6 vorgezogen**
+
+> Felder, `native`-Vorgaben und `encryptedNative` stehen bereits — ohne sie hätte der
+> lesende Adapter aus Phase 6 nicht konfiguriert werden können. **Offen:** der
+> „Verbindung testen"-Button, die Übersetzungen außer Deutsch und der Feinschliff
+> (Gruppierung, Hinweistexte am richtigen Feld).
 
 `admin/jsonConfig.json`:
 
@@ -447,7 +486,10 @@ Hinweistext.
 
 - Unit: `QuotaManager`, `CommandQueue`, `StateWriter`, `errors`, `sanitize`.
 - Integration: Adapter gegen den Mock über eine simulierte Stunde, inklusive
-  Neustart mitten im Fenster.
+  Neustart mitten im Fenster. **Hinweis:** Der API-Schlüssel steht seit Phase 6 unter
+  `encryptedNative`. Ein Test, der die Instanz selbst konfiguriert, muss ihn deshalb
+  mit dem Systemschlüssel aus `system.config` verschlüsseln — ein Klartextwert wird
+  beim Start entschlüsselt und ergibt Unsinn.
 - `@iobroker/testing`: Paket- und Startup-Tests.
 - GitHub Actions: Lint, Build, Test auf Node 22 und 24; Spec-Wächter wöchentlich.
 

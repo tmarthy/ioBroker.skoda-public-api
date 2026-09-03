@@ -85,8 +85,15 @@
     ]
   },
   "native": {
-    "option1": true,
-    "option2": "42"
+    "apiKey": "",
+    "vins": [],
+    "spin": "",
+    "pollIntervalIdle": 15,
+    "pollIntervalActive": 5,
+    "pollBackoffMax": 60,
+    "commandReserve": 6,
+    "commandTtl": 10,
+    "readParkingPosition": true
   },
   "objects": [],
   "instanceObjects": [
@@ -111,5 +118,13 @@
       },
       "native": {}
     }
+  ],
+  "encryptedNative": [
+    "apiKey",
+    "spin"
+  ],
+  "protectedNative": [
+    "apiKey",
+    "spin"
   ]
 }

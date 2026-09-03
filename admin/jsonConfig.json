@@ -2,25 +2,128 @@
 	"i18n": true,
 	"type": "panel",
 	"items": {
-		"option1": {
-			"type": "checkbox",
-			"label": "option1",
+		"apiKey": {
+			"type": "password",
+			"label": "API key",
+			"help": "Created in the MyŠkoda app (version 8.16 or newer) under \"API key\". The key is bound to the vehicles selected there and expires after a while.",
+			"visible": true,
+			"repeat": false,
 			"newLine": true,
 			"xs": 12,
 			"sm": 12,
-			"md": 6,
-			"lg": 4,
-			"xl": 4
+			"md": 8,
+			"lg": 6,
+			"xl": 6
 		},
-		"option2": {
-			"type": "text",
-			"label": "option2",
+		"vins": {
+			"type": "table",
+			"label": "Vehicles",
+			"help": "The API offers no vehicle list - every VIN has to be entered by hand.",
+			"items": [
+				{
+					"type": "text",
+					"attr": "vin",
+					"title": "VIN",
+					"width": "60%"
+				},
+				{
+					"type": "text",
+					"attr": "label",
+					"title": "Label",
+					"width": "40%"
+				}
+			],
 			"newLine": true,
 			"xs": 12,
 			"sm": 12,
-			"md": 6,
-			"lg": 4,
-			"xl": 4
+			"md": 12,
+			"lg": 10,
+			"xl": 8
+		},
+		"pollIntervalIdle": {
+			"type": "number",
+			"label": "Base interval (min)",
+			"help": "20 requests per hour is the hard limit. Below 5 minutes is not accepted.",
+			"min": 5,
+			"max": 240,
+			"newLine": true,
+			"xs": 12,
+			"sm": 6,
+			"md": 4,
+			"lg": 3,
+			"xl": 2
+		},
+		"pollIntervalActive": {
+			"type": "number",
+			"label": "Interval while charging or climatising (min)",
+			"min": 3,
+			"max": 240,
+			"xs": 12,
+			"sm": 6,
+			"md": 4,
+			"lg": 3,
+			"xl": 2
+		},
+		"pollBackoffMax": {
+			"type": "number",
+			"label": "Maximum interval for a sleeping vehicle (min)",
+			"help": "A parked vehicle reports the same timestamp over and over. Polling it faster costs quota and yields nothing.",
+			"min": 5,
+			"max": 1440,
+			"xs": 12,
+			"sm": 6,
+			"md": 4,
+			"lg": 3,
+			"xl": 2
+		},
+		"commandReserve": {
+			"type": "number",
+			"label": "Requests reserved for commands",
+			"help": "Polling stops once only this many requests are left, so a command still gets through.",
+			"min": 0,
+			"max": 15,
+			"newLine": true,
+			"xs": 12,
+			"sm": 6,
+			"md": 4,
+			"lg": 3,
+			"xl": 2
+		},
+		"commandTtl": {
+			"type": "number",
+			"label": "Command lifetime (min)",
+			"help": "A queued command that could not be sent within this time is discarded.",
+			"min": 1,
+			"max": 60,
+			"xs": 12,
+			"sm": 6,
+			"md": 4,
+			"lg": 3,
+			"xl": 2
+		},
+		"spin": {
+			"type": "password",
+			"label": "S-PIN (auxiliary heating only)",
+			"help": "Only needed for vehicles with an auxiliary heater. Never store it in a state.",
+			"visible": true,
+			"repeat": false,
+			"newLine": true,
+			"xs": 12,
+			"sm": 12,
+			"md": 8,
+			"lg": 6,
+			"xl": 6
+		},
+		"readParkingPosition": {
+			"type": "checkbox",
+			"label": "Read parking position",
+			"help": "When switched off the position is not even requested from the API.",
+			"newLine": true,
+			"xs": 12,
+			"sm": 12,
+			"md": 8,
+			"lg": 6,
+			"xl": 6
 		}
 	}
 }
