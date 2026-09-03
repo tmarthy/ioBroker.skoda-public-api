@@ -224,7 +224,27 @@ Adapter-Basis-URL über `SKODA_API_BASE_URL` umschaltbar, sonst der Live-Wert (E
 per Schalter reproduzieren, und die `RateLimit-*`-Header verhalten sich über
 mehrere Requests plausibel.
 
-### Phase 3 — HTTP-Schicht · M
+### Phase 3 — HTTP-Schicht · M · **erledigt**
+
+> **Abweichungen von der ursprünglichen Planung:**
+> - Die Union hat eine zwölfte Fehlerart `unexpected` als Auffangfall. Ohne sie landet
+>   eine Antwort, die in keine Zeile der Tabelle passt — ein `401` mit `about:blank`,
+>   ein `418`, ein `200` ohne `vehicle` — nirgends. Sie wird nie wiederholt, und ihr
+>   Quota-Verbrauch folgt der allgemeinen Regel (alles außer 401, 403, 429).
+> - Jeder Fehler trägt neben `retryable` auch **`maxRetries`**, direkt aus der dritten
+>   Spalte der Fehlertabelle. Sonst müssten die Phasen 6 und 7 dieselbe Tabelle noch
+>   einmal führen. `rate-limit-exceeded` bekommt `Infinity`: Dort begrenzt die TTL des
+>   Befehls, kein Zähler.
+> - `retryAfterMs` kommt **ausschließlich** aus `Retry-After`. Kein Rückfall auf
+>   `RateLimit-Reset` — der steht ohnehin in `meta.rateLimit` und die Entscheidung, wie
+>   lange gewartet wird, gehört nicht in den Client.
+> - `vehicleErrors(response)` ist die einzige Stelle, die `errors ?? []` umsetzt
+>   (Fallstrick 10). Der Client normalisiert die Antwort **nicht** — der optionale Typ
+>   ist der Wächter, der `.errors.map(...)` verhindert.
+> - Der Netzwerkfehler wird mit `consumesQuota: true` gemeldet. Die Tabelle sagt
+>   „unbekannt"; `true` ist die konservative Lesart, die sie vorschreibt.
+> - Die Basis-URL wird beim Konstruktor geprüft. Eine unbrauchbare
+>   `SKODA_API_BASE_URL` soll beim Start auffallen, nicht beim ersten Request.
 
 - **`sanitize.ts`** — ersetzt VIN (`[A-HJ-NPR-Z0-9]{17}`) und den API-Key in jedem
   String durch `<VIN>` bzw. `<KEY>`. Wird von `client.ts` auf **jede** erzeugte
@@ -241,6 +261,8 @@ mehrere Requests plausibel.
 
 **Fertig, wenn:** Unit-Tests decken jede Zeile der Fehlertabelle ab, und ein Test
 prüft explizit, dass in keiner erzeugten Meldung VIN oder Key auftauchen.
+Beides liegt vor: `errors.test.ts` prüft die Tabelle Zeile für Zeile,
+`client.test.ts` dieselben Zeilen noch einmal gegen echte HTTP-Antworten des Mocks.
 
 ### Phase 4 — QuotaManager · M
 
@@ -434,6 +456,15 @@ eingeplant werden.
 Die dritte Spalte ist der Grund für die Zurückhaltung bei `5xx`: Drei Retries auf
 einen wackeligen Server sind vier Requests — ein Fünftel der Stunde, verbrannt an
 einer Störung, die man nicht beeinflussen kann.
+
+**Diese Tabelle hat Vorrang vor der pauschalen Regel** „Quota-Verbrauch: alle Antworten
+außer 401, 403, 429" aus `design-decisions.md`. Die beiden widersprechen sich an genau
+einer Stelle: `403 operation-not-authorized` steht hier als quotaverbrauchend. Die
+feinere Angabe ist umgesetzt (Phase 3) und der Mock verhält sich so — nachgemessen ist
+sie nicht, denn dafür müsste man am echten Fahrzeug einen Befehl auslösen, den der
+Nutzer nicht ausführen darf. Praktische Folge ist gering: Ab Phase 4 sind die
+`RateLimit-*`-Header die Quelle der Wahrheit, die Angabe im Fehler ist nur die
+Schätzung bis zur nächsten Antwort.
 
 ---
 

@@ -1,6 +1,6 @@
 # Handoff — ioBroker.skoda-public-api
 
-**Stand: 2026-09-02, nach Phase 2.** Auf GitHub, CI grün, erste echte Fahrzeugaufnahme vorhanden. Diese Datei ist der Einstieg für jeden, der die
+**Stand: 2026-09-03, nach Phase 3.** Auf GitHub, CI grün, alle vier Fahrzeugaufnahmen und die HTTP-Schicht vorhanden. Diese Datei ist der Einstieg für jeden, der die
 Arbeit übernimmt oder nach einer Pause wieder aufnimmt. Sie beschreibt, wo das Projekt
 steht, was als Nächstes ansteht und welche Fallstricke bereits bekannt sind.
 
@@ -49,19 +49,19 @@ Ziel-SoC setzen, Ladeprofile ändern, Schlüssel automatisch erneuern.
 | 0 | Projektgerüst, dev-server | **fertig** |
 | 1 | Spec, Codegen, Spec-Wächter | **fertig** |
 | 2 | Mock-Server, Aufnahmewerkzeug, Fixtures | **fertig** |
-| 3 | HTTP-Schicht (`sanitize`, Fehler-Union, Client) | offen — **als Nächstes** |
-| 4 | QuotaManager | offen |
+| 3 | HTTP-Schicht (`sanitize`, Fehler-Union, Client) | **fertig** |
+| 4 | QuotaManager | offen — **als Nächstes** |
 | 5 | StateWriter | offen |
 | 6 | PollScheduler → **Meilenstein 1: lesender Adapter** | offen |
 | 7 | CommandQueue → **Meilenstein 2: steuernder Adapter** | offen |
 | 8–12 | Admin-UI, Schlüsselablauf, Tests/CI, Doku, Release | offen |
 
-Letzter vollständig grüner Lauf (2026-09-02):
+Letzter vollständig grüner Lauf (2026-09-03):
 
 ```
 npm run check            tsc --noEmit, fehlerfrei
 npm run lint             0 Fehler, 0 Warnungen
-npm run test:ts          66 Tests
+npm run test:ts          146 Tests
 npm run test:package     57 Tests
 npm run test:integration  1 Test  (startet den Adapter in einer echten ioBroker-Instanz)
 npm run build            Type-Check und esbuild fehlerfrei
@@ -122,11 +122,16 @@ und `/__mock` für den aktuellen Zustand.
 
 **Gegen die echte API lässt sich nicht entwickeln.** 20 Requests sind nach zwanzig
 Minuten Debugging aufgebraucht, und danach sitzt man bis zur vollen Stunde fest — mitten
-im Fehler. Vorgesehen ist, dass der Adapter die Basis-URL aus `SKODA_API_BASE_URL`
-liest und im Entwicklungsbetrieb damit auf den Mock zeigt — **umgesetzt wird das erst in
-Phase 3** zusammen mit dem Client. Bewusst nicht in der Admin-UI: Ein sichtbares Feld
-„API-Server" lädt dazu ein, den Adapter samt Schlüssel auf einen fremden Host zeigen zu
-lassen.
+im Fehler. Der Client liest die Basis-URL deshalb aus `SKODA_API_BASE_URL` und zeigt im
+Entwicklungsbetrieb damit auf den Mock:
+
+```bash
+SKODA_API_BASE_URL=http://127.0.0.1:8099 npx iobroker-dev-server run default
+```
+
+Bewusst nicht in der Admin-UI: Ein sichtbares Feld „API-Server" lädt dazu ein, den
+Adapter samt Schlüssel auf einen fremden Host zeigen zu lassen. Eine unbrauchbare URL
+fällt beim Erzeugen des Clients auf, nicht erst beim ersten Request.
 
 ### Umgebung
 
@@ -288,10 +293,10 @@ Client direkt auf.
 | `src/lib/states/objectOverlay.ts` | Rollen, Einheiten, Labels; `resolveCommon()` | fertig |
 | `test/mock/server.ts` | Mock der API, 13 Szenarien | fertig |
 | `test/mock/cli.ts` | Standalone-Betrieb, `npm run mock` | fertig |
-| `src/lib/api/client.ts` | HTTP-Schicht | **Phase 3** |
-| `src/lib/api/errors.ts` | `problem+json` → typisierte Fehler-Union | **Phase 3** |
-| `src/lib/api/sanitize.ts` | VIN- und Schlüssel-Maskierung | **Phase 3** |
-| `src/lib/quota/QuotaManager.ts` | Budget, Reserve, Persistenz | Phase 4 |
+| `src/lib/api/client.ts` | HTTP-Schicht, `ApiResult<T>` samt `meta` | fertig |
+| `src/lib/api/errors.ts` | `problem+json` → typisierte Fehler-Union | fertig |
+| `src/lib/api/sanitize.ts` | VIN- und Schlüssel-Maskierung | fertig |
+| `src/lib/quota/QuotaManager.ts` | Budget, Reserve, Persistenz | **Phase 4** |
 | `src/lib/states/StateWriter.ts` | JSON → States | Phase 5 |
 | `src/lib/scheduler/PollScheduler.ts` | Kadenz, Frische-Backoff | Phase 6 |
 | `src/lib/commands/CommandQueue.ts` | Soll-Zustand, Coalescing, TTL | Phase 7 |
@@ -353,34 +358,60 @@ zweites Mal hineinläuft oder eine Korrektur versehentlich zurückdreht.
    `TypeError`, obwohl alle Tests grün sind. Immer `body.errors ?? []`. Der generierte Typ
    hat `errors?` bereits als optional, der Compiler erzwingt es also — und der Mock bildet
    das Verhalten seit dieser Messung nach. **Den Mock hier nicht "aufräumen".**
+11. **Zwei Dokumente widersprechen sich beim Quota-Verbrauch eines `403`.** Die
+   Randbedingungen in `design-decisions.md` sagen pauschal „alle Antworten außer 401,
+   403, 429" verbrauchen Quota; die Fehlertabelle in `implementation-plan.md` führt
+   `403 operation-not-authorized` als verbrauchend. **Die Fehlertabelle gilt** — so ist
+   es umgesetzt, so verhält sich der Mock, und so steht es seit Phase 3 als Fußnote
+   unter der Tabelle. Nachgemessen ist es nicht: Dafür bräuchte es einen Befehl, den
+   der Nutzer des Schlüssels nicht ausführen darf. Ab Phase 4 sind ohnehin die
+   `RateLimit-*`-Header die Quelle der Wahrheit; `consumesQuota` ist nur die Schätzung
+   bis zur nächsten Antwort.
 
 ---
 
 ## 7. Der nächste Schritt
 
-**Phase 3 — HTTP-Schicht.** Braucht das Fahrzeug nicht und kann sofort beginnen.
+**Phase 4 — QuotaManager.** Braucht das Fahrzeug nicht und kann sofort beginnen.
 
-- `src/lib/api/sanitize.ts` — ersetzt VIN (`[A-HJ-NPR-Z0-9]{17}`) und API-Schlüssel in
-  **jeder** Meldung durch Platzhalter. Grund: Die VIN steht im URL-Pfad, und
-  ioBroker-Logs landen routinemäßig als Copy-Paste im Forum. Zusammen mit
-  `formattedAddress` ergäbe das die Heimatadresse im Klartext. **Nie eine Fehlermeldung
-  aus einer rohen URL bauen.**
-- `src/lib/api/errors.ts` — `application/problem+json` in eine diskriminierte Union.
-  Jeder Fall trägt `retryable`, `consumesQuota` und `retryAfterMs`; die verbindliche
-  Zuordnung steht in `docs/implementation-plan.md`, Abschnitt „Fehlerbehandlung".
-- `src/lib/api/client.ts` — `getVehicle(vin, include?)` und
-  `sendCommand(vin, domain, action, body?)`, native `fetch`, `AbortSignal.timeout()`,
-  liest `RateLimit-*` und `X-API-Key-Expires-At` aus jeder Antwort.
+Die HTTP-Schicht liefert alles, was er dafür braucht: Jeder Aufruf von `getVehicle()`
+und `sendCommand()` gibt ein `ApiResult<T>` zurück, und darin steckt `meta` mit
 
-**Abnahmekriterium:** Unit-Tests decken jede Zeile der Fehlertabelle ab, und ein Test
-prüft explizit, dass in keiner erzeugten Meldung VIN oder Schlüssel auftauchen.
+- `rateLimit` (`limit`, `remaining`, `resetInSeconds`) aus den `RateLimit-*`-Headern
+  jeder Antwort — auch der fehlerhaften,
+- `apiKeyExpiresAt` als `Date` aus `X-API-Key-Expires-At` (für Phase 9),
+- `consumedQuota` als Schätzung nach der Fehlertabelle.
 
-Der Mock aus Phase 2 liefert alle nötigen Fälle bereits auf Kommando — die Tests der
-HTTP-Schicht laufen gegen ihn, nicht gegen Fixtures allein.
+**Quelle der Wahrheit sind die Header, nicht die eigene Zählung.** `consumedQuota` ist
+nur die Überbrückung bis zur nächsten Antwort — und beim Netzwerkfehler eine bewusst
+konservative Annahme (dort fehlen die Header ganz, `rateLimit` ist dann `undefined`).
 
-Beim Auswerten der Antwort **immer `body.errors ?? []`** schreiben (Fallstrick 10). Der
-generierte Typ hat `errors?` als optional, der Compiler erzwingt den Guard also — aber
-nur, solange niemand ihn mit `!` oder einer Typzusicherung übergeht.
+Was der Client absichtlich **nicht** tut und was deshalb in Phase 4 und 6 gehört:
+zurückhalten, wiederholen, warten. Er setzt genau einen Request ab, auch bei
+`remaining: 0`. Jeder Fehler trägt dafür `retryable`, `maxRetries` und `retryAfterMs`
+aus der Fehlertabelle mit — die Tabelle also nicht ein zweites Mal abtippen, sondern die
+Felder auswerten.
+
+**Fertig, wenn:** Reserve wird nie von Polls unterschritten; `429`, `401` und `403`
+reduzieren `remaining` nicht, `503` schon; der Zustand übersteht einen simulierten
+Neustart (Persistenz in `info.rateLimit.*` gegen die Neustartschleife, die sonst 20
+Requests in 90 Sekunden verbrennt).
+
+### Was aus Phase 3 zu wissen ist
+
+- **Jede Meldung ist maskiert.** `sanitize()` läuft über alles, was `errors.ts` und
+  `client.ts` erzeugen. Wer eine eigene Meldung baut, die eine URL, eine VIN oder den
+  Schlüssel enthalten könnte, nimmt `createSanitizer()` — nie eine rohe URL.
+- **`vehicleErrors(response)`** ist die einzige Stelle, die `errors ?? []` umsetzt
+  (Fallstrick 10). Der Client normalisiert die Antwort nicht; der optionale Typ bleibt
+  als Wächter stehen.
+- **Die beiden `429` unterscheiden sich nur am `type`**, nicht am Status und nicht an
+  den `RateLimit-*`-Headern: `rate-limit-exceeded` darf geduldig warten
+  (`maxRetries: Infinity`, begrenzt durch die TTL des Befehls),
+  `vehicle-not-accepting-requests` kommt vom Auto und höchstens dreimal.
+- **`unexpected`** ist der Auffangfall für alles, was in keine Zeile der Tabelle passt
+  (`about:blank` bei `401`, ein `200` ohne `vehicle`, HTML von einem Proxy). Er wird nie
+  wiederholt.
 
 ---
 
