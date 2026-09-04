@@ -24,6 +24,25 @@ export default [
 		],
 	},
 	{
+		// Beispielskripte laufen nicht im Adapterprozess, sondern in der Sandbox des
+		// JavaScript-Adapters. Die stellt `on`, `getState`, `setState` und `log` als
+		// Globale bereit - ohne diese Angabe meldet die Regel `no-undef` sie alle.
+		files: ['examples/**/*.js'],
+		languageOptions: {
+			sourceType: 'script',
+			globals: {
+				on: 'readonly',
+				getState: 'readonly',
+				setState: 'readonly',
+				setStateAsync: 'readonly',
+				existsState: 'readonly',
+				getObject: 'readonly',
+				schedule: 'readonly',
+				log: 'readonly',
+			},
+		},
+	},
+	{
 		// Testcode und Testdoppel: Die tragenden Teile sind ausfuehrlich kommentiert,
 		// aber jedes Feld einer Options-Schnittstelle im Mock einzeln zu bedoken bringt
 		// keinen Erkenntnisgewinn und verwaessert die Kommentare, die wirklich zaehlen.

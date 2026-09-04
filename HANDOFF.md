@@ -1,6 +1,6 @@
 # Handoff — ioBroker.skoda-public-api
 
-**Stand: 2026-09-04, nach Phase 10.** Auf GitHub, CI grün. Der Adapter liest, steuert und meldet den Ablauf seines Schlüssels; die Admin-UI ist vollständig. Der Lebenslauf einer Instanz — Poll, Objektbaum, Befehl, Verbindungstest, Neustart mitten im Quota-Fenster, abgelaufener Schlüssel — läuft seit Phase 10 als Integrationstest gegen den Mock, in einer echten ioBroker-Instanz. Diese Datei ist der Einstieg für jeden, der die
+**Stand: 2026-09-04, nach Phase 11.** Auf GitHub. Die CI kann derzeit keine Jobs starten (Abrechnung des GitHub-Kontos, siehe Abschnitt 2); der letzte vollständige Lauf liegt vor der Umstellung der Matrix. Der Adapter liest, steuert und meldet den Ablauf seines Schlüssels; die Admin-UI ist vollständig. Der Lebenslauf einer Instanz — Poll, Objektbaum, Befehl, Verbindungstest, Neustart mitten im Quota-Fenster, abgelaufener Schlüssel — läuft seit Phase 10 als Integrationstest gegen den Mock, in einer echten ioBroker-Instanz. Diese Datei ist der Einstieg für jeden, der die
 Arbeit übernimmt oder nach einer Pause wieder aufnimmt. Sie beschreibt, wo das Projekt
 steht, was als Nächstes ansteht und welche Fallstricke bereits bekannt sind.
 
@@ -57,8 +57,8 @@ Ziel-SoC setzen, Ladeprofile ändern, Schlüssel automatisch erneuern.
 | 8 | Admin-UI, Verbindungstest, Übersetzungen | **fertig** |
 | 9 | Schlüsselablauf und Notifications | **fertig** |
 | 10 | Tests und CI vervollständigen | **fertig** |
-| 11 | Beispielskript und Dokumentation | offen — **als Nächstes** |
-| 12 | Release-Vorbereitung | offen |
+| 11 | Beispielskript und Dokumentation | **fertig** |
+| 12 | Release-Vorbereitung | offen — **als Nächstes** |
 
 Letzter vollständig grüner Lauf (2026-09-04):
 
@@ -80,7 +80,11 @@ auskommentiert, wie `create-adapter` ihn ausliefert.
 
 ### Stand der CI
 
-Vier Workflows, alle nachweislich sauber (Lauf 33676066653, keine Annotations):
+Vier Workflows. **Seit dem 2026-09-04 startet GitHub keine Jobs mehr**: „recent account
+payments have failed or your spending limit needs to be increased". Kein Job hat dabei
+auch nur einen Schritt ausgeführt — es ist kein Fehler am Code. Bis das geklärt ist,
+gilt der lokale Lauf als Nachweis (`npm run check`, `lint`, `test`, `test:integration`,
+`build`).
 
 **Die Matrix ist gestaffelt, und zwar aus Kostengründen.** GitHub rechnet Linux
 einfach, Windows doppelt und **macOS zehnfach** ab. Mit der vollen Matrix kostete ein
@@ -364,6 +368,7 @@ Client direkt auf.
 | `src/lib/connectionTest.ts` | „Verbindung testen" der Admin-UI | fertig |
 | `src/lib/notifications/keyExpiry.ts` | Schlüsselablauf: Schwellen 14/7/2 (E10) | fertig |
 | `src/main.ts` | Lifecycle, Verdrahtung der vier Schichten | fertig |
+| `examples/pv-surplus-charging.js` | Bang-Bang-Vorlage für den JavaScript-Adapter | fertig |
 
 ---
 
@@ -466,30 +471,41 @@ zweites Mal hineinläuft oder eine Korrektur versehentlich zurückdreht.
 
 ## 7. Der nächste Schritt
 
-**Phase 11 — Beispielskript und Dokumentation.**
+**Phase 12 — Release-Vorbereitung.** Die letzte Phase, und die einzige, die eine
+Entscheidung verlangt statt Code.
 
-`examples/pv-surplus-charging.js` — die Bang-Bang-Regelung, die laut E4 **nicht** in den
-Adapter gehört, aber als Vorlage mitkommt: Einschaltschwelle, Ausschaltschwelle mit
-Verzögerung, Mindest-Ein- und Ausschaltdauer, Obergrenze für Schaltvorgänge pro Stunde
-und die Auswertung von `info.lastCommand.result`. Jede PV-Anlage hat andere State-IDs;
-das Skript zeigt die Struktur, nicht die Wahrheit.
+- **`@alcalzone/release-script`** ist eingerichtet (`npm run release`). Es erwartet den
+  Abschnitt `### **WORK IN PROGRESS**` in der README-Changelog und baut vorher
+  (`before_commit: npm run build`).
+- **Adapter-Checker durchlaufen lassen** (`npx @iobroker/adapter-checker` oder der
+  Web-Checker). Zu erwarten sind Hinweise auf die fehlende npm-Veröffentlichung, den
+  auskommentierten Deploy-Job und möglicherweise auf die Sprache der README.
+- **Übersetzungen prüfen:** Deutsch ist von Hand gesetzt, neun Sprachen kommen
+  maschinell aus dem Englischen. Die Notification-Texte in `io-package.json` haben nur
+  Englisch und Deutsch.
+- **Die Entscheidung aus E1:** Einreichung ins offizielle Repo — oder privat lassen.
+  Daran hängen Sentry (vorbereitet, aber nicht scharf), der Deploy-Job und die Frage,
+  ob Oberfläche und Log auf Englisch umgestellt werden. Heute sind Logmeldungen,
+  Notification-Texte und der Verbindungstest deutsch, die README englisch. Für den
+  Eigenbetrieb ist das stimmig, für eine Einreichung nicht.
 
-Die README braucht vier Dinge, die sonst niemand ahnt:
+Vor dem ersten Release außerdem fällig: **den Adapter einmal auf dem Produktivsystem
+laufen lassen** (Debian-VM, Node 22) und ihn eine Weile am echten Fahrzeug beobachten.
+Alles bisher Gemessene stammt vom Mock oder aus vier Aufnahmen.
 
-- **Wie der API-Schlüssel entsteht** (MyŠkoda-App ab 8.16, gebunden an die dort
-  ausgewählten Fahrzeuge, mit Ablaufdatum).
-- **Was 20 Requests pro Stunde bedeuten:** kein sekundengenaues Monitoring, keine
-  sofortige Benachrichtigung bei Ladeende. Das ist Physik, kein Versäumnis.
-- **`ack=true` heißt „an die API übergeben"**, nicht „das Auto hat es getan" (E6).
-- **Für das Überschussladen muss der AC-Ladestrom in der App auf `REDUCED` stehen** —
-  die API kann ihn nicht setzen (E3). Gemessen wurden an diesem Enyaq 5 kW.
+### Was aus Phase 11 zu wissen ist
 
-Dazu die Beschreibung von `info.*` (Budget, Schlüsselablauf, `dataAge`, `lastCommand`)
-und der Hinweis, dass Zustände bei einer unvollständigen Antwort **stehenbleiben** und
-nur ihr Quality-Flag verlieren (E8).
-
-Danach **Phase 12**: Release-Skript, Übersetzungen prüfen, Adapter-Checker durchlaufen
-lassen und die Entscheidung über die Einreichung ins offizielle Repo (E1).
+- Die README richtet sich an jemanden, der den Adapter benutzt, nicht an den, der ihn
+  baut. Vier Dinge stehen ausdrücklich drin, weil sie sonst niemand ahnt: wie der
+  Schlüssel entsteht, dass `ack=true` nur die Übergabe meint, warum die Daten eine
+  Stunde alt sein dürfen, und dass Überschussladen ohne `REDUCED` in der App nicht
+  funktioniert.
+- **`examples/pv-surplus-charging.js`** ist eine Vorlage, kein Produkt. Es schaltet nur
+  bei steckendem Kabel, liest den Ist-Zustand aus `charging.status.state` statt aus dem
+  eigenen Wunsch, und hat eine harte Obergrenze für Schaltvorgänge pro Stunde — jeder
+  kostet zwei Requests.
+- Beispielskripte laufen in der Sandbox des JavaScript-Adapters. ESLint kennt deren
+  Globale nicht von selbst; `eslint.config.mjs` hat dafür einen eigenen Block.
 
 ### Was aus Phase 10 zu wissen ist
 

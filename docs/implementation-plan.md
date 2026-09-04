@@ -597,7 +597,24 @@ Eintrag `{"apiKeyExpired":{"count":1}}` im Notification-Zustand des Hosts.
 - `@iobroker/testing`: Paket- und Startup-Tests.
 - GitHub Actions: Lint, Build, Test auf Node 22 und 24; Spec-Wächter wöchentlich.
 
-### Phase 11 — Beispielskript und Dokumentation · S
+### Phase 11 — Beispielskript und Dokumentation · S · **erledigt**
+
+> **Abweichungen und offene Punkte:**
+> - **Die README ist englisch**, Oberfläche und Logmeldungen sind deutsch. Der Kopf der
+>   README war es von Anfang an, und für ein ioBroker-Repository ist Englisch die
+>   Erwartung. Für eine Einreichung (E1) wäre das zu vereinheitlichen — die Entscheidung
+>   gehört in Phase 12.
+> - Der „Developer manual"-Teil aus der Generator-Vorlage ist entfallen; er sagte selbst,
+>   dass er gelöscht werden kann, und stand zwischen Nutzer und Anleitung.
+> - Ein **Disclaimer zu Marke und Logo** ist dazugekommen, wie die Vorlage es verlangt:
+>   Škoda ist eine Marke der Škoda Auto a.s., der Adapter ist unabhängig.
+> - Das Beispielskript bekommt eine eigene ESLint-Ausnahme: Es läuft in der Sandbox des
+>   JavaScript-Adapters, die `on`, `getState`, `setState` und `log` als Globale
+>   bereitstellt.
+> - Das Skript schaltet **nur bei steckendem Kabel** und liest den Ist-Zustand aus
+>   `charging.status.state` statt aus dem eigenen Wunsch — `ack: true` heißt „an die API
+>   übergeben", nicht „das Auto lädt".
+
 
 `examples/pv-surplus-charging.js` — kommentierte Bang-Bang-Regelung:
 Einschaltschwelle, Ausschaltschwelle mit Verzögerung, Mindest-Ein- und
