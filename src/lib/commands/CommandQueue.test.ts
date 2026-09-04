@@ -218,6 +218,83 @@ describe('commands/CommandQueue => Soll-Zustand, Coalescing, TTL', () => {
 			await queue.submit(`${DEFAULT_VIN}.airConditioning.enabled`, true);
 			expect(queue.pending).to.equal(2);
 		});
+
+		it('behaelt einen Gegenbefehl, der waehrend des ersten POST eintrifft', async () => {
+			let releaseFirst: (() => void) | undefined;
+			const sent: CommandAction[] = [];
+			const stub: CommandSender = {
+				sendCommand: (_vin, _domain, action): Promise<ApiResult<void>> => {
+					sent.push(action);
+					if (sent.length > 1) {
+						return Promise.resolve({ ok: true, data: undefined, meta: { consumedQuota: true } });
+					}
+					return new Promise(resolve => {
+						releaseFirst = () => resolve({ ok: true, data: undefined, meta: { consumedQuota: true } });
+					});
+				},
+			};
+			queue = buildQueue({ client: stub });
+
+			const first = queue.submit(`${DEFAULT_VIN}.charging.start`, true);
+			while (!releaseFirst) {
+				await new Promise<void>(resolve => setImmediate(resolve));
+			}
+			const second = queue.submit(`${DEFAULT_VIN}.charging.stop`, true);
+			releaseFirst();
+			await Promise.all([first, second]);
+
+			expect(sent).to.deep.equal(['start', 'stop']);
+			expect(queue.pending).to.equal(0);
+		});
+
+		it('coalesct einen Gegenwunsch nicht gegen den Ist-Zustand vor dem laufenden POST', async () => {
+			let releaseFirst: (() => void) | undefined;
+			const sent: CommandAction[] = [];
+			const stub: CommandSender = {
+				sendCommand: (_vin, _domain, action): Promise<ApiResult<void>> => {
+					sent.push(action);
+					if (sent.length > 1) {
+						return Promise.resolve({ ok: true, data: undefined, meta: { consumedQuota: true } });
+					}
+					return new Promise(resolve => {
+						releaseFirst = () => resolve({ ok: true, data: undefined, meta: { consumedQuota: true } });
+					});
+				},
+			};
+			queue = buildQueue({ client: stub });
+			const poll = await client.getVehicle(DEFAULT_VIN);
+			if (poll.ok) {
+				queue.updateFromResponse(DEFAULT_VIN, poll.data);
+			}
+
+			const first = queue.submit(`${DEFAULT_VIN}.charging.enabled`, true);
+			while (!releaseFirst) {
+				await new Promise<void>(resolve => setImmediate(resolve));
+			}
+			// Der letzte Poll meldet noch "aus". Trotzdem muss dieser neuere Wunsch
+			// den gerade laufenden Start wieder aufheben.
+			const second = queue.submit(`${DEFAULT_VIN}.charging.enabled`, false);
+			releaseFirst();
+			await Promise.all([first, second]);
+
+			expect(sent).to.deep.equal(['start', 'stop']);
+			expect(results()).to.deep.equal(['SENT', 'SENT']);
+		});
+
+		it('behaelt den Gegenwunsch auch nach 202 bis zum bestaetigenden Poll', async () => {
+			await feedPoll();
+			// Der gepufferte Poll steht auf "aus". Der Mock nimmt den Start sofort an,
+			// aber die Queue erfaehrt den neuen Ist erst beim Verifikations-Poll.
+			await queue.submit(`${DEFAULT_VIN}.charging.enabled`, true);
+			await queue.submit(`${DEFAULT_VIN}.charging.enabled`, false);
+
+			const posts = mock.requests.filter(request => request.method === 'POST');
+			expect(posts.map(request => request.path)).to.deep.equal([
+				`/api/v1/vehicles/${DEFAULT_VIN}/charging/start`,
+				`/api/v1/vehicles/${DEFAULT_VIN}/charging/stop`,
+			]);
+			expect(results()).to.deep.equal(['SENT', 'SENT']);
+		});
 	});
 
 	describe('Lebensdauer', () => {
@@ -308,6 +385,25 @@ describe('commands/CommandQueue => Soll-Zustand, Coalescing, TTL', () => {
 			expect(results()).to.deep.equal(['FAILED']);
 			expect(mock.requests).to.have.length(0);
 			expect(log.lines.some(line => line.includes('S-PIN'))).to.equal(true);
+		});
+
+		it('arbeitet nach einem Fehler beim Schreiben des Reports weiter', async () => {
+			let reportCalls = 0;
+			queue = buildQueue({
+				onReport: () => {
+					reportCalls += 1;
+					if (reportCalls === 1) {
+						return Promise.reject(new Error('State-DB voruebergehend nicht erreichbar'));
+					}
+				},
+			});
+
+			await queue.submit(`${DEFAULT_VIN}.charging.start`, true);
+			await queue.submit(`${DEFAULT_VIN}.charging.stop`, true);
+
+			expect(mock.requests.filter(request => request.method === 'POST')).to.have.length(2);
+			expect(verified).to.deep.equal([DEFAULT_VIN, DEFAULT_VIN]);
+			expect(log.lines.some(line => line.includes('Ergebnis konnte nicht'))).to.equal(true);
 		});
 	});
 

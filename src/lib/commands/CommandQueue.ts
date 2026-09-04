@@ -125,6 +125,10 @@ export class CommandQueue {
 	private readonly blocks = new Map<string, Map<string, Record<string, unknown>>>();
 	/** Domaenen, die das Fahrzeug dauerhaft nicht kann (422 operation-not-supported). */
 	private readonly unsupported = new Set<string>();
+	/** Sollwerte der Requests, die gerade unterwegs sind. */
+	private readonly inFlight = new Map<string, boolean>();
+	/** Akzeptierte Sollwerte, die noch kein Poll bestaetigt hat. */
+	private readonly awaitingState = new Map<string, boolean>();
 
 	/** Serialisiert die Durchlaeufe: Zwei gleichzeitige Sendungen waeren ein Leck. */
 	private chain: Promise<void> = Promise.resolve();
@@ -182,7 +186,13 @@ export class CommandQueue {
 		for (const def of COMMAND_DEFS) {
 			const block = vehicle[def.part];
 			if (block !== null && typeof block === 'object') {
-				blocks.set(def.part, block as Record<string, unknown>);
+				const typedBlock = block as Record<string, unknown>;
+				blocks.set(def.part, typedBlock);
+				const key = this.keyOf({ vin, def });
+				const expected = this.awaitingState.get(key);
+				if (expected !== undefined && this.activeFromBlock(def, typedBlock) === expected) {
+					this.awaitingState.delete(key);
+				}
 			}
 		}
 		this.blocks.set(vin, blocks);
@@ -211,7 +221,15 @@ export class CommandQueue {
 
 		// Idempotenz und Coalescing in einem: Entspricht der Soll dem Ist, faellt ein
 		// wartender Eintrag ersatzlos weg und es geht kein Request hinaus (E5).
-		if (command.viaSwitch && this.isActive(command) === command.desired) {
+		// Vom Beginn des Requests bis zu einem bestaetigenden Poll ist der gepufferte
+		// Ist-Zustand zu alt fuer die Idempotenz. In diesem Fenster gilt der zuletzt
+		// gesendete Sollwert: derselbe Wunsch ist redundant, ein Gegenwunsch muss warten.
+		const unsettledDesired = this.inFlight.get(key) ?? this.awaitingState.get(key);
+		const alreadyDesired =
+			unsettledDesired !== undefined
+				? unsettledDesired === command.desired
+				: this.isActive(command) === command.desired;
+		if (command.viaSwitch && alreadyDesired) {
 			if (this.entries.delete(key)) {
 				this.log.debug(`${command.name}: wartender Befehl verfaellt, Soll entspricht dem Ist.`);
 			}
@@ -243,6 +261,11 @@ export class CommandQueue {
 	 */
 	public async tick(): Promise<number | undefined> {
 		for (const [key, entry] of [...this.entries]) {
+			// Ein vorheriger await in diesem Durchlauf kann dem Event-Handler Zeit
+			// gegeben haben, denselben Schluessel durch einen neueren Befehl zu ersetzen.
+			if (this.entries.get(key) !== entry) {
+				continue;
+			}
 			const now = this.now();
 			if (now >= entry.expiresAt) {
 				this.entries.delete(key);
@@ -272,10 +295,21 @@ export class CommandQueue {
 	 * @returns Nichts.
 	 */
 	private pump(): Promise<void> {
-		this.chain = this.chain.then(async () => {
-			const next = await this.tick();
-			this.arm(next);
-		});
+		this.chain = this.chain
+			.then(async () => {
+				const next = await this.tick();
+				this.arm(next);
+			})
+			.catch(() => {
+				// Eine abgewiesene Promise darf die serielle Kette nicht dauerhaft
+				// vergiften. Der konkrete Client liefert Fehler als ApiResult; hier landen
+				// nur unerwartete Fehler aus einem Port oder Callback.
+				this.log.error(
+					'Unerwarteter Fehler in der Befehlswarteschlange; der naechste Versuch wird verzoegert.',
+				);
+				const next = this.msUntilNext();
+				this.arm(next === undefined ? undefined : Math.max(this.retryMs, next));
+			});
 		return this.chain;
 	}
 
@@ -308,6 +342,9 @@ export class CommandQueue {
 	 * @param entry Der wartende Befehl.
 	 */
 	private async attempt(key: string, entry: QueueEntry): Promise<void> {
+		if (this.entries.get(key) !== entry) {
+			return;
+		}
 		const { command } = entry;
 		const { body, problem } = buildCommandBody(command, {
 			block: this.blocks.get(command.vin)?.get(command.def.part),
@@ -346,20 +383,31 @@ export class CommandQueue {
 			return;
 		}
 
-		const result = await this.client.sendCommand(command.vin, command.def.domain, command.action, body);
+		// Ab jetzt ist dieser Eintrag nicht mehr wartend. Ein neuer Schreibvorgang
+		// derselben Domaene bekommt dadurch einen eigenen Eintrag und kann von der
+		// spaeter eintreffenden Antwort dieses Requests nicht geloescht werden.
+		this.entries.delete(key);
+		this.inFlight.set(key, command.desired);
+		let result: ApiResult<void>;
+		try {
+			result = await this.client.sendCommand(command.vin, command.def.domain, command.action, body);
+		} finally {
+			this.inFlight.delete(key);
+		}
 		this.quota.recordResponse(result.meta);
 		this.onResponse?.(result.meta, result.ok ? undefined : result.error);
 
 		if (result.ok) {
-			this.entries.delete(key);
+			this.awaitingState.set(key, command.desired);
 			this.log.info(`${command.name}: an die API uebergeben.`);
+			// Die Verifikation gehoert zum Request-Lebenslauf und darf nicht davon
+			// abhaengen, ob das anschliessende Schreiben des Reports gelingt.
+			this.onCommandSent?.(command.vin);
 			await this.report(command, 'SENT', undefined, {
 				path: command.statePath,
 				// Der Knopf faellt zurueck, der Schalter behaelt den Soll-Zustand.
 				value: command.viaSwitch ? command.desired : false,
 			});
-			// Ob das Fahrzeug den Befehl ausgefuehrt hat, zeigt erst der naechste Poll.
-			this.onCommandSent?.(command.vin);
 			return;
 		}
 
@@ -379,21 +427,23 @@ export class CommandQueue {
 		if (error.kind === 'operation-not-supported') {
 			// Dauerhaft merken: Diese Faehigkeit bekommt das Fahrzeug nicht mehr (E15).
 			this.unsupported.add(key);
-			this.entries.delete(key);
 			this.log.error(`${command.name}: ${error.message}`);
 			await this.report(command, 'REJECTED_BY_VEHICLE', error.problemType);
+			const replacement = this.entries.get(key);
+			if (replacement) {
+				this.entries.delete(key);
+				await this.report(replacement.command, 'REJECTED_BY_VEHICLE', error.problemType);
+			}
 			return;
 		}
 
 		if (error.kind === 'operation-disabled' || error.kind === 'operation-not-authorized') {
-			this.entries.delete(key);
 			this.log.warn(`${command.name}: ${error.message}`);
 			await this.report(command, 'REJECTED_BY_VEHICLE', error.problemType);
 			return;
 		}
 
 		if (error.kind === 'api-key-expired' || error.kind === 'api-key-not-authorized') {
-			this.entries.delete(key);
 			this.onConnectionChange?.(false);
 			this.log.error(`${command.name}: ${error.message}`);
 			await this.report(command, 'FAILED', error.problemType);
@@ -401,6 +451,12 @@ export class CommandQueue {
 		}
 
 		if (error.retryable && entry.attempts < error.maxRetries) {
+			if (this.entries.has(key)) {
+				// Ein neuerer Befehl derselben Domaene wartet bereits. Die alte Absicht
+				// darf nach einem Retry nicht wieder vor sie gesetzt werden.
+				this.log.debug(`${command.name}: Wiederholung entfaellt zugunsten eines neueren Befehls.`);
+				return;
+			}
 			const now = this.now();
 			const waitMs = error.retryAfterMs ?? this.jitteredRetry();
 			if (now + waitMs >= entry.expiresAt) {
@@ -414,6 +470,7 @@ export class CommandQueue {
 			}
 			entry.attempts += 1;
 			entry.notBefore = now + waitMs;
+			this.entries.set(key, entry);
 			this.log.warn(
 				`${command.name}: ${error.message} - Versuch ${entry.attempts} in ${Math.round(waitMs / 1000)} s.`,
 			);
@@ -424,7 +481,6 @@ export class CommandQueue {
 			return;
 		}
 
-		this.entries.delete(key);
 		this.log.error(`${command.name}: ${error.message}`);
 		await this.report(
 			command,
@@ -447,13 +503,19 @@ export class CommandQueue {
 		problemType?: string,
 		acknowledge?: CommandReport['acknowledge'],
 	): Promise<void> {
-		await this.onReport(command.vin, {
-			name: command.name,
-			result,
-			timestamp: this.now(),
-			problemType,
-			acknowledge,
-		});
+		try {
+			await this.onReport(command.vin, {
+				name: command.name,
+				result,
+				timestamp: this.now(),
+				problemType,
+				acknowledge,
+			});
+		} catch {
+			// Fehlertexte des State-Backends koennen die volle State-ID und damit die
+			// VIN enthalten. Deshalb nur eine eigene, maskierungsfreie Meldung loggen.
+			this.log.error(`${command.name}: Ergebnis konnte nicht in ioBroker-Zustaende geschrieben werden.`);
+		}
 	}
 
 	/**
@@ -467,14 +529,25 @@ export class CommandQueue {
 		if (!block) {
 			return undefined;
 		}
+		return this.activeFromBlock(command.def, block);
+	}
+
+	/**
+	 * Liest den Ist-Zustand aus einem bereits gefundenen Antwortblock.
+	 *
+	 * @param def Domaene samt Pfad und aktiven Werten.
+	 * @param block Der Antwortblock dieser Domaene.
+	 * @returns True oder false, oder undefined bei unvollstaendigen Daten.
+	 */
+	private activeFromBlock(def: CommandDomainDef, block: Record<string, unknown>): boolean | undefined {
 		let current: unknown = block;
-		for (const part of command.def.statePath.split('.')) {
+		for (const part of def.statePath.split('.')) {
 			if (typeof current !== 'object' || current === null) {
 				return undefined;
 			}
 			current = (current as Record<string, unknown>)[part];
 		}
-		return typeof current === 'string' ? command.def.activeStates.includes(current) : undefined;
+		return typeof current === 'string' ? def.activeStates.includes(current) : undefined;
 	}
 
 	/**
