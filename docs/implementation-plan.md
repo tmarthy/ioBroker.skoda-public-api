@@ -422,7 +422,30 @@ Liegt vor, und zwar als A/B: Das schlafende Auto kostet bei fünf Minuten Grundk
 weniger als zwölf Requests und landet im Deckel von 60 Minuten, das wache bleibt in
 der Kadenz — und in beiden Fällen steht die Befehlsreserve am Ende noch.
 
-### Phase 7 — CommandQueue · M · **Meilenstein 2: steuernder Adapter**
+### Phase 7 — CommandQueue · M · **Meilenstein 2: steuernder Adapter** · **erledigt**
+
+> **Abweichungen von der ursprünglichen Planung:**
+> - **Ein sechstes Ergebnis: `FAILED`.** E5 nennt `SENT`, `QUEUED`, `COALESCED`,
+>   `EXPIRED` und `REJECTED_BY_VEHICLE`. Ein `400`, ein `500` oder ein Netzwerkfehler
+>   ist aber weder eine Ablehnung durch das Fahrzeug noch ein Verfall — wer das als
+>   `EXPIRED` meldet, schickt jeden auswertenden Skript-Autor an die falsche Stelle.
+> - **Die Queue schreibt keine States.** Sie meldet über `onReport`; `main.ts` hängt
+>   dort den StateWriter ein. Dieselbe Trennung wie beim Scheduler.
+> - Ein Knopf löst **nur bei `true`** aus. Das Zurückstellen auf `false` ist die
+>   Quittung des Adapters und darf nicht sofort den nächsten Befehl auslösen.
+> - Die Idempotenz greift nur über den Soll-Schalter. Solange noch nichts gepollt
+>   wurde, wird **gesendet statt geraten** — und der Knopf umgeht sie immer, denn er
+>   ist der Ausweg, wenn die zuletzt gepollten Daten nicht mehr stimmen.
+> - **„State deaktivieren" bei `operation-not-supported`** ist als „dauerhaft merken
+>   und sofort ablehnen" umgesetzt, ohne das Objekt anzufassen. E13 verbietet das
+>   Löschen, und ein nachträgliches `write: false` würde den Schalter still unbrauchbar
+>   machen, ohne dass jemand sähe warum. Der Grund steht stattdessen in
+>   `info.lastCommand.result`.
+> - **Die TTL-Regel gilt auch für Wartezeiten aus dem Budget**, nicht nur für
+>   `Retry-After`: Öffnet sich das Fenster erst nach Ablauf der Lebensdauer, verfällt
+>   der Befehl sofort statt in zehn Minuten.
+> - `main.ts` abonniert drei Muster (`*.enabled`, `*.start`, `*.stop`) statt des
+>   ganzen Baums.
 
 - Nimmt Schreibvorgänge auf `<vin>.<domain>.enabled` (Soll) und
   `<vin>.<domain>.start|stop` (erzwungen) entgegen.
@@ -441,6 +464,9 @@ der Kadenz — und in beiden Fällen steht die Befehlsreserve am Ende noch.
 **Fertig, wenn:** Integrationstest: `enabled=true`, dann innerhalb der TTL
 `enabled=false` -> null Requests, Ergebnis `COALESCED`. Und: `enabled=true` bei
 leerem Budget -> `QUEUED`, Ausführung nach Reset.
+Beides liegt vor, gegen den Mock gefahren — samt der drei Fälle, die daneben teuer
+werden könnten: `Retry-After` länger als die Lebensdauer, dreimal abgelehnt vom
+Fahrzeug, und ein fehlender S-PIN, der gar keinen Request kostet.
 
 ### Phase 8 — Admin-UI · S · **teilweise in Phase 6 vorgezogen**
 

@@ -1,0 +1,509 @@
+/**
+ * CommandQueue - der Weg vom Schalter zum Fahrzeug.
+ *
+ * Ein Befehl kostet realistisch zwei bis drei Requests: den POST selbst und den
+ * Verifikations-Poll, denn die API antwortet mit `202` und kennt keinen Endpunkt, der
+ * den Ausgang meldet. Bei 20 Requests pro Stunde ist das der Grund, warum hier eine
+ * Queue steht und kein direkter Aufruf:
+ *
+ * - **Idempotenz.** Soll gleich Ist heisst: gar nicht erst senden.
+ * - **Coalescing.** Ein neuer Soll-Wert ersetzt den wartenden Eintrag derselben
+ *   Domaene. Eine Bang-Bang-Regelung auf einer PV-Anlage schaltet bei jeder
+ *   durchziehenden Wolke; gedaempft wird das an der einzigen Stelle, die das Budget
+ *   kennt (E5).
+ * - **TTL.** Was in zehn Minuten nicht rausging, will niemand mehr. Ist die Wartezeit
+ *   aus `Retry-After` laenger als die Rest-TTL, verfaellt der Befehl sofort, statt
+ *   Budget fuer eine Absicht auszugeben, die inzwischen ueberholt ist (E15).
+ *
+ * `ack: true` heisst hier **an die API uebergeben**, nicht "das Auto hat es getan" (E6).
+ */
+import type { ApiError } from '../api/errors';
+import type { ApiResult, CommandBody } from '../api/client';
+import type { CommandAction, CommandDomain, VehicleResponse } from '../api/types';
+import type { QuotaManager } from '../quota/QuotaManager';
+import { COMMAND_DEFS, type CommandDomainDef, type CommandReport, type CommandResult } from '../states/commandDefs';
+import { buildCommandBody, parseCommandState, type ParsedCommand } from './commandMap';
+
+/** Der Ausschnitt des Clients, den die Queue braucht. */
+export interface CommandSender {
+	/** Setzt einen Befehl ab; `ok: true` heisst `202 Accepted`. */
+	sendCommand(
+		vin: string,
+		domain: CommandDomain,
+		action: CommandAction,
+		body?: CommandBody,
+	): Promise<ApiResult<void>>;
+}
+
+/** Die Logstufen, die die Queue benutzt. */
+export interface CommandLog {
+	/** Einzelheiten der Warteschlange. */
+	debug(message: string): void;
+	/** Was ein Nutzer im Log sehen soll: abgesetzte und verworfene Befehle. */
+	info(message: string): void;
+	/** Stoerungen, die von selbst vorbeigehen. */
+	warn(message: string): void;
+	/** Stoerungen, die einen Menschen brauchen. */
+	error(message: string): void;
+}
+
+/** Ein Zeitgeber-Handle; der Adapter reicht seinen eigenen herein. */
+export type TimerHandle = unknown;
+
+/** Womit die Queue eingerichtet wird. */
+export interface CommandQueueOptions {
+	/** Die HTTP-Schicht. */
+	client: CommandSender;
+	/** Ohne Zustimmung des Budgets geht kein Befehl hinaus. */
+	quota: QuotaManager;
+	/** Die konfigurierten Fahrzeuge; alles andere wird ignoriert. */
+	vins: readonly string[];
+	/** Wohin das Ergebnis geht - in Phase 7 der StateWriter. */
+	onReport: (vin: string, report: CommandReport) => Promise<void> | void;
+	/** Wohin die Meldungen gehen. */
+	log: CommandLog;
+	/** Wird nach einem abgesetzten Befehl gerufen: Verifikations-Poll (Phase 6). */
+	onCommandSent?: (vin: string) => void;
+	/** Meldet `info.connection`, wenn der Schluessel abgelehnt wird (E10). */
+	onConnectionChange?: (connected: boolean) => void;
+	/** Lebensdauer eines wartenden Befehls. */
+	ttlMs?: number;
+	/** S-PIN aus der Instanzkonfiguration, niemals aus einem State. */
+	spin?: string;
+	/** Grundwartezeit vor einer Wiederholung; sie bekommt Jitter. */
+	retryMs?: number;
+	/** Zeitquelle, ersetzbar fuer Tests. */
+	now?: () => number;
+	/** Zufall fuer den Jitter, ersetzbar fuer Tests. */
+	random?: () => number;
+	/** Zeitgeber; der Adapter reicht `setTimeout` seiner Instanz herein. */
+	setTimer?: (handler: () => void, ms: number) => TimerHandle;
+	/** Gegenstueck zu `setTimer`. */
+	clearTimer?: (handle: TimerHandle) => void;
+}
+
+/** Vorgabe der Lebensdauer eines Befehls (E5). */
+export const DEFAULT_TTL_MS = 10 * 60_000;
+
+/** Ein wartender Befehl. */
+interface QueueEntry {
+	command: ParsedCommand;
+	expiresAt: number;
+	/** Fruehester naechster Versuch. */
+	notBefore: number;
+	attempts: number;
+	/** Ob dem Nutzer schon gemeldet wurde, dass gewartet wird. */
+	queuedReported: boolean;
+}
+
+/**
+ * Nimmt Schreibvorgaenge auf den Befehls-States entgegen und setzt sie ab, sobald
+ * Budget da ist.
+ */
+export class CommandQueue {
+	private readonly client: CommandSender;
+	private readonly quota: QuotaManager;
+	private readonly vins: Set<string>;
+	private readonly onReport: CommandQueueOptions['onReport'];
+	private readonly onCommandSent?: (vin: string) => void;
+	private readonly onConnectionChange?: (connected: boolean) => void;
+	private readonly log: CommandLog;
+	private readonly ttlMs: number;
+	private readonly spin?: string;
+	private readonly retryMs: number;
+	private readonly now: () => number;
+	private readonly random: () => number;
+	private readonly setTimer: (handler: () => void, ms: number) => TimerHandle;
+	private readonly clearTimer: (handle: TimerHandle) => void;
+
+	/** Ein wartender Eintrag je Fahrzeug und Domaene - der Schluessel des Coalescings. */
+	private readonly entries = new Map<string, QueueEntry>();
+	/** Die zuletzt gepollten Bloecke je Fahrzeug, fuer Ist-Vergleich und Koerperbau. */
+	private readonly blocks = new Map<string, Map<string, Record<string, unknown>>>();
+	/** Domaenen, die das Fahrzeug dauerhaft nicht kann (422 operation-not-supported). */
+	private readonly unsupported = new Set<string>();
+
+	/** Serialisiert die Durchlaeufe: Zwei gleichzeitige Sendungen waeren ein Leck. */
+	private chain: Promise<void> = Promise.resolve();
+	private running = false;
+	private timer?: TimerHandle;
+
+	/**
+	 * @param options Client, Budget, Fahrzeuge, Ausgabekanaele und Zeitwerte.
+	 */
+	public constructor(options: CommandQueueOptions) {
+		this.client = options.client;
+		this.quota = options.quota;
+		this.vins = new Set(options.vins);
+		this.onReport = options.onReport;
+		this.onCommandSent = options.onCommandSent;
+		this.onConnectionChange = options.onConnectionChange;
+		this.log = options.log;
+		this.ttlMs = options.ttlMs ?? DEFAULT_TTL_MS;
+		this.spin = options.spin;
+		this.retryMs = options.retryMs ?? 15_000;
+		this.now = options.now ?? (() => Date.now());
+		this.random = options.random ?? Math.random;
+		this.setTimer = options.setTimer ?? ((handler, ms) => setTimeout(handler, ms));
+		this.clearTimer = options.clearTimer ?? (handle => clearTimeout(handle as NodeJS.Timeout));
+	}
+
+	/** Startet die Schleife fuer wartende Befehle. */
+	public start(): void {
+		this.running = true;
+	}
+
+	/** Haelt die Schleife an. Muss beim Entladen des Adapters gerufen werden. */
+	public stop(): void {
+		this.running = false;
+		if (this.timer !== undefined) {
+			this.clearTimer(this.timer);
+			this.timer = undefined;
+		}
+	}
+
+	/**
+	 * Uebernimmt die zuletzt gepollten Daten.
+	 *
+	 * Daraus kommt der Ist-Zustand fuer die Idempotenz und der Koerper fuer
+	 * `air-conditioning/start` - beides also aus derselben Quelle, die auch die
+	 * Zustaende speist.
+	 *
+	 * @param vin Fahrgestellnummer.
+	 * @param response Die Antwort eines Polls.
+	 */
+	public updateFromResponse(vin: string, response: VehicleResponse): void {
+		const vehicle = response.vehicle as unknown as Record<string, unknown>;
+		const blocks = this.blocks.get(vin) ?? new Map<string, Record<string, unknown>>();
+		for (const def of COMMAND_DEFS) {
+			const block = vehicle[def.part];
+			if (block !== null && typeof block === 'object') {
+				blocks.set(def.part, block as Record<string, unknown>);
+			}
+		}
+		this.blocks.set(vin, blocks);
+	}
+
+	/**
+	 * Nimmt einen Schreibvorgang auf einem Befehls-State entgegen.
+	 *
+	 * @param relativeId ID ohne Namensraum, z.B. `TMBJB9NY5RF999999.charging.enabled`.
+	 * @param value Der geschriebene Wert.
+	 * @returns Nichts; das Ergebnis geht ueber `onReport` hinaus.
+	 */
+	public async submit(relativeId: string, value: unknown): Promise<void> {
+		const command = parseCommandState(relativeId, value);
+		if (!command || !this.vins.has(command.vin)) {
+			return;
+		}
+
+		const key = this.keyOf(command);
+
+		if (this.unsupported.has(key)) {
+			this.log.warn(`${command.name}: Das Fahrzeug unterstuetzt diesen Befehl nicht.`);
+			await this.report(command, 'REJECTED_BY_VEHICLE');
+			return;
+		}
+
+		// Idempotenz und Coalescing in einem: Entspricht der Soll dem Ist, faellt ein
+		// wartender Eintrag ersatzlos weg und es geht kein Request hinaus (E5).
+		if (command.viaSwitch && this.isActive(command) === command.desired) {
+			if (this.entries.delete(key)) {
+				this.log.debug(`${command.name}: wartender Befehl verfaellt, Soll entspricht dem Ist.`);
+			}
+			await this.report(command, 'COALESCED');
+			return;
+		}
+
+		if (this.entries.has(key)) {
+			this.log.debug(`${command.name}: ersetzt den wartenden Befehl derselben Domaene.`);
+		}
+		const now = this.now();
+		this.entries.set(key, {
+			command,
+			expiresAt: now + this.ttlMs,
+			notBefore: now,
+			attempts: 0,
+			queuedReported: false,
+		});
+
+		await this.pump();
+	}
+
+	/**
+	 * Arbeitet die Warteschlange ab, soweit sie faellig ist.
+	 *
+	 * Oeffentlich, damit Tests die Zeit selbst fuehren koennen.
+	 *
+	 * @returns Millisekunden bis zum naechsten Versuch, oder undefined wenn nichts wartet.
+	 */
+	public async tick(): Promise<number | undefined> {
+		for (const [key, entry] of [...this.entries]) {
+			const now = this.now();
+			if (now >= entry.expiresAt) {
+				this.entries.delete(key);
+				this.log.info(`${entry.command.name}: verfallen, nicht innerhalb der Lebensdauer absetzbar.`);
+				await this.report(entry.command, 'EXPIRED');
+				continue;
+			}
+			if (now < entry.notBefore) {
+				continue;
+			}
+			await this.attempt(key, entry);
+		}
+		return this.msUntilNext();
+	}
+
+	/** Wie viele Befehle gerade warten - fuer Tests und Logausgaben. */
+	public get pending(): number {
+		return this.entries.size;
+	}
+
+	/**
+	 * Fuehrt einen Durchlauf aus und terminiert den naechsten.
+	 *
+	 * Die Durchlaeufe sind serialisiert: Zwei gleichzeitige Sendungen wuerden zweimal
+	 * Budget ziehen und zweimal dasselbe Fahrzeug ansprechen.
+	 *
+	 * @returns Nichts.
+	 */
+	private pump(): Promise<void> {
+		this.chain = this.chain.then(async () => {
+			const next = await this.tick();
+			this.arm(next);
+		});
+		return this.chain;
+	}
+
+	/**
+	 * Setzt den Zeitgeber fuer den naechsten Durchlauf.
+	 *
+	 * @param delayMs Wartezeit, oder undefined wenn nichts mehr wartet.
+	 */
+	private arm(delayMs: number | undefined): void {
+		if (this.timer !== undefined) {
+			this.clearTimer(this.timer);
+			this.timer = undefined;
+		}
+		if (!this.running || delayMs === undefined) {
+			return;
+		}
+		this.timer = this.setTimer(
+			() => {
+				this.timer = undefined;
+				void this.pump();
+			},
+			Math.max(0, delayMs),
+		);
+	}
+
+	/**
+	 * Versucht, einen Befehl abzusetzen.
+	 *
+	 * @param key Schluessel des Eintrags.
+	 * @param entry Der wartende Befehl.
+	 */
+	private async attempt(key: string, entry: QueueEntry): Promise<void> {
+		const { command } = entry;
+		const { body, problem } = buildCommandBody(command, {
+			block: this.blocks.get(command.vin)?.get(command.def.part),
+			spin: this.spin,
+		});
+		if (problem) {
+			this.entries.delete(key);
+			this.log.error(`${command.name}: ${problem}`);
+			await this.report(command, 'FAILED');
+			return;
+		}
+
+		const permission = this.quota.tryAcquire('command');
+		if (permission !== 'ok') {
+			const now = this.now();
+			if (now + permission.waitMs >= entry.expiresAt) {
+				// Warten waere laenger als die Lebensdauer: Dann lieber jetzt ehrlich
+				// verwerfen als in zehn Minuten (E15).
+				this.entries.delete(key);
+				this.log.info(
+					`${command.name}: verworfen, das Budget oeffnet sich erst in ` +
+						`${Math.round(permission.waitMs / 60_000)} min.`,
+				);
+				await this.report(command, 'EXPIRED');
+				return;
+			}
+			entry.notBefore = now + permission.waitMs;
+			if (!entry.queuedReported) {
+				entry.queuedReported = true;
+				this.log.info(
+					`${command.name}: wartet auf Budget (${permission.reason}), ` +
+						`naechster Versuch in ${Math.round(permission.waitMs / 1000)} s.`,
+				);
+				await this.report(command, 'QUEUED');
+			}
+			return;
+		}
+
+		const result = await this.client.sendCommand(command.vin, command.def.domain, command.action, body);
+		this.quota.recordResponse(result.meta);
+
+		if (result.ok) {
+			this.entries.delete(key);
+			this.log.info(`${command.name}: an die API uebergeben.`);
+			await this.report(command, 'SENT', undefined, {
+				path: command.statePath,
+				// Der Knopf faellt zurueck, der Schalter behaelt den Soll-Zustand.
+				value: command.viaSwitch ? command.desired : false,
+			});
+			// Ob das Fahrzeug den Befehl ausgefuehrt hat, zeigt erst der naechste Poll.
+			this.onCommandSent?.(command.vin);
+			return;
+		}
+
+		await this.handleError(key, entry, result.error);
+	}
+
+	/**
+	 * Entscheidet nach der Fehlertabelle, was aus einem gescheiterten Befehl wird.
+	 *
+	 * @param key Schluessel des Eintrags.
+	 * @param entry Der wartende Befehl.
+	 * @param error Der Fehler aus dem Client.
+	 */
+	private async handleError(key: string, entry: QueueEntry, error: ApiError): Promise<void> {
+		const { command } = entry;
+
+		if (error.kind === 'operation-not-supported') {
+			// Dauerhaft merken: Diese Faehigkeit bekommt das Fahrzeug nicht mehr (E15).
+			this.unsupported.add(key);
+			this.entries.delete(key);
+			this.log.error(`${command.name}: ${error.message}`);
+			await this.report(command, 'REJECTED_BY_VEHICLE', error.problemType);
+			return;
+		}
+
+		if (error.kind === 'operation-disabled' || error.kind === 'operation-not-authorized') {
+			this.entries.delete(key);
+			this.log.warn(`${command.name}: ${error.message}`);
+			await this.report(command, 'REJECTED_BY_VEHICLE', error.problemType);
+			return;
+		}
+
+		if (error.kind === 'api-key-expired' || error.kind === 'api-key-not-authorized') {
+			this.entries.delete(key);
+			this.onConnectionChange?.(false);
+			this.log.error(`${command.name}: ${error.message}`);
+			await this.report(command, 'FAILED', error.problemType);
+			return;
+		}
+
+		if (error.retryable && entry.attempts < error.maxRetries) {
+			const now = this.now();
+			const waitMs = error.retryAfterMs ?? this.jitteredRetry();
+			if (now + waitMs >= entry.expiresAt) {
+				this.entries.delete(key);
+				this.log.info(
+					`${command.name}: verworfen, die Wartezeit von ${Math.round(waitMs / 60_000)} min ` +
+						'ist laenger als seine Lebensdauer.',
+				);
+				await this.report(command, 'EXPIRED', error.problemType);
+				return;
+			}
+			entry.attempts += 1;
+			entry.notBefore = now + waitMs;
+			this.log.warn(
+				`${command.name}: ${error.message} - Versuch ${entry.attempts} in ${Math.round(waitMs / 1000)} s.`,
+			);
+			if (!entry.queuedReported) {
+				entry.queuedReported = true;
+				await this.report(command, 'QUEUED', error.problemType);
+			}
+			return;
+		}
+
+		this.entries.delete(key);
+		this.log.error(`${command.name}: ${error.message}`);
+		await this.report(
+			command,
+			error.kind === 'vehicle-not-accepting-requests' ? 'REJECTED_BY_VEHICLE' : 'FAILED',
+			error.problemType,
+		);
+	}
+
+	/**
+	 * Meldet das Ergebnis nach oben.
+	 *
+	 * @param command Der Befehl.
+	 * @param result Wie er ausgegangen ist.
+	 * @param problemType Problemtyp der API, sofern einer kam.
+	 * @param acknowledge Der zu quittierende Zustand.
+	 */
+	private async report(
+		command: ParsedCommand,
+		result: CommandResult,
+		problemType?: string,
+		acknowledge?: CommandReport['acknowledge'],
+	): Promise<void> {
+		await this.onReport(command.vin, {
+			name: command.name,
+			result,
+			timestamp: this.now(),
+			problemType,
+			acknowledge,
+		});
+	}
+
+	/**
+	 * Der Ist-Zustand einer Domaene aus dem letzten Poll.
+	 *
+	 * @param command Der Befehl.
+	 * @returns True oder false, oder undefined solange nichts gepollt wurde.
+	 */
+	private isActive(command: ParsedCommand): boolean | undefined {
+		const block = this.blocks.get(command.vin)?.get(command.def.part);
+		if (!block) {
+			return undefined;
+		}
+		let current: unknown = block;
+		for (const part of command.def.statePath.split('.')) {
+			if (typeof current !== 'object' || current === null) {
+				return undefined;
+			}
+			current = (current as Record<string, unknown>)[part];
+		}
+		return typeof current === 'string' ? command.def.activeStates.includes(current) : undefined;
+	}
+
+	/**
+	 * Schluessel eines Eintrags: ein wartender Befehl je Fahrzeug und Domaene.
+	 *
+	 * @param command Der Befehl.
+	 * @returns Der Schluessel.
+	 */
+	private keyOf(command: ParsedCommand | { vin: string; def: CommandDomainDef }): string {
+		return `${command.vin}|${command.def.part}`;
+	}
+
+	/**
+	 * Wartezeit vor einer Wiederholung, mit Jitter (E15).
+	 *
+	 * @returns Wartezeit in Millisekunden.
+	 */
+	private jitteredRetry(): number {
+		return Math.round(this.retryMs * (0.5 + this.random()));
+	}
+
+	/**
+	 * Wann der naechste Versuch faellig ist.
+	 *
+	 * @returns Millisekunden, oder undefined wenn nichts wartet.
+	 */
+	private msUntilNext(): number | undefined {
+		let earliest: number | undefined;
+		for (const entry of this.entries.values()) {
+			const due = Math.min(entry.notBefore, entry.expiresAt);
+			if (earliest === undefined || due < earliest) {
+				earliest = due;
+			}
+		}
+		return earliest === undefined ? undefined : Math.max(0, earliest - this.now());
+	}
+}

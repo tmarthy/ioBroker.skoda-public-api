@@ -381,6 +381,49 @@ describe('states/StateWriter => Antwort in den Objektbaum', () => {
 		});
 	});
 
+	describe('Ergebnis eines Befehls', () => {
+		it('schreibt es nach info.lastCommand', async () => {
+			await writer.write(VIN, fixture('idle'));
+			await writer.writeCommandResult(VIN, {
+				name: 'charging.start',
+				result: 'SENT',
+				timestamp: clock,
+				acknowledge: { path: 'charging.enabled', value: true },
+			});
+
+			expect(adapter.val(`${VIN}.info.lastCommand.name`)).to.equal('charging.start');
+			expect(adapter.val(`${VIN}.info.lastCommand.result`)).to.equal('SENT');
+			expect(adapter.val(`${VIN}.info.lastCommand.timestamp`)).to.equal(clock);
+			const common = adapter.objects.get(`${VIN}.info.lastCommand.result`)?.common as ioBroker.StateCommon;
+			expect(common.states).to.include({ SENT: 'Handed over to the API' });
+		});
+
+		it('quittiert den ausloesenden Zustand, obwohl sein Wert derselbe bleibt', async () => {
+			await writer.write(VIN, fixture('idle'));
+			// Der Nutzer hat true geschrieben, mit ack: false. setStateChanged wuerde
+			// bei gleichem Wert gar nicht schreiben - die Quittung bliebe aus.
+			await adapter.setStateAsync(`${VIN}.charging.enabled`, { val: true, ack: false });
+			adapter.writes.length = 0;
+
+			await writer.writeCommandResult(VIN, {
+				name: 'charging.start',
+				result: 'SENT',
+				timestamp: clock,
+				acknowledge: { path: 'charging.enabled', value: true },
+			});
+
+			expect(adapter.writes).to.contain(`${VIN}.charging.enabled`);
+			expect(adapter.states.get(`${VIN}.charging.enabled`)).to.include({ val: true, ack: true });
+		});
+
+		it('kommt auch vor dem ersten Poll zurecht', async () => {
+			await writer.writeCommandResult(VIN, { name: 'charging.stop', result: 'EXPIRED', timestamp: clock });
+			expect(adapter.objects.get(VIN)?.type).to.equal('device');
+			expect(adapter.val(`${VIN}.info.lastCommand.result`)).to.equal('EXPIRED');
+			expect(adapter.val(`${VIN}.info.lastCommand.problemType`)).to.equal('');
+		});
+	});
+
 	describe('Unbekannte Pfade', () => {
 		it('legt sie mit geratenem Typ an und warnt genau einmal', async () => {
 			const response = fixture('idle');

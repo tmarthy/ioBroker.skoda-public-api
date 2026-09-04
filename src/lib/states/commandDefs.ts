@@ -65,6 +65,45 @@ export const COMMAND_DEFS: readonly CommandDomainDef[] = [
 ];
 
 /**
+ * Wie ein Befehl ausgegangen ist (E5).
+ *
+ * `FAILED` steht nicht in E5. Es ist trotzdem noetig: Ein `500`, ein `400` oder ein
+ * Netzwerkfehler ist weder eine Ablehnung durch das Fahrzeug noch ein Verfall, und wer
+ * so etwas als `EXPIRED` meldet, schickt jeden auswertenden Skript-Autor an die
+ * falsche Stelle.
+ */
+export type CommandResult = 'SENT' | 'QUEUED' | 'COALESCED' | 'EXPIRED' | 'REJECTED_BY_VEHICLE' | 'FAILED';
+
+/** Alle Ergebnisse mit ihrer Bedeutung - fuer `common.states` des Zustands. */
+export const COMMAND_RESULTS: Readonly<Record<CommandResult, string>> = {
+	SENT: 'Handed over to the API',
+	QUEUED: 'Waiting for quota',
+	COALESCED: 'Dropped, target state already reached',
+	EXPIRED: 'Dropped, time to live exceeded',
+	REJECTED_BY_VEHICLE: 'Rejected by the vehicle',
+	FAILED: 'Failed, see log',
+};
+
+/** Was nach `<vin>.info.lastCommand.*` geschrieben wird. */
+export interface CommandReport {
+	/** Der Befehl, z.B. `charging.start`. */
+	name: string;
+	/** Wie er ausgegangen ist. */
+	result: CommandResult;
+	/** Zeitpunkt in Millisekunden seit Epoch. */
+	timestamp: number;
+	/** Problemtyp der API, sofern einer kam. */
+	problemType?: string;
+	/**
+	 * Der ausloesende Zustand samt Wert, der quittiert werden soll.
+	 *
+	 * `ack: true` heisst hier **an die API uebergeben**, nicht "das Auto hat es getan" -
+	 * mehr weiss der Adapter wegen `202` ohne Status-Endpunkt nicht (E6).
+	 */
+	acknowledge?: { path: string; value: boolean };
+}
+
+/**
  * Findet die Definition zu einem Antwortblock.
  *
  * @param part Der Block, z.B. `charging`.

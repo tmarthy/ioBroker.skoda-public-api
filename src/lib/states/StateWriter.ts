@@ -23,7 +23,7 @@ import { vehicleErrors } from '../api/client';
 import { newestCapturedAt } from '../api/vehicleData';
 import { partFromErrorType } from '../api/parts';
 import type { VehicleResponse } from '../api/types';
-import { COMMAND_DEFS } from './commandDefs';
+import { COMMAND_DEFS, COMMAND_RESULTS, type CommandReport } from './commandDefs';
 import { generatedChannels, generatedStateDefs } from './objectDefs.generated';
 import { resolveCommon } from './objectOverlay';
 
@@ -121,6 +121,60 @@ export class StateWriter {
 		await this.writeCommandStates(vin, vehicle);
 		await this.writeInfo(vin, vehicle, response);
 		await this.markMissingParts(vin, response);
+	}
+
+	/**
+	 * Schreibt das Ergebnis eines Befehls nach `<vin>.info.lastCommand.*`.
+	 *
+	 * Und quittiert den ausloesenden Zustand, sofern der Befehl hinausging. Dafuer
+	 * genuegt `setStateChanged` nicht: Der Nutzer hat den Wert bereits geschrieben, nur
+	 * eben mit `ack: false` - der Wert ist also derselbe, und geschrieben werden muss
+	 * trotzdem.
+	 *
+	 * @param vin Fahrgestellnummer.
+	 * @param report Was mit dem Befehl geschehen ist.
+	 */
+	public async writeCommandResult(vin: string, report: CommandReport): Promise<void> {
+		await this.ensureDevice(vin, {});
+		await this.ensureChannel(vin, 'info', 'Adapter information');
+		await this.ensureChannel(vin, 'info.lastCommand', 'Last command');
+
+		await this.writeDerived(vin, 'info.lastCommand.name', report.name, {
+			name: 'Last command',
+			type: 'string',
+			role: 'text',
+			read: true,
+			write: false,
+		});
+		await this.writeDerived(vin, 'info.lastCommand.result', report.result, {
+			name: 'Result of the last command',
+			type: 'string',
+			role: 'text',
+			read: true,
+			write: false,
+			states: { ...COMMAND_RESULTS },
+		});
+		await this.writeDerived(vin, 'info.lastCommand.timestamp', report.timestamp, {
+			name: 'When the last command was processed',
+			type: 'number',
+			role: 'date',
+			read: true,
+			write: false,
+		});
+		await this.writeDerived(vin, 'info.lastCommand.problemType', report.problemType ?? '', {
+			name: 'Problem type reported by the API',
+			type: 'string',
+			role: 'text',
+			read: true,
+			write: false,
+		});
+
+		if (report.acknowledge) {
+			await this.api.setStateAsync(`${vin}.${report.acknowledge.path}`, {
+				val: report.acknowledge.value,
+				ack: true,
+			});
+		}
 	}
 
 	/**

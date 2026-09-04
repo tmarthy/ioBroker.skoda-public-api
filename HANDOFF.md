@@ -57,12 +57,12 @@ Ziel-SoC setzen, Ladeprofile ändern, Schlüssel automatisch erneuern.
 | 8 | Admin-UI | teilweise (in Phase 6 vorgezogen), offen: Verbindungstest, Übersetzungen |
 | 9–12 | Schlüsselablauf, Tests/CI, Doku, Release | offen |
 
-Letzter vollständig grüner Lauf (2026-09-03):
+Letzter vollständig grüner Lauf (2026-09-04):
 
 ```
 npm run check            tsc --noEmit, fehlerfrei
 npm run lint             0 Fehler, 0 Warnungen
-npm run test:ts          247 Tests
+npm run test:ts          281 Tests
 npm run test:package     57 Tests
 npm run test:integration  1 Test  (startet den Adapter in einer echten ioBroker-Instanz)
 npm run build            Type-Check und esbuild fehlerfrei
@@ -311,7 +311,8 @@ Client direkt auf.
 | `src/lib/quota/AdapterQuotaStore.ts` | Quota-Zustand in `info.rateLimit.*` | fertig |
 | `src/lib/scheduler/PollScheduler.ts` | Kadenz, Frische-Backoff, `include` | fertig |
 | `test/helpers/fakeAdapter.ts` | Adapter-Doppel für die Tests | fertig |
-| `src/lib/commands/CommandQueue.ts` | Soll-Zustand, Coalescing, TTL | Phase 7 |
+| `src/lib/commands/CommandQueue.ts` | Soll-Zustand, Coalescing, TTL (E5) | fertig |
+| `src/lib/commands/commandMap.ts` | State-ID → Endpunkt + Body-Builder | fertig |
 | `src/main.ts` | Lifecycle, Verdrahtung der vier Schichten | fertig |
 
 ---
@@ -390,83 +391,76 @@ zweites Mal hineinläuft oder eine Korrektur versehentlich zurückdreht.
 
 ## 7. Der nächste Schritt
 
-**Phase 7 — CommandQueue. Das ist Meilenstein 2: der steuernde Adapter.**
+**Phase 8 — den Rest der Admin-UI.** Felder, `native`-Vorgaben und `encryptedNative`
+stehen seit Phase 6. Was fehlt:
 
-Der Adapter liest bereits; was fehlt, ist der Weg zurück. Die Queue nimmt Schreibvorgänge
-auf `<vin>.<block>.enabled` (Soll) und `<vin>.<block>.start|stop` (erzwungen) entgegen
-und setzt sie ab, sobald Budget da ist.
+- Der **„Verbindung testen"-Button** (`sendTo`), der genau einen `GET` absetzt und
+  Schlüssel, VIN, Ablaufdatum und Restquota zurückmeldet. Ohne ihn äußert sich ein
+  Tippfehler in der VIN als `403 api-key-not-authorized` — eine Meldung, aus der
+  niemand die Ursache errät. Der Test kostet einen Request; das gehört in den
+  Hinweistext. `main.ts` braucht dafür einen `message`-Handler.
+- Die **Übersetzungen** außer Deutsch (`@iobroker/adapter-dev translate`, DE/EN von
+  Hand, Rest maschinell) und der Feinschliff der Gruppierung.
 
-- **Idempotenz:** Soll gleich Ist → kein Request, Ergebnis `COALESCED`.
-- **Coalescing:** Ein neuer Soll-Wert ersetzt den wartenden Eintrag derselben Domäne.
-  Entspricht der neue Soll dem Ist, verfällt der Eintrag ersatzlos. Grund: Bang-Bang
-  auf einer PV-Anlage produziert Schaltnervosität, und gedämpft wird sie an der einzigen
-  Stelle, die das Budget kennt (E5).
-- **TTL 10 Minuten** (`commandTtl`, steht schon in der Konfiguration). Ist `Retry-After`
-  länger als die Rest-TTL: sofort `EXPIRED`, statt Budget für einen Befehl auszugeben,
-  den niemand mehr will (E15).
-- `air-conditioning/start` baut den Body aus den gepufferten States
-  `targetTemperature` und `airConditioningWithoutExternalPower`;
-  `auxiliary-heating/start` nimmt den S-PIN **aus der Instanzkonfiguration, niemals aus
-  einem State** (E6/E14). Der Client maskiert ihn bereits in jeder Meldung, wenn er ihm
-  als `secrets` übergeben wird — `main.ts` tut das.
-- Ergebnis nach `info.lastCommand.{name,timestamp,result,problemType}`, `ack=true` bei
-  erfolgreicher Übergabe an die API. **`ack=true` heißt „an die API übergeben", nicht
-  „das Auto hat es getan"** — mehr weiß der Adapter wegen `202` ohne Status-Endpunkt
-  nicht (E6).
+Danach **Phase 9** (Schlüsselablauf und Notifications): `X-API-Key-Expires-At` steht in
+jeder Antwort und kommt als `meta.apiKeyExpiresAt` beim Aufrufer an — bisher wertet es
+niemand aus. Daraus `info.apiKey.expiresAt` und `daysRemaining`, Log-Eskalation bei
+14/7/2 Tagen und `registerNotification()` ab sieben Tagen (E10).
 
-**Fertig, wenn:** `enabled=true`, dann innerhalb der TTL `enabled=false` → null Requests,
-Ergebnis `COALESCED`. Und: `enabled=true` bei leerem Budget → `QUEUED`, Ausführung nach
-dem Zurücksetzen des Fensters.
+**Phase 10** hat den größten offenen Posten: der Adapter Ende zu Ende in einer echten
+ioBroker-Instanz gegen den Mock, inklusive Neustart mitten im Fenster. **Achtung:** Der
+API-Schlüssel steht unter `encryptedNative`; ein Test, der die Instanz selbst
+konfiguriert, muss ihn mit dem Systemschlüssel aus `system.config` verschlüsseln
+(Fallstrick 12).
 
-### Was für Phase 7 schon bereitliegt
+### Was aus Phase 7 zu wissen ist
 
-- **`quota.tryAcquire('command')`** geht bis `remaining === 0` durch, während Polls
-  schon bei der Reserve anhalten. Danach **immer** `recordResponse(result.meta)`.
-- **`client.sendCommand(vin, domain, action, body?)`** liefert `ok: true` bei `202`.
-  Jeder Fehler trägt `retryable`, `maxRetries` und `retryAfterMs` aus der Fehlertabelle
-  — die Tabelle also nicht abtippen, sondern die Felder auswerten.
-- **`scheduler.requestVerificationPoll(vin)`** zieht den nächsten Poll auf 60 Sekunden
-  vor und hält danach zehn Minuten die aktive Kadenz. Genau dafür ist die Methode da.
-- **`commandDefs.ts`** trägt Domäne ↔ Antwortblock, den Pfad zum Ist-Zustand und die
-  Werte, bei denen `enabled` true ist. Der StateWriter legt die Befehls-States daraus
-  an — und nur für Blöcke, die das Fahrzeug liefert (E15).
-- **`main.ts` muss `subscribeStates` ergänzen.** Bisher abonniert der Adapter nichts;
-  die Befehls-States sind zwar schreibbar, aber niemand hört zu.
-- `commandTtl` und `spin` stehen bereits in der Instanzkonfiguration und in
-  `readConfig()`.
+- **Ein Befehl kostet zwei Requests, nicht einen:** den POST und den Verifikations-Poll
+  60 Sekunden später. Die API antwortet mit `202` und kennt keinen Endpunkt, der den
+  Ausgang meldet.
+- **`ack: true` heißt „an die API übergeben"**, nicht „das Auto hat es getan" (E6). Das
+  gehört in die README, sonst baut jemand eine Regelung auf eine Zusage, die der
+  Adapter nicht geben kann.
+- **Der Soll-Schalter ist idempotent, der Knopf nicht.** Entspricht `enabled` dem
+  zuletzt gepollten Ist, geht kein Request hinaus (`COALESCED`). Wer trotzdem senden
+  will — weil die Daten zehn Minuten alt sind —, nimmt `start`/`stop`.
+- **Sechs Ergebnisse** in `info.lastCommand.result`: `SENT`, `QUEUED`, `COALESCED`,
+  `EXPIRED`, `REJECTED_BY_VEHICLE`, `FAILED`. Das letzte steht nicht in E5 und ist
+  bewusst ergänzt: Ein `500` ist weder eine Ablehnung noch ein Verfall.
+- **Der S-PIN kommt aus der Instanzkonfiguration, niemals aus einem State** (E6/E14).
+  Fehlt er, verfällt der Befehl, ohne einen Request zu kosten. Der Client bekommt ihn
+  als `secrets` und maskiert ihn damit in jeder Meldung.
+- **`operation-not-supported` wird dauerhaft gemerkt**, aber kein Objekt angefasst:
+  Gelöscht wird nie (E13), und ein stilles `write: false` würde den Schalter
+  unbrauchbar machen, ohne dass jemand sähe warum.
 
 ### Was aus Phase 6 zu wissen ist
 
 - **Der Scheduler schreibt keine States.** Er reicht die Antwort über `onVehicleData`
-  nach oben, wo `main.ts` den StateWriter eingehängt hat. Wer das umdreht, hebt die
-  Schichtung auf.
-- **`tick()` ist der ganze Motor:** Es führt alle fälligen Polls aus und liefert die
-  Zeit bis zum nächsten. `start()` hängt das an die Zeitgeber der Adapter-Instanz. Tests
-  brauchen deshalb keine echten Timer, sondern stellen die Uhr um den Rückgabewert vor.
+  nach oben, wo `main.ts` StateWriter und CommandQueue bedient. Wer das umdreht, hebt
+  die Schichtung auf.
+- **`tick()` ist der ganze Motor** — bei Scheduler wie Queue: Es arbeitet ab, was fällig
+  ist, und liefert die Zeit bis zum nächsten Mal. Tests brauchen deshalb keine echten
+  Timer, sondern stellen die Uhr um den Rückgabewert vor.
 - **Der Frische-Backoff greift im Befehlsfenster nicht.** Dass ein Auto 60 Sekunden nach
   einem Befehl noch nichts gemeldet hat, ist der Normalfall.
 - **`404` setzt eine VIN dauerhaft aus, `401`/`403` drosseln auf einmal pro Stunde**
   und setzen `info.connection` auf false. Bei `429` bleibt die Verbindung bestehen — ein
   leeres Budget ist Normalbetrieb (E10).
-- Die Kadenz-Untergrenzen (5 min, 3 min) stehen im Scheduler **und** in `readConfig()`.
-  Beide Wege sollen sich das Budget nicht zerlegen können.
 
 ### Was aus den Phasen 3 bis 5 zu wissen ist
 
 - **Jede Meldung der HTTP-Schicht ist maskiert** (E14). Wer selbst eine Meldung baut,
   die eine URL, eine VIN oder ein Geheimnis enthalten könnte, nimmt `createSanitizer()`.
-  Der Scheduler kürzt VINs im Log auf die letzten vier Zeichen.
 - **`vehicleErrors(response)`** ist die einzige Stelle, die `errors ?? []` umsetzt
-  (Fallstrick 10). Der Client normalisiert die Antwort nicht.
+  (Fallstrick 10).
 - **Die beiden `429` unterscheiden sich nur am `type`.** `rate-limit-exceeded` darf
-  geduldig warten (`maxRetries: Infinity`, begrenzt durch die TTL des Befehls),
-  `vehicle-not-accepting-requests` kommt vom Auto und höchstens dreimal.
-- **Der QuotaManager glaubt den Headern, nicht seiner eigenen Rechnung.** `remaining`
-  wird nur aus einer Antwort gesetzt; `snapshot().confirmed` sagt, ob die Zahl bestätigt
-  oder geschätzt ist.
+  geduldig warten, `vehicle-not-accepting-requests` kommt vom Auto und höchstens
+  dreimal.
+- **Der QuotaManager glaubt den Headern, nicht seiner eigenen Rechnung.** Polls halten
+  bei der Reserve an, Befehle dürfen sie aufbrauchen.
 - **Der StateWriter legt nur an, was in der Antwort steht, und löscht nie.** Fehlende
-  Teile behalten ihren Wert und bekommen Quality `0x01`; unbekannte Pfade werden mit
-  geratenem Typ angelegt und einmal gemeldet.
+  Teile behalten ihren Wert und bekommen Quality `0x01`.
 
 ---
 
