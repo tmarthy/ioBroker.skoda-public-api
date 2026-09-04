@@ -468,12 +468,33 @@ Beides liegt vor, gegen den Mock gefahren — samt der drei Fälle, die daneben 
 werden könnten: `Retry-After` länger als die Lebensdauer, dreimal abgelehnt vom
 Fahrzeug, und ein fehlender S-PIN, der gar keinen Request kostet.
 
-### Phase 8 — Admin-UI · S · **teilweise in Phase 6 vorgezogen**
+### Phase 8 — Admin-UI · S · **erledigt**
 
-> Felder, `native`-Vorgaben und `encryptedNative` stehen bereits — ohne sie hätte der
-> lesende Adapter aus Phase 6 nicht konfiguriert werden können. **Offen:** der
-> „Verbindung testen"-Button, die Übersetzungen außer Deutsch und der Feinschliff
-> (Gruppierung, Hinweistexte am richtigen Feld).
+> Felder, `native`-Vorgaben und `encryptedNative` kamen in Phase 6 vorgezogen dazu;
+> Phase 8 hat den „Verbindung testen"-Button, die Gruppierung und die Übersetzungen
+> nachgeliefert.
+>
+> **Abweichungen und Funde:**
+> - **`common.messagebox: true` fehlte.** Ohne diese Kennzeichnung stellt js-controller
+>   `sendTo`-Nachrichten gar nicht erst zu: Der Knopf dreht sich bis zum Timeout, ohne
+>   Fehler, ohne Logzeile. Gefunden hat das erst der Versuch in einer echten Instanz —
+>   kein Unit-Test hätte es je gezeigt.
+> - Der Test fordert **nur `include=info`** an. Das kostet dieselbe Quota, liefert aber
+>   Name und Kennzeichen zum Wiedererkennen — und eben nicht die Parkposition, die in
+>   einem Verbindungstest nichts zu suchen hat (E14).
+> - Er prüft das **erste** Fahrzeug und meldet eine unbrauchbare erste Zeile, statt
+>   still die zweite zu nehmen: Sonst meldet er Erfolg für ein Fahrzeug, das niemand
+>   gemeint hat.
+> - Geprüft werden die Werte **aus dem Formular**, nicht die gespeicherten. Wer gerade
+>   einen neuen Schlüssel eingetippt hat, will genau den prüfen.
+> - Der Request wird im QuotaManager gebucht, aber **nicht** von ihm blockiert: Ein
+>   `429` ist selbst eine brauchbare Antwort („der Schlüssel ist in Ordnung, das Budget
+>   ist alle") und kostet nichts.
+> - Die Ergebnistexte sind deutsch **mit Umlauten** — sie stehen in der Oberfläche.
+>   Der übrige Code bleibt bei der ASCII-Umschrift.
+> - Übersetzungen: Deutsch von Hand, neun weitere Sprachen maschinell über
+>   `translate-adapter` (Legacy-Google-Route, ohne Zugangsdaten). Englisch ist die
+>   Quellsprache und steht als Identität in `admin/i18n/en.json`.
 
 `admin/jsonConfig.json`:
 
@@ -490,12 +511,17 @@ Fahrzeug, und ein fehlender S-PIN, der gar keinen Request kostet.
 | `readParkingPosition` | checkbox | an | E14 |
 
 Dazu ein **"Verbindung testen"-Button** (`sendTo`), der genau einen `GET` absetzt
-und Key, VIN, Ablaufdatum und Restquota zurückmeldet. Ohne ihn äußert sich ein
+und Fahrzeugname, Ablaufdatum und Restquota zurückmeldet. Ohne ihn äußert sich ein
 Tippfehler in der VIN als `403 api-key-not-authorized` — eine Meldung, aus der
 niemand die Ursache errät. Der Test kostet einen Request; das gehört in den
 Hinweistext.
 
 **Keine** Basis-URL in der UI (E12).
+
+**Fertig, wenn:** Der Knopf beantwortet in einer laufenden Instanz die vier Fälle, die
+man sonst nicht auseinanderhält — Schlüssel abgelaufen, Schlüssel gilt nicht für diese
+VIN, VIN unbekannt, Budget erschöpft. Nachgewiesen: unit gegen den Mock, und einmal von
+Hand im Admin des dev-servers (siehe HANDOFF.md, Abschnitt 3).
 
 ### Phase 9 — Key-Ablauf und Notifications · S
 
@@ -516,6 +542,10 @@ Hinweistext.
   `encryptedNative`. Ein Test, der die Instanz selbst konfiguriert, muss ihn deshalb
   mit dem Systemschlüssel aus `system.config` verschlüsseln — ein Klartextwert wird
   beim Start entschlüsselt und ergibt Unsinn.
+  Der Durchlauf **von Hand** ist erledigt (Phase 8, siehe HANDOFF.md, Abschnitt 3):
+  Objektbaum, `info.rateLimit.*`, Sperrfrist nach dem Neustart, Befehl mit
+  Verifikations-Poll und der Verbindungstest liefen in einer echten Instanz gegen den
+  Mock. Was fehlt, ist die Automatisierung davon.
 - `@iobroker/testing`: Paket- und Startup-Tests.
 - GitHub Actions: Lint, Build, Test auf Node 22 und 24; Spec-Wächter wöchentlich.
 

@@ -1,6 +1,6 @@
 # Handoff — ioBroker.skoda-public-api
 
-**Stand: 2026-09-03, nach Phase 6 — Meilenstein 1 ist erreicht: der Adapter liest.** Auf GitHub, CI grün. Alle vier Schichten stehen und sind in `main.ts` verdrahtet. Diese Datei ist der Einstieg für jeden, der die
+**Stand: 2026-09-04, nach Phase 8.** Auf GitHub, CI grün. Der Adapter liest und steuert, die Admin-UI ist vollständig — und beides ist einmal von Hand in einer echten ioBroker-Instanz gegen den Mock durchgespielt worden. Diese Datei ist der Einstieg für jeden, der die
 Arbeit übernimmt oder nach einer Pause wieder aufnimmt. Sie beschreibt, wo das Projekt
 steht, was als Nächstes ansteht und welche Fallstricke bereits bekannt sind.
 
@@ -53,16 +53,17 @@ Ziel-SoC setzen, Ladeprofile ändern, Schlüssel automatisch erneuern.
 | 4 | QuotaManager | **fertig** |
 | 5 | StateWriter | **fertig** |
 | 6 | PollScheduler, Verdrahtung → **Meilenstein 1: lesender Adapter** | **fertig** |
-| 7 | CommandQueue → **Meilenstein 2: steuernder Adapter** | offen — **als Nächstes** |
-| 8 | Admin-UI | teilweise (in Phase 6 vorgezogen), offen: Verbindungstest, Übersetzungen |
-| 9–12 | Schlüsselablauf, Tests/CI, Doku, Release | offen |
+| 7 | CommandQueue → **Meilenstein 2: steuernder Adapter** | **fertig** |
+| 8 | Admin-UI, Verbindungstest, Übersetzungen | **fertig** |
+| 9 | Schlüsselablauf und Notifications | offen — **als Nächstes** |
+| 10–12 | Tests/CI, Doku, Release | offen |
 
 Letzter vollständig grüner Lauf (2026-09-04):
 
 ```
 npm run check            tsc --noEmit, fehlerfrei
 npm run lint             0 Fehler, 0 Warnungen
-npm run test:ts          281 Tests
+npm run test:ts          299 Tests
 npm run test:package     57 Tests
 npm run test:integration  1 Test  (startet den Adapter in einer echten ioBroker-Instanz)
 npm run build            Type-Check und esbuild fehlerfrei
@@ -139,6 +140,27 @@ fällt beim Erzeugen des Clients auf, nicht erst beim ersten Request.
 `encryptedNative` — **nicht im Objektbrowser eintragen**, dort landet er im Klartext
 und wird beim Start als verschlüsselt behandelt (Fallstrick 12). Gegen den Mock sind
 das `mock-api-key` und `TMBJB9NY5RF999999`.
+
+**Der ganze Ablauf, einmal durchgespielt** (2026-09-04, hat funktioniert):
+
+```bash
+npm run mock &                                    # Mock auf 127.0.0.1:8099
+SKODA_API_BASE_URL=http://127.0.0.1:8099 npx iobroker-dev-server run default
+
+# Nach jeder Änderung an src/ oder admin/ (siehe Fallstrick 14):
+npm pack
+cd .dev-server/default
+npm install ../../iobroker.skoda-public-api-0.0.1.tgz
+./iob upload skoda-public-api        # bringt admin/ und io-package.json in die DB
+./iob restart skoda-public-api.0
+```
+
+Danach im Admin den Schlüssel eintragen, speichern, Instanz starten. Beobachtet wurden:
+`info.connection = true`, der volle Objektbaum unter der VIN, `info.rateLimit.*` mit
+dem gebuchten Budget, ein Befehl über `charging.enabled` mit `info.lastCommand.result
+= SENT` und dem Verifikations-Poll 60 Sekunden später (`charging.status.state` springt
+auf `CHARGING`) — und nach einem Neustart **kein** sofortiger Poll, weil die Sperrfrist
+des QuotaManagers greift.
 
 ### Umgebung
 
@@ -313,6 +335,7 @@ Client direkt auf.
 | `test/helpers/fakeAdapter.ts` | Adapter-Doppel für die Tests | fertig |
 | `src/lib/commands/CommandQueue.ts` | Soll-Zustand, Coalescing, TTL (E5) | fertig |
 | `src/lib/commands/commandMap.ts` | State-ID → Endpunkt + Body-Builder | fertig |
+| `src/lib/connectionTest.ts` | „Verbindung testen" der Admin-UI | fertig |
 | `src/main.ts` | Lifecycle, Verdrahtung der vier Schichten | fertig |
 
 ---
@@ -386,32 +409,62 @@ zweites Mal hineinläuft oder eine Korrektur versehentlich zurückdreht.
    ausschließlich über die Admin-UI setzen. Ein Test, der eine Instanz selbst
    konfiguriert (Phase 10), muss den Wert mit dem Systemschlüssel aus `system.config`
    verschlüsseln.
+13. **`common.messagebox: true` in `io-package.json` ist Pflicht, sobald ein `sendTo`
+   im Spiel ist.** Ohne die Kennzeichnung stellt js-controller die Nachricht gar nicht
+   erst zu: Der „Verbindung testen"-Knopf dreht sich bis zum Timeout — keine
+   Fehlermeldung, keine Logzeile, nichts. Kein Unit-Test hätte das gezeigt; gefunden
+   hat es erst der Versuch in einer echten Instanz.
+14. **`iobroker-dev-server upload` ist in diesem Repo kaputt** — als Folge von
+   Fallstrick 7. Das Werkzeug liest den Namen des Pakets aus der Ausgabe von
+   `npm pack`, und unser `prepare`-Skript schreibt genau dort den Build-Fortschritt
+   hinein; `npm` sucht die Datei dann unter „> iobroker.skoda-public-api@0.0.1
+   prepare" und bricht mit `ENOENT` ab. Der Weg von Hand steht in Abschnitt 3.
+   Dazu gehört: **Der dev-server hält eine Kopie des Adapters, keinen Symlink**, und
+   `dev-server run` frischt sie nicht auf.
 
 ---
 
 ## 7. Der nächste Schritt
 
-**Phase 8 — den Rest der Admin-UI.** Felder, `native`-Vorgaben und `encryptedNative`
-stehen seit Phase 6. Was fehlt:
+**Phase 9 — Schlüsselablauf und Notifications.** Klein, und die letzte Lücke im
+Betriebsverhalten: Ein abgelaufener Schlüssel fällt sonst wochenlang nicht auf, weil die
+Werte laut E8 absichtlich stehenbleiben.
 
-- Der **„Verbindung testen"-Button** (`sendTo`), der genau einen `GET` absetzt und
-  Schlüssel, VIN, Ablaufdatum und Restquota zurückmeldet. Ohne ihn äußert sich ein
-  Tippfehler in der VIN als `403 api-key-not-authorized` — eine Meldung, aus der
-  niemand die Ursache errät. Der Test kostet einen Request; das gehört in den
-  Hinweistext. `main.ts` braucht dafür einen `message`-Handler.
-- Die **Übersetzungen** außer Deutsch (`@iobroker/adapter-dev translate`, DE/EN von
-  Hand, Rest maschinell) und der Feinschliff der Gruppierung.
+Alles Nötige liegt bereit: `X-API-Key-Expires-At` kommt aus **jeder** Antwort als
+`meta.apiKeyExpiresAt` (ein `Date`) beim Aufrufer an — bisher wertet es niemand aus.
+Zu bauen ist:
 
-Danach **Phase 9** (Schlüsselablauf und Notifications): `X-API-Key-Expires-At` steht in
-jeder Antwort und kommt als `meta.apiKeyExpiresAt` beim Aufrufer an — bisher wertet es
-niemand aus. Daraus `info.apiKey.expiresAt` und `daysRemaining`, Log-Eskalation bei
-14/7/2 Tagen und `registerNotification()` ab sieben Tagen (E10).
+- `info.apiKey.expiresAt` und `info.apiKey.daysRemaining` (der StateWriter kann das
+  über `writeDerived`, wie er es für `info.rateLimit.*` und `info.lastCommand.*` schon
+  tut — der Weg dorthin führt über `main.ts`, wo `meta` ohnehin durchläuft).
+- Log-Eskalation bei 14 (`info`), 7 (`warn`) und 2 Tagen (`error`), **höchstens einmal
+  pro Tag** — sonst steht bei einer Kadenz von 15 Minuten hundertmal dasselbe im Log.
+- `notifications`-Scope in `io-package.json` und `registerNotification()` ab sieben
+  Tagen (E10).
+- Bei `401 api-key-expired` ist die Drosselung auf einmal pro Stunde und
+  `info.connection = false` bereits umgesetzt (Phase 6); es fehlt nur die
+  Benachrichtigung.
 
-**Phase 10** hat den größten offenen Posten: der Adapter Ende zu Ende in einer echten
-ioBroker-Instanz gegen den Mock, inklusive Neustart mitten im Fenster. **Achtung:** Der
-API-Schlüssel steht unter `encryptedNative`; ein Test, der die Instanz selbst
-konfiguriert, muss ihn mit dem Systemschlüssel aus `system.config` verschlüsseln
-(Fallstrick 12).
+Danach **Phase 10**: den Durchlauf aus Abschnitt 3 automatisieren (Adapter gegen den
+Mock über eine simulierte Stunde, mit Neustart mitten im Fenster). Von Hand ist er
+gelaufen; was fehlt, ist ein Test, der ihn festhält. **Achtung:** Der Schlüssel steht
+unter `encryptedNative` — ein Test, der die Instanz selbst konfiguriert, muss ihn mit
+dem Systemschlüssel aus `system.config` verschlüsseln (Fallstrick 12).
+
+### Was aus Phase 8 zu wissen ist
+
+- **Der Verbindungstest ist der einzige `sendTo`-Weg im Adapter.** Er hängt an
+  `common.messagebox: true` (Fallstrick 13) und an `src/lib/connectionTest.ts`; die
+  Nachricht kommt in `main.ts` an.
+- Er fordert **nur `include=info`** an: Name und Kennzeichen zum Wiedererkennen, aber
+  keine Parkposition (E14). Er kostet einen Request und wird im QuotaManager gebucht,
+  aber nicht von ihm blockiert — ein `429` ist selbst eine brauchbare Antwort.
+- **Die Texte der Oberfläche sind deutsch mit Umlauten**, der übrige Code bleibt bei
+  der ASCII-Umschrift. Wer neue UI-Texte schreibt, hält sich an die Oberfläche.
+- **Englisch ist die Quellsprache der Übersetzungen.** Die Schlüssel in
+  `admin/i18n/en.json` sind Identitäten, Deutsch steht von Hand daneben, die übrigen
+  neun Sprachen kommen aus `npm run translate`. Wer ein Feld ergänzt: erst nach
+  `en.json`, dann übersetzen lassen (Fallstrick 6).
 
 ### Was aus Phase 7 zu wissen ist
 

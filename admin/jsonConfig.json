@@ -2,6 +2,17 @@
 	"i18n": true,
 	"type": "panel",
 	"items": {
+		"_accessHeader": {
+			"type": "header",
+			"text": "Access",
+			"size": 2,
+			"newLine": true,
+			"xs": 12,
+			"sm": 12,
+			"md": 12,
+			"lg": 12,
+			"xl": 12
+		},
 		"apiKey": {
 			"type": "password",
 			"label": "API key",
@@ -33,6 +44,43 @@
 					"width": "40%"
 				}
 			],
+			"newLine": true,
+			"xs": 12,
+			"sm": 12,
+			"md": 12,
+			"lg": 10,
+			"xl": 8
+		},
+		"testConnection": {
+			"type": "sendTo",
+			"label": "Test connection",
+			"help": "Checks the key against the first vehicle and reports name, key expiry and remaining quota. Costs one of the 20 requests per hour; the instance has to be running.",
+			"command": "testConnection",
+			"jsonData": "{\"apiKey\": ${JSON.stringify(data.apiKey || '')}, \"vins\": ${JSON.stringify(data.vins || [])}}",
+			"variant": "contained",
+			"showProcess": true,
+			"timeout": 30000,
+			"newLine": true,
+			"xs": 12,
+			"sm": 12,
+			"md": 8,
+			"lg": 6,
+			"xl": 6
+		},
+		"_pollingHeader": {
+			"type": "header",
+			"text": "Polling and budget",
+			"size": 2,
+			"newLine": true,
+			"xs": 12,
+			"sm": 12,
+			"md": 12,
+			"lg": 12,
+			"xl": 12
+		},
+		"_budgetHint": {
+			"type": "staticText",
+			"text": "The API allows 20 requests per hour and key. A command costs two of them, because the result only shows up in the next poll.",
 			"newLine": true,
 			"xs": 12,
 			"sm": 12,
@@ -80,9 +128,9 @@
 			"type": "number",
 			"label": "Requests reserved for commands",
 			"help": "Polling stops once only this many requests are left, so a command still gets through.",
+			"newLine": true,
 			"min": 0,
 			"max": 15,
-			"newLine": true,
 			"xs": 12,
 			"sm": 6,
 			"md": 4,
@@ -101,12 +149,21 @@
 			"lg": 3,
 			"xl": 2
 		},
-		"spin": {
-			"type": "password",
-			"label": "S-PIN (auxiliary heating only)",
-			"help": "Only needed for vehicles with an auxiliary heater. Never store it in a state.",
-			"visible": true,
-			"repeat": false,
+		"_privacyHeader": {
+			"type": "header",
+			"text": "Privacy and auxiliary heating",
+			"size": 2,
+			"newLine": true,
+			"xs": 12,
+			"sm": 12,
+			"md": 12,
+			"lg": 12,
+			"xl": 12
+		},
+		"readParkingPosition": {
+			"type": "checkbox",
+			"label": "Read parking position",
+			"help": "When switched off the position is not even requested from the API.",
 			"newLine": true,
 			"xs": 12,
 			"sm": 12,
@@ -114,10 +171,12 @@
 			"lg": 6,
 			"xl": 6
 		},
-		"readParkingPosition": {
-			"type": "checkbox",
-			"label": "Read parking position",
-			"help": "When switched off the position is not even requested from the API.",
+		"spin": {
+			"type": "password",
+			"label": "S-PIN (auxiliary heating only)",
+			"help": "Only needed for vehicles with an auxiliary heater. Never store it in a state.",
+			"visible": true,
+			"repeat": false,
 			"newLine": true,
 			"xs": 12,
 			"sm": 12,

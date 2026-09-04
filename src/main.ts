@@ -5,6 +5,7 @@ import * as utils from '@iobroker/adapter-core';
 import { SkodaApiClient } from './lib/api/client';
 import { CommandQueue } from './lib/commands/CommandQueue';
 import { readConfig } from './lib/config';
+import { pickTestTarget, testConnection } from './lib/connectionTest';
 import { AdapterQuotaStore } from './lib/quota/AdapterQuotaStore';
 import { QuotaManager } from './lib/quota/QuotaManager';
 import { PollScheduler } from './lib/scheduler/PollScheduler';
@@ -21,6 +22,7 @@ import { StateWriter } from './lib/states/StateWriter';
 class SkodaPublicApi extends utils.Adapter {
 	private scheduler?: PollScheduler;
 	private queue?: CommandQueue;
+	private quota?: QuotaManager;
 
 	public constructor(options: Partial<utils.AdapterOptions> = {}) {
 		super({
@@ -29,6 +31,7 @@ class SkodaPublicApi extends utils.Adapter {
 		});
 		this.on('ready', this.onReady.bind(this));
 		this.on('stateChange', this.onStateChange.bind(this));
+		this.on('message', this.onMessage.bind(this));
 		this.on('unload', this.onUnload.bind(this));
 	}
 
@@ -58,6 +61,7 @@ class SkodaPublicApi extends utils.Adapter {
 			onStoreError: error => this.log.warn(`Quota-Stand konnte nicht gespeichert werden: ${String(error)}`),
 		});
 		await quota.start();
+		this.quota = quota;
 
 		const writer = new StateWriter({ api: this });
 
@@ -124,6 +128,61 @@ class SkodaPublicApi extends utils.Adapter {
 	}
 
 	/**
+	 * Beantwortet Nachrichten der Admin-UI.
+	 *
+	 * Bisher gibt es genau eine: den Verbindungstest hinter dem Knopf im
+	 * Konfigurationsdialog.
+	 *
+	 * @param obj Die Nachricht.
+	 */
+	private onMessage(obj: ioBroker.Message): void {
+		if (obj.command !== 'testConnection') {
+			return;
+		}
+		void this.answerConnectionTest(obj);
+	}
+
+	/**
+	 * Fuehrt den Verbindungstest aus und antwortet der Admin-UI.
+	 *
+	 * Der Test laeuft mit den Werten aus dem Formular, nicht mit den gespeicherten:
+	 * Wer gerade einen neuen Schluessel eingetippt hat, will genau den pruefen.
+	 *
+	 * @param obj Die Nachricht aus der Admin-UI.
+	 */
+	private async answerConnectionTest(obj: ioBroker.Message): Promise<void> {
+		const answer = await this.runConnectionTest(obj.message);
+		if (obj.callback) {
+			this.sendTo(obj.from, obj.command, answer, obj.callback);
+		}
+	}
+
+	/**
+	 * Prueft Schluessel und erste VIN mit genau einem Request.
+	 *
+	 * @param payload Die Werte aus dem Formular.
+	 * @returns Die Antwort fuer die Admin-UI.
+	 */
+	private async runConnectionTest(payload: unknown): Promise<{ result?: string; error?: string }> {
+		const target = pickTestTarget(payload, { apiKey: this.config.apiKey, vins: this.config.vins });
+		if ('problem' in target) {
+			return { error: target.problem };
+		}
+		const { apiKey, vin } = target;
+
+		const client = new SkodaApiClient({ apiKey, secrets: this.config.spin ? [this.config.spin] : [] });
+		const result = await testConnection(client, vin);
+		if (result.meta) {
+			// Der Test kostet einen Request aus demselben Budget wie das Polling.
+			this.quota?.recordResponse(result.meta);
+		}
+		// Absichtlich ohne den Text: Er nennt Fahrzeugname und Kennzeichen, und die
+		// muessen nicht ins Log, das im Forum landet (E14).
+		this.log.info(result.ok ? 'Verbindungstest erfolgreich.' : `Verbindungstest fehlgeschlagen: ${result.text}`);
+		return result.ok ? { result: result.text } : { error: result.text };
+	}
+
+	/**
 	 * Wird gerufen, wenn ein abonnierter Zustand sich aendert.
 	 *
 	 * Nur Schreibvorgaenge eines Nutzers sind Befehle: Was der Adapter selbst schreibt,
@@ -150,6 +209,7 @@ class SkodaPublicApi extends utils.Adapter {
 			this.scheduler = undefined;
 			this.queue?.stop();
 			this.queue = undefined;
+			this.quota = undefined;
 			callback();
 		} catch (error) {
 			this.log.error(`Fehler beim Entladen: ${(error as Error).message}`);

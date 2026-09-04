@@ -419,7 +419,7 @@ export class MockSkodaApi {
 
 		// Steuerschnittstelle fuer den Standalone-Betrieb. Nicht Teil der echten API,
 		// deshalb ausserhalb jeder Quota- und Schluesselpruefung.
-		if (url.pathname.startsWith('/__mock/')) {
+		if (url.pathname === '/__mock' || url.pathname.startsWith('/__mock/')) {
 			this.handleControl(url, res);
 			return;
 		}

@@ -240,6 +240,15 @@ describe('Mock der Skoda-API', () => {
 		});
 	});
 
+	describe('Steuerschnittstelle', () => {
+		it('beantwortet /__mock auch ohne Schraegstrich', async () => {
+			// So steht es in HANDOFF.md - und so tippt man es auch.
+			const res = await fetch(`${base}/__mock`);
+			expect(res.status).to.equal(200);
+			expect((await res.json()) as any).to.have.property('quota');
+		});
+	});
+
 	describe('Verlauf', () => {
 		it('protokolliert Methode, Status und Quota-Verbrauch je Request', async () => {
 			await get();
