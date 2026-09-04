@@ -1,6 +1,6 @@
 # Handoff — ioBroker.skoda-public-api
 
-**Stand: 2026-09-04, nach Phase 9.** Auf GitHub, CI grün. Der Adapter liest, steuert und meldet den Ablauf seines Schlüssels; die Admin-UI ist vollständig — und alles davon ist einmal von Hand in einer echten ioBroker-Instanz gegen den Mock durchgespielt worden. Diese Datei ist der Einstieg für jeden, der die
+**Stand: 2026-09-04, nach Phase 10.** Auf GitHub, CI grün. Der Adapter liest, steuert und meldet den Ablauf seines Schlüssels; die Admin-UI ist vollständig. Der Lebenslauf einer Instanz — Poll, Objektbaum, Befehl, Verbindungstest, Neustart mitten im Quota-Fenster, abgelaufener Schlüssel — läuft seit Phase 10 als Integrationstest gegen den Mock, in einer echten ioBroker-Instanz. Diese Datei ist der Einstieg für jeden, der die
 Arbeit übernimmt oder nach einer Pause wieder aufnimmt. Sie beschreibt, wo das Projekt
 steht, was als Nächstes ansteht und welche Fallstricke bereits bekannt sind.
 
@@ -56,17 +56,18 @@ Ziel-SoC setzen, Ladeprofile ändern, Schlüssel automatisch erneuern.
 | 7 | CommandQueue → **Meilenstein 2: steuernder Adapter** | **fertig** |
 | 8 | Admin-UI, Verbindungstest, Übersetzungen | **fertig** |
 | 9 | Schlüsselablauf und Notifications | **fertig** |
-| 10 | Tests und CI vervollständigen | offen — **als Nächstes** |
-| 11–12 | Beispielskript, Doku, Release | offen |
+| 10 | Tests und CI vervollständigen | **fertig** |
+| 11 | Beispielskript und Dokumentation | offen — **als Nächstes** |
+| 12 | Release-Vorbereitung | offen |
 
 Letzter vollständig grüner Lauf (2026-09-04):
 
 ```
 npm run check            tsc --noEmit, fehlerfrei
 npm run lint             0 Fehler, 0 Warnungen
-npm run test:ts          317 Tests
+npm run test:unit        317 Tests  (auch als "test:ts")
 npm run test:package     57 Tests
-npm run test:integration  1 Test  (startet den Adapter in einer echten ioBroker-Instanz)
+npm run test:integration  7 Tests  (echte ioBroker-Instanz gegen den Mock, ~11 min)
 npm run build            Type-Check und esbuild fehlerfrei
 npm run check:spec       eingecheckte Spec deckungsgleich mit der Live-API
 npm run codegen          reproduzierbar (identische Prüfsummen bei erneutem Lauf)
@@ -122,6 +123,13 @@ Gültige Werte: `ok`, `partial-data`, `api-key-expired`, `api-key-not-authorized
 `rate-limit-exceeded`, `vehicle-not-accepting-requests`, `not-found`, `server-error`,
 `service-unavailable`, `gateway-timeout`. Dazu `/__mock/reset`, `/__mock/fixture?value=…`
 und `/__mock` für den aktuellen Zustand.
+
+**Der Adapter als Ganzes** läuft im Integrationstest — drei Suites in einer echten
+ioBroker-Instanz gegen den Mock, rund elf Minuten:
+
+```bash
+npm run test:integration
+```
 
 **Gegen die echte API lässt sich nicht entwickeln.** 20 Requests sind nach zwanzig
 Minuten Debugging aufgebraucht, und danach sitzt man bis zur vollen Stunde fest — mitten
@@ -423,35 +431,61 @@ zweites Mal hineinläuft oder eine Korrektur versehentlich zurückdreht.
    prepare" und bricht mit `ENOENT` ab. Der Weg von Hand steht in Abschnitt 3.
    Dazu gehört: **Der dev-server hält eine Kopie des Adapters, keinen Symlink**, und
    `dev-server run` frischt sie nicht auf.
+15. **Die CI ruft `npm run test:unit`, nicht `test:ts`.** Fehlt das Skript,
+   überspringt der Job die Unit-Tests **stillschweigend** — bis Phase 10 liefen die
+   317 Tests deshalb ausschließlich lokal. Wer ein Testskript umbenennt, nimmt der CI
+   womöglich die Tests weg, ohne dass etwas rot wird. `test:ts` ist heute nur noch ein
+   Alias auf `test:unit`.
+16. **Ein Integrations-Testaufbau lässt sich genau einmal starten** („This test harness
+   has already been used"). Ein Neustart innerhalb eines Tests geht nicht; jeder
+   Lebenslauf braucht eine eigene `suite`. Ein Neustart wird deshalb nachgestellt,
+   indem der Zustand des Vorgängers vor dem Start in `info.rateLimit.*` liegt.
+   Zwei weitere Eigenheiten dort: `common.messagebox` kommt über `iobroker add`
+   **nicht** ins Instanzobjekt (über `iobroker upload` schon, siehe Fallstrick 13), und
+   `info.connection` steht bereits, **bevor** der Objektbaum geschrieben ist — als
+   Synchronisationspunkt für Zustände taugt es deshalb nicht.
 
 ---
 
 ## 7. Der nächste Schritt
 
-**Phase 10 — Tests und CI vervollständigen.** Der größte offene Posten ist der
-**Integrationstest gegen den Mock in einer echten Instanz**: Was in Phase 8 und 9 von
-Hand durchgespielt wurde (Abschnitt 3), soll automatisch laufen — inklusive Neustart
-mitten im Quota-Fenster.
+**Phase 11 — Beispielskript und Dokumentation.**
 
-Zwei Dinge, die dabei zu wissen sind:
+`examples/pv-surplus-charging.js` — die Bang-Bang-Regelung, die laut E4 **nicht** in den
+Adapter gehört, aber als Vorlage mitkommt: Einschaltschwelle, Ausschaltschwelle mit
+Verzögerung, Mindest-Ein- und Ausschaltdauer, Obergrenze für Schaltvorgänge pro Stunde
+und die Auswertung von `info.lastCommand.result`. Jede PV-Anlage hat andere State-IDs;
+das Skript zeigt die Struktur, nicht die Wahrheit.
 
-- **Der API-Schlüssel steht unter `encryptedNative`** (Fallstrick 12). Ein Test, der die
-  Instanz selbst konfiguriert, muss ihn mit dem Systemschlüssel aus `system.config`
-  verschlüsseln — js-controller legt ihn als `$/aes-192-cbc:…` ab.
-- `@iobroker/testing` bietet dafür `defineAdditionalTests` mit einem Harness, der
-  `changeAdapterConfig`, `startAdapterAndWait` und Zugriff auf States kann. Der
-  Mock läuft dabei im selben Prozess wie die Tests.
+Die README braucht vier Dinge, die sonst niemand ahnt:
 
-Danach **Phase 11** (Beispielskript `examples/pv-surplus-charging.js` und README) und
-**Phase 12** (Release-Vorbereitung, Adapter-Checker, Entscheidung über die Einreichung).
-
-Für die README schon jetzt notiert, weil es sonst niemand ahnt:
-
+- **Wie der API-Schlüssel entsteht** (MyŠkoda-App ab 8.16, gebunden an die dort
+  ausgewählten Fahrzeuge, mit Ablaufdatum).
+- **Was 20 Requests pro Stunde bedeuten:** kein sekundengenaues Monitoring, keine
+  sofortige Benachrichtigung bei Ladeende. Das ist Physik, kein Versäumnis.
 - **`ack=true` heißt „an die API übergeben"**, nicht „das Auto hat es getan" (E6).
-- **Kein sekundengenaues Monitoring, keine sofortige Benachrichtigung bei Ladeende** —
-  bei 20 Requests pro Stunde ist das Physik, kein Versäumnis.
-- Für das Überschussladen muss der AC-Ladestrom in der MyŠkoda-App auf `REDUCED`
-  stehen; die API kann ihn nicht setzen (E3).
+- **Für das Überschussladen muss der AC-Ladestrom in der App auf `REDUCED` stehen** —
+  die API kann ihn nicht setzen (E3). Gemessen wurden an diesem Enyaq 5 kW.
+
+Dazu die Beschreibung von `info.*` (Budget, Schlüsselablauf, `dataAge`, `lastCommand`)
+und der Hinweis, dass Zustände bei einer unvollständigen Antwort **stehenbleiben** und
+nur ihr Quality-Flag verlieren (E8).
+
+Danach **Phase 12**: Release-Skript, Übersetzungen prüfen, Adapter-Checker durchlaufen
+lassen und die Entscheidung über die Einreichung ins offizielle Repo (E1).
+
+### Was aus Phase 10 zu wissen ist
+
+- **Der Integrationstest ist der einzige Ort, an dem der Adapter als Ganzes läuft.**
+  Drei Suites: der normale Lebenslauf, der Neustart mitten im Quota-Fenster und der
+  abgelaufene Schlüssel. Er braucht rund elf Minuten, weil die ioBroker-Umgebung dabei
+  aufgebaut wird — lokal mit `npm run test:integration`.
+- Der Mock läuft dabei **im Testprozess**; der Adapter bekommt seine Adresse über
+  `SKODA_API_BASE_URL` beim Start. Der Mock ist damit zugleich Beobachtungspunkt: Was
+  der Adapter tatsächlich abgesetzt hat, steht in `mock.requests`.
+- **Was der Test nicht abdecken kann:** die Notification (dafür fehlt der Host-Prozess)
+  und die Admin-UI selbst. Beides ist in einer echten Instanz von Hand nachgewiesen
+  (Abschnitt 3).
 
 ### Was aus Phase 9 zu wissen ist
 

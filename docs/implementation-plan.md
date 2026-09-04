@@ -560,7 +560,29 @@ gegen die Logik, und einmal in einer echten Instanz — `api-key-expired` im Moc
 erzeugte die Logzeile, `info.connection = false`, die Drosselung auf 1×/h und den
 Eintrag `{"apiKeyExpired":{"count":1}}` im Notification-Zustand des Hosts.
 
-### Phase 10 — Tests und CI vervollständigen · M
+### Phase 10 — Tests und CI vervollständigen · M · **erledigt**
+
+> **Abweichungen und Funde:**
+> - **Die Unit-Tests liefen nie in der CI.** Der Job `adapter-tests` ruft
+>   `npm run test:unit` — *wenn es das Skript gibt*. Das gab es hier nicht, also wurde
+>   der Schritt stillschweigend übersprungen: Geprüft wurden in der CI nur die
+>   Paket-Tests und der Startup-Test. Das Skript existiert jetzt; `test:ts` bleibt als
+>   Alias, damit die Dokumentation stimmt.
+> - **Ein Testaufbau lässt sich genau einmal starten** („This test harness has already
+>   been used"). Ein Neustart im laufenden Test ist damit nicht zu haben. Stattdessen
+>   bekommt jeder Lebenslauf eine eigene `suite`, und der Neustart wird nachgestellt,
+>   indem der Zustand des Vorgängers **vor** dem Start in `info.rateLimit.*` liegt —
+>   das prüft genau den Mechanismus, um den es geht.
+> - **`common.messagebox` landet im Testaufbau nicht im Instanzobjekt.**
+>   `iobroker add` nimmt die Kennzeichnung nicht mit, `iobroker upload` bei einer
+>   echten Installation schon (im dev-server nachgesehen). Der Test setzt sie deshalb
+>   ausdrücklich, sonst liefe der Verbindungstest ins Leere.
+> - **`info.connection` steht, bevor der Objektbaum geschrieben ist.** Die Verbindung
+>   meldet die Antwort der API, der StateWriter läuft danach.
+>   `startAdapterAndWait(true)` taugt deshalb nicht als Synchronisationspunkt für
+>   Zustände; der Test wartet auf den Zustand selbst.
+> - Der Schlüssel wird im Test so verschlüsselt, wie js-controller es täte
+>   (AES-192-CBC mit dem Systemschlüssel, ältere Installationen XOR).
 
 - Unit: `QuotaManager`, `CommandQueue`, `StateWriter`, `errors`, `sanitize`.
 - Integration: Adapter gegen den Mock über eine simulierte Stunde, inklusive
