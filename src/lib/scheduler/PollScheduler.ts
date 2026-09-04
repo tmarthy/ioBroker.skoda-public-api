@@ -133,6 +133,8 @@ interface VehicleState {
 	commandModeUntil?: number;
 	/** Wiederholungen des laufenden Fehlers. */
 	attempts: number;
+	/** Erfolgreich gelesene, aber noch nicht vollstaendig geschriebene Antwort. */
+	pendingWrite?: { response: VehicleResponse; unchanged: boolean };
 	/** Dauerhaft ausgesetzt - die VIN gibt es unter diesem Schluessel nicht (404). */
 	suspended: boolean;
 }
@@ -296,8 +298,14 @@ export class PollScheduler {
 	 * @param state Der Zustand des Fahrzeugs.
 	 */
 	private async pollOne(state: VehicleState): Promise<void> {
+		if (state.pendingWrite) {
+			const pending = state.pendingWrite;
+			await this.deliverVehicleData(state, pending.response, pending.unchanged);
+			return;
+		}
+
 		const permission = this.quota.tryAcquire('poll');
-		if (permission !== 'ok') {
+		if ('reason' in permission) {
 			// Kein Fehler, sondern Normalbetrieb: Das Budget gehoert ab hier den
 			// Befehlen (E15). Der Poll kommt wieder, wenn das Fenster sich oeffnet.
 			state.nextDueAt = this.now() + Math.max(MIN_SLEEP_MS, permission.waitMs);
@@ -309,7 +317,7 @@ export class PollScheduler {
 		}
 
 		const result = await this.client.getVehicle(state.vin, this.includeFor(state));
-		this.quota.recordResponse(result.meta);
+		this.quota.recordResponse(result.meta, permission);
 		this.onResponse?.(result.meta, result.ok ? undefined : result.error);
 
 		if (result.ok) {
@@ -347,8 +355,35 @@ export class PollScheduler {
 		}
 		state.active = this.isActive(vehicle);
 
-		await this.onVehicleData(state.vin, response);
+		await this.deliverVehicleData(state, response, unchanged);
+	}
 
+	/**
+	 * Reicht bereits gelesene Fahrzeugdaten nach oben und wiederholt bei einem Fehler
+	 * nur diesen lokalen Schritt. Der teure HTTP-Request bleibt dabei abgeschlossen.
+	 *
+	 * @param state Zeitplan des Fahrzeugs.
+	 * @param response Bereits erfolgreich gelesene Antwort.
+	 * @param unchanged Ob der Fahrzeug-Zeitstempel unveraendert war.
+	 */
+	private async deliverVehicleData(
+		state: VehicleState,
+		response: VehicleResponse,
+		unchanged: boolean,
+	): Promise<void> {
+		try {
+			await this.onVehicleData(state.vin, response);
+		} catch (error: unknown) {
+			state.pendingWrite = { response, unchanged };
+			state.nextDueAt = this.now() + this.intervals.retryMs;
+			this.log.error(
+				`Fahrzeugdaten fuer ${maskVin(state.vin)} konnten nicht geschrieben werden: ${String(error)}. ` +
+					`Neuer Schreibversuch in ${Math.round(this.intervals.retryMs / 1000)} s, ohne API-Abfrage.`,
+			);
+			return;
+		}
+
+		state.pendingWrite = undefined;
 		const interval = this.intervalFor(state);
 		state.nextDueAt = this.now() + interval;
 		this.log.debug(

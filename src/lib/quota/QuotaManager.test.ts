@@ -7,6 +7,7 @@ import {
 	QuotaManager,
 	type PersistedQuota,
 	type QuotaStore,
+	type RequestPermit,
 } from './QuotaManager';
 
 /** Ablage im Speicher - der Neustart besteht darin, einen zweiten Manager daranzuhaengen. */
@@ -27,6 +28,38 @@ class MemoryStore implements QuotaStore {
 	}
 }
 
+/** Kontrollierbar langsame Ablage fuer die Reihenfolge paralleler Persistenzanfragen. */
+class DelayedStore implements QuotaStore {
+	public state?: PersistedQuota;
+	public active = 0;
+	public maxActive = 0;
+	private readonly saves: Array<{ state: PersistedQuota; resolve: () => void }> = [];
+
+	public load(): Promise<PersistedQuota | undefined> {
+		return Promise.resolve(this.state);
+	}
+
+	public save(state: PersistedQuota): Promise<void> {
+		this.active += 1;
+		this.maxActive = Math.max(this.maxActive, this.active);
+		return new Promise(resolve => this.saves.push({ state: { ...state }, resolve }));
+	}
+
+	public releaseNext(): void {
+		const save = this.saves.shift();
+		if (!save) {
+			throw new Error('Kein Save wartet');
+		}
+		this.state = save.state;
+		this.active -= 1;
+		save.resolve();
+	}
+
+	public get waiting(): number {
+		return this.saves.length;
+	}
+}
+
 describe('quota/QuotaManager => ein Bucket pro Instanz', () => {
 	let clock: number;
 
@@ -41,10 +74,18 @@ describe('quota/QuotaManager => ein Bucket pro Instanz', () => {
 	// Eine Antwort ohne Header - der Netzwerkfehler.
 	const withoutHeaders = (consumedQuota: boolean): ApiMeta => ({ consumedQuota });
 
+	const acquire = (manager: QuotaManager, priority: 'poll' | 'command' = 'poll'): RequestPermit => {
+		const result = manager.tryAcquire(priority);
+		expect(result).to.not.have.property('reason');
+		if ('reason' in result) {
+			throw new Error(`Request unerwartet abgelehnt: ${result.reason}`);
+		}
+		return result;
+	};
+
 	// Ein Request von Anfang bis Ende, wie ihn Phase 6 absetzen wird.
 	const roundTrip = (manager: QuotaManager, meta: ApiMeta, priority: 'poll' | 'command' = 'poll'): void => {
-		expect(manager.tryAcquire(priority)).to.equal('ok');
-		manager.recordResponse(meta);
+		manager.recordResponse(meta, acquire(manager, priority));
 	};
 
 	beforeEach(() => {
@@ -55,7 +96,7 @@ describe('quota/QuotaManager => ein Bucket pro Instanz', () => {
 		it('laesst einen Poll durch, solange mehr als die Reserve uebrig ist', () => {
 			const manager = new QuotaManager({ now });
 			manager.recordResponse(withHeaders(DEFAULT_COMMAND_RESERVE + 1));
-			expect(manager.tryAcquire('poll')).to.equal('ok');
+			acquire(manager);
 		});
 
 		it('lehnt den Poll ab, sobald nur noch die Reserve steht', () => {
@@ -63,9 +104,9 @@ describe('quota/QuotaManager => ein Bucket pro Instanz', () => {
 			manager.recordResponse(withHeaders(DEFAULT_COMMAND_RESERVE));
 
 			const denied = manager.tryAcquire('poll');
-			expect(denied).to.not.equal('ok');
-			if (denied === 'ok') {
-				return;
+			expect(denied).to.have.property('reason');
+			if (!('reason' in denied)) {
+				throw new Error('Poll unerwartet zugelassen');
 			}
 			expect(denied.reason).to.equal('reserve');
 			expect(denied.waitMs).to.equal(manager.snapshot().resetAt - clock);
@@ -74,8 +115,8 @@ describe('quota/QuotaManager => ein Bucket pro Instanz', () => {
 		it('laesst den Befehl genau dort weitermachen, wo der Poll aufhoert', () => {
 			const manager = new QuotaManager({ now });
 			manager.recordResponse(withHeaders(DEFAULT_COMMAND_RESERVE));
-			expect(manager.tryAcquire('poll')).to.not.equal('ok');
-			expect(manager.tryAcquire('command')).to.equal('ok');
+			expect(manager.tryAcquire('poll')).to.have.property('reason');
+			acquire(manager, 'command');
 		});
 
 		it('laesst Befehle bis zur letzten Anfrage zu und haelt dann an', () => {
@@ -84,9 +125,9 @@ describe('quota/QuotaManager => ein Bucket pro Instanz', () => {
 			roundTrip(manager, withHeaders(0), 'command');
 
 			const denied = manager.tryAcquire('command');
-			expect(denied).to.not.equal('ok');
-			if (denied === 'ok') {
-				return;
+			expect(denied).to.have.property('reason');
+			if (!('reason' in denied)) {
+				throw new Error('Befehl unerwartet zugelassen');
 			}
 			expect(denied.reason).to.equal('exhausted');
 		});
@@ -159,27 +200,98 @@ describe('quota/QuotaManager => ein Bucket pro Instanz', () => {
 		it('rechnet abgesetzte, aber unbeantwortete Requests ab', () => {
 			const manager = new QuotaManager({ now });
 			manager.recordResponse(withHeaders(8));
-			expect(manager.tryAcquire('poll')).to.equal('ok');
-			expect(manager.tryAcquire('poll')).to.equal('ok');
+			acquire(manager);
+			acquire(manager);
 
 			const snapshot = manager.snapshot();
 			expect(snapshot.inFlight).to.equal(2);
 			expect(snapshot.reserveFree).to.equal(0);
 			// Zwei unterwegs, also stehen nur noch sechs zur Verfuegung - genau die
 			// Reserve. Ein dritter Poll waere einer zu viel.
-			expect(manager.tryAcquire('poll')).to.not.equal('ok');
+			expect(manager.tryAcquire('poll')).to.have.property('reason');
 		});
 
 		it('zieht laufende Requests auch vom bestaetigten Stand ab', () => {
 			const manager = new QuotaManager({ now });
-			expect(manager.tryAcquire('poll')).to.equal('ok');
-			expect(manager.tryAcquire('poll')).to.equal('ok');
-			manager.recordResponse(withHeaders(19));
+			acquire(manager);
+			const second = acquire(manager);
+			manager.recordResponse(withHeaders(19), second);
 
 			const snapshot = manager.snapshot();
 			expect(snapshot.remaining).to.equal(19);
 			expect(snapshot.inFlight).to.equal(1);
 			expect(snapshot.reserveFree).to.equal(19 - 1 - DEFAULT_COMMAND_RESERVE);
+		});
+
+		it('laesst eine spaete alte Antwort keinen neueren Headerstand ueberschreiben', () => {
+			const manager = new QuotaManager({ now });
+			const first = acquire(manager);
+			const second = acquire(manager);
+
+			// Der spaeter gestartete Request kommt zuerst zurueck. Seine niedrigere
+			// Restquota und sein Reset-Zeitpunkt sind der neuere Stand.
+			manager.recordResponse(withHeaders(18, { resetInSeconds: 1800 }), second);
+			manager.recordResponse(withHeaders(19, { resetInSeconds: 3600 }), first);
+
+			const snapshot = manager.snapshot();
+			expect(snapshot.remaining).to.equal(18);
+			expect(snapshot.resetAt).to.equal(clock + 1800 * 1000);
+			expect(snapshot.inFlight).to.equal(0);
+		});
+
+		it('uebernimmt aus einer spaeten Antwort weiterhin einen niedrigeren Reststand', () => {
+			const manager = new QuotaManager({ now });
+			const first = acquire(manager);
+			const second = acquire(manager);
+
+			manager.recordResponse(withHeaders(18), second);
+			manager.recordResponse(withHeaders(17), first);
+
+			expect(manager.snapshot().remaining).to.equal(17);
+		});
+
+		it('uebernimmt keinen spaeten Reststand aus einem alten Fenster', () => {
+			const manager = new QuotaManager({ now });
+			const oldWindow = acquire(manager);
+			clock += DEFAULT_WINDOW_MS + 1;
+			const newWindow = acquire(manager);
+
+			manager.recordResponse(withHeaders(19), newWindow);
+			manager.recordResponse(withHeaders(0, { resetInSeconds: 1 }), oldWindow);
+
+			expect(manager.snapshot().remaining).to.equal(19);
+		});
+
+		it('ignoriert eine doppelt gemeldete Antwort derselben Buchung', () => {
+			const manager = new QuotaManager({ now });
+			const permit = acquire(manager);
+			manager.recordResponse(withHeaders(19), permit);
+			manager.recordResponse(withHeaders(3), permit);
+
+			expect(manager.snapshot().remaining).to.equal(19);
+			expect(manager.snapshot().inFlight).to.equal(0);
+		});
+
+		it('speichert Quota-Staende streng nacheinander', async () => {
+			const store = new DelayedStore();
+			const manager = new QuotaManager({ now, store });
+			const first = acquire(manager);
+			const second = acquire(manager);
+			manager.recordResponse(withHeaders(18), second);
+			manager.recordResponse(withHeaders(19), first);
+
+			// Trotz vier Persistenzanlaessen laeuft nur der erste Save. Die
+			// Zwischenstaende werden zum neuesten Stand zusammengefasst.
+			expect(store.waiting).to.equal(1);
+			expect(store.maxActive).to.equal(1);
+			store.releaseNext();
+			await Promise.resolve();
+			expect(store.waiting).to.equal(1);
+			expect(store.maxActive).to.equal(1);
+
+			store.releaseNext();
+			await manager.flush();
+			expect(store.state?.remaining).to.equal(18);
 		});
 	});
 
@@ -187,12 +299,12 @@ describe('quota/QuotaManager => ein Bucket pro Instanz', () => {
 		it('fuellt das Budget auf, wenn das Fenster abgelaufen ist', () => {
 			const manager = new QuotaManager({ now });
 			manager.recordResponse(withHeaders(0));
-			expect(manager.tryAcquire('command')).to.not.equal('ok');
+			expect(manager.tryAcquire('command')).to.have.property('reason');
 
 			clock += 3_600_001;
 			expect(manager.snapshot().remaining).to.equal(20);
 			expect(manager.snapshot().confirmed).to.equal(false);
-			expect(manager.tryAcquire('poll')).to.equal('ok');
+			acquire(manager);
 		});
 	});
 
@@ -201,6 +313,7 @@ describe('quota/QuotaManager => ein Bucket pro Instanz', () => {
 			const store = new MemoryStore();
 			const first = new QuotaManager({ now, store });
 			roundTrip(first, withHeaders(8, { resetInSeconds: 1800 }));
+			await first.flush();
 
 			clock += DEFAULT_WINDOW_MS / 20;
 			const second = new QuotaManager({ now, store });
@@ -221,15 +334,15 @@ describe('quota/QuotaManager => ein Bucket pro Instanz', () => {
 			await second.start();
 
 			const denied = second.tryAcquire('poll');
-			expect(denied).to.not.equal('ok');
-			if (denied === 'ok') {
-				return;
+			expect(denied).to.have.property('reason');
+			if (!('reason' in denied)) {
+				throw new Error('Poll unerwartet zugelassen');
 			}
 			expect(denied.reason).to.equal('startup-guard');
 			expect(denied.waitMs).to.equal(DEFAULT_WINDOW_MS / 20 - 2_000);
 
 			clock += denied.waitMs;
-			expect(second.tryAcquire('poll')).to.equal('ok');
+			acquire(second);
 		});
 
 		it('sperrt auch Befehle - die Schleife kostet unabhaengig vom Anlass', async () => {
@@ -238,7 +351,7 @@ describe('quota/QuotaManager => ein Bucket pro Instanz', () => {
 
 			const second = new QuotaManager({ now, store });
 			await second.start();
-			expect(second.tryAcquire('command')).to.not.equal('ok');
+			expect(second.tryAcquire('command')).to.have.property('reason');
 		});
 
 		it('verbrennt in einer Neustartschleife nicht das ganze Budget', async () => {
@@ -250,9 +363,10 @@ describe('quota/QuotaManager => ein Bucket pro Instanz', () => {
 			for (let i = 0; i < 30; i++) {
 				const manager = new QuotaManager({ now, store });
 				await manager.start();
-				if (manager.tryAcquire('poll') === 'ok') {
+				const permit = manager.tryAcquire('poll');
+				if (!('reason' in permit)) {
 					requests += 1;
-					manager.recordResponse(withHeaders(20 - requests));
+					manager.recordResponse(withHeaders(20 - requests), permit);
 				}
 				clock += 3_000;
 			}
@@ -263,7 +377,7 @@ describe('quota/QuotaManager => ein Bucket pro Instanz', () => {
 			const store = new MemoryStore();
 			const first = new QuotaManager({ now, store });
 			// Abgesetzt, dann abgestuerzt: keine Antwort, kein recordResponse.
-			expect(first.tryAcquire('poll')).to.equal('ok');
+			acquire(first);
 
 			clock += DEFAULT_WINDOW_MS / 20;
 			const second = new QuotaManager({ now, store });
@@ -275,6 +389,7 @@ describe('quota/QuotaManager => ein Bucket pro Instanz', () => {
 			const store = new MemoryStore();
 			const first = new QuotaManager({ now, store });
 			roundTrip(first, withHeaders(2, { resetInSeconds: 60 }));
+			await first.flush();
 
 			clock += 120_000;
 			const second = new QuotaManager({ now, store });
@@ -284,19 +399,19 @@ describe('quota/QuotaManager => ein Bucket pro Instanz', () => {
 			// Volles Budget heisst nicht "sofort": Die Sperrfrist nach dem Neustart
 			// haengt am letzten Request, nicht am Fenster, und laeuft hier noch.
 			const denied = second.tryAcquire('poll');
-			expect(denied).to.not.equal('ok');
-			if (denied === 'ok') {
-				return;
+			expect(denied).to.have.property('reason');
+			if (!('reason' in denied)) {
+				throw new Error('Poll unerwartet zugelassen');
 			}
 			expect(denied.reason).to.equal('startup-guard');
 			clock += denied.waitMs;
-			expect(second.tryAcquire('poll')).to.equal('ok');
+			acquire(second);
 		});
 
 		it('kommt ohne Ablage aus', async () => {
 			const manager = new QuotaManager({ now });
 			await manager.start();
-			expect(manager.tryAcquire('poll')).to.equal('ok');
+			acquire(manager);
 		});
 
 		it('meldet Fehler der Ablage und arbeitet weiter', async () => {
@@ -306,7 +421,7 @@ describe('quota/QuotaManager => ein Bucket pro Instanz', () => {
 			const manager = new QuotaManager({ now, store, onStoreError: error => errors.push(error) });
 
 			await manager.start();
-			expect(manager.tryAcquire('poll')).to.equal('ok');
+			acquire(manager);
 			// Ein Schreibfehler laeuft asynchron auf - einmal die Schleife durchlassen.
 			await Promise.resolve();
 			await Promise.resolve();
@@ -331,9 +446,13 @@ describe('quota/QuotaManager => ein Bucket pro Instanz', () => {
 		it('haelt den Poll an, bevor die API mit 429 antworten muss', async () => {
 			const manager = new QuotaManager({ now });
 			let polls = 0;
-			while (manager.tryAcquire('poll') === 'ok') {
+			while (true) {
+				const permit = manager.tryAcquire('poll');
+				if ('reason' in permit) {
+					break;
+				}
 				const result = await client.getVehicle(DEFAULT_VIN);
-				manager.recordResponse(result.meta);
+				manager.recordResponse(result.meta, permit);
 				polls += 1;
 			}
 
@@ -345,13 +464,17 @@ describe('quota/QuotaManager => ein Bucket pro Instanz', () => {
 
 		it('laesst den Befehl auch dann noch durch, wenn der Poll schon aussetzt', async () => {
 			const manager = new QuotaManager({ now });
-			while (manager.tryAcquire('poll') === 'ok') {
-				manager.recordResponse((await client.getVehicle(DEFAULT_VIN)).meta);
+			while (true) {
+				const permit = manager.tryAcquire('poll');
+				if ('reason' in permit) {
+					break;
+				}
+				manager.recordResponse((await client.getVehicle(DEFAULT_VIN)).meta, permit);
 			}
 
-			expect(manager.tryAcquire('command')).to.equal('ok');
+			const commandPermit = acquire(manager, 'command');
 			const result = await client.sendCommand(DEFAULT_VIN, 'charging', 'start');
-			manager.recordResponse(result.meta);
+			manager.recordResponse(result.meta, commandPermit);
 			expect(result.ok).to.equal(true);
 			expect(manager.snapshot().remaining).to.equal(DEFAULT_COMMAND_RESERVE - 1);
 		});
@@ -365,8 +488,8 @@ describe('quota/QuotaManager => ein Bucket pro Instanz', () => {
 			client = new SkodaApiClient({ apiKey: DEFAULT_API_KEY, baseUrl, timeoutMs: 2000 });
 
 			const manager = new QuotaManager({ now, commandReserve: 1 });
-			expect(manager.tryAcquire('poll')).to.equal('ok');
-			manager.recordResponse((await client.getVehicle(DEFAULT_VIN)).meta);
+			const permit = acquire(manager);
+			manager.recordResponse((await client.getVehicle(DEFAULT_VIN)).meta, permit);
 
 			expect(manager.snapshot().limit).to.equal(3);
 			expect(manager.snapshot().remaining).to.equal(2);

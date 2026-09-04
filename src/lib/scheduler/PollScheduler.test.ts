@@ -222,6 +222,33 @@ describe('scheduler/PollScheduler => Kadenz unter 20 Requests pro Stunde', () =>
 	});
 
 	describe('Fehler', () => {
+		it('wiederholt nach einem StateWriter-Fehler nicht sofort den API-Request', async () => {
+			let writes = 0;
+			const scheduler = buildScheduler({
+				onVehicleData: () => {
+					writes += 1;
+					if (writes === 1) {
+						throw new Error('State-Ablage nicht erreichbar');
+					}
+				},
+			});
+
+			const wait = await scheduler.tick();
+			expect(wait).to.equal(15_000);
+			expect(mock.requests).to.have.length(1);
+			expect(writes).to.equal(1);
+			expect(log.lines.some(line => line.includes('konnten nicht geschrieben werden'))).to.equal(true);
+
+			// Ein weiterer Schleifendurchlauf zur selben Zeit tut nichts. Nach der
+			// kurzen Fehlerpause wird nur dieselbe Antwort erneut geschrieben.
+			await scheduler.tick();
+			expect(mock.requests).to.have.length(1);
+			clock += wait;
+			expect(await scheduler.tick()).to.equal(15 * MINUTE);
+			expect(mock.requests).to.have.length(1);
+			expect(writes).to.equal(2);
+		});
+
 		it('setzt eine unbekannte VIN dauerhaft aus', async () => {
 			mock.scenario = 'not-found';
 			const scheduler = buildScheduler();
@@ -413,7 +440,7 @@ describe('scheduler/PollScheduler => Kadenz unter 20 Requests pro Stunde', () =>
 		it('laesst nach einer Stunde Budget fuer Befehle uebrig', async () => {
 			const scheduler = buildScheduler({ intervals: { idleMs: MIN_IDLE_MS } });
 			await runFor(scheduler, 60 * MINUTE);
-			expect(quota.tryAcquire('command')).to.equal('ok');
+			expect(quota.tryAcquire('command')).to.not.have.property('reason');
 		});
 	});
 

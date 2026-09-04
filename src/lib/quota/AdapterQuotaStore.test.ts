@@ -45,11 +45,16 @@ describe('quota/AdapterQuotaStore => Budget ueberlebt den Neustart', () => {
 	it('haelt den Reststand ueber einen Neustart hinweg', async () => {
 		const first = new QuotaManager({ now, store });
 		await first.start();
-		expect(first.tryAcquire('poll')).to.equal('ok');
-		first.recordResponse({ rateLimit: { limit: 20, remaining: 4, resetInSeconds: 1800 }, consumedQuota: true });
-		// Die Ablage schreibt asynchron; einmal die Schleife durchlassen.
-		await Promise.resolve();
-		await Promise.resolve();
+		const permit = first.tryAcquire('poll');
+		expect(permit).to.not.have.property('reason');
+		if ('reason' in permit) {
+			throw new Error('Poll unerwartet abgelehnt');
+		}
+		first.recordResponse(
+			{ rateLimit: { limit: 20, remaining: 4, resetInSeconds: 1800 }, consumedQuota: true },
+			permit,
+		);
+		await first.flush();
 
 		clock += 10 * 60_000;
 		const second = new QuotaManager({ now, store });
@@ -59,7 +64,7 @@ describe('quota/AdapterQuotaStore => Budget ueberlebt den Neustart', () => {
 		expect(snapshot.remaining).to.equal(4);
 		expect(snapshot.limit).to.equal(20);
 		// Vier uebrig heisst: Polls sind gesperrt, Befehle nicht.
-		expect(second.tryAcquire('poll')).to.not.equal('ok');
-		expect(second.tryAcquire('command')).to.equal('ok');
+		expect(second.tryAcquire('poll')).to.have.property('reason');
+		expect(second.tryAcquire('command')).to.not.have.property('reason');
 	});
 });

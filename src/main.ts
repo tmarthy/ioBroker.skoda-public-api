@@ -188,11 +188,15 @@ class SkodaPublicApi extends utils.Adapter {
 		const { apiKey, vin } = target;
 
 		const client = new SkodaApiClient({ apiKey, secrets: this.config.spin ? [this.config.spin] : [] });
+		// Der Verbindungstest darf auch bei ausgeschoepftem Adapter-Budget bewusst auf
+		// Nutzerwunsch laufen. Eine freie Sequenzbuchung sorgt trotzdem dafuer, dass
+		// seine spaete Antwort keinen neueren Quota-Stand ueberschreibt.
+		const quotaPermit = this.quota?.trackRequest();
 		const result = await testConnection(client, vin);
 		if (result.meta) {
 			// Der Test kostet einen Request aus demselben Budget wie das Polling - und
 			// bringt nebenbei das Ablaufdatum des Schluessels mit.
-			this.quota?.recordResponse(result.meta);
+			this.quota?.recordResponse(result.meta, quotaPermit);
 			await this.keyExpiry?.observe(result.meta);
 		}
 		// Absichtlich ohne den Text: Er nennt Fahrzeugname und Kennzeichen, und die
@@ -228,9 +232,19 @@ class SkodaPublicApi extends utils.Adapter {
 			this.scheduler = undefined;
 			this.queue?.stop();
 			this.queue = undefined;
+			const quota = this.quota;
 			this.quota = undefined;
 			this.keyExpiry = undefined;
-			callback();
+			if (quota) {
+				void quota
+					.flush()
+					.catch((error: unknown) =>
+						this.log.warn(`Quota-Stand beim Entladen nicht gespeichert: ${String(error)}`),
+					)
+					.finally(callback);
+			} else {
+				callback();
+			}
 		} catch (error) {
 			this.log.error(`Fehler beim Entladen: ${(error as Error).message}`);
 			callback();

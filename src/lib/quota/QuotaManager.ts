@@ -35,8 +35,14 @@ export type DenialReason =
 	/** Sperrfrist nach einem Neustart. */
 	| 'startup-guard';
 
+/** Eindeutige Buchung eines abgesetzten Requests. */
+export interface RequestPermit {
+	/** Aufsteigende Nummer, mit der spaete Antworten erkannt werden. */
+	readonly sequence: number;
+}
+
 /** Antwort auf die Frage, ob ein Request abgesetzt werden darf. */
-export type AcquireResult = 'ok' | { waitMs: number; reason: DenialReason };
+export type AcquireResult = RequestPermit | { waitMs: number; reason: DenialReason };
 
 /** Der Zustand, der einen Neustart ueberleben muss. */
 export interface PersistedQuota {
@@ -109,6 +115,9 @@ export const DEFAULT_WINDOW_MS = 3_600_000;
 /** Vorgabe der Befehlsreserve. Ein Befehl kostet realistisch zwei bis drei Requests. */
 export const DEFAULT_COMMAND_RESERVE = 6;
 
+/** Rundungs- und Laufzeittoleranz beim Vergleich desselben serverseitigen Fensters. */
+const RESET_WINDOW_TOLERANCE_MS = 5_000;
+
 /**
  * Verwaltet das Stundenbudget einer Instanz: Wer fragen darf, wer warten muss, und was
  * die Antworten ueber den Reststand gesagt haben.
@@ -125,8 +134,14 @@ export class QuotaManager {
 	private remaining: number;
 	private resetAt: number;
 	private lastRequestAt?: number;
-	private inFlight = 0;
+	private readonly inFlight = new Set<number>();
+	private nextRequestSequence = 1;
+	private lastResponseSequence = 0;
 	private confirmed = false;
+	/** Neuester noch nicht gespeicherter Stand; Zwischenstaende duerfen zusammenfallen. */
+	private pendingSave?: PersistedQuota;
+	/** Der eine laufende Speicherlauf; verhindert ueberholende parallele Saves. */
+	private saveTask?: Promise<void>;
 
 	/**
 	 * Ende der Sperrfrist nach einem Neustart. Nur gesetzt, solange sie noch gilt -
@@ -198,12 +213,13 @@ export class QuotaManager {
 	/**
 	 * Fragt, ob ein Request abgesetzt werden darf.
 	 *
-	 * Bei `ok` gilt der Request als unterwegs: Der Aufrufer muss ihn absetzen und
-	 * anschliessend `recordResponse()` melden - auch im Fehlerfall, sonst bleibt der
-	 * Platz dauerhaft belegt. Der Client liefert dafuer immer ein `meta`.
+	 * Bei einer Buchung gilt der Request als unterwegs: Der Aufrufer muss ihn absetzen
+	 * und anschliessend `recordResponse()` samt derselben Buchung melden - auch im
+	 * Fehlerfall, sonst bleibt der Platz dauerhaft belegt. Der Client liefert dafuer
+	 * immer ein `meta`.
 	 *
 	 * @param priority Wofuer der Request gebraucht wird.
-	 * @returns `ok`, oder die Wartezeit samt Grund.
+	 * @returns Eindeutige Buchung, oder die Wartezeit samt Grund.
 	 */
 	public tryAcquire(priority: RequestPriority): AcquireResult {
 		const now = this.now();
@@ -225,12 +241,24 @@ export class QuotaManager {
 			};
 		}
 
-		this.inFlight += 1;
-		this.lastRequestAt = now;
+		return this.trackRequest();
+	}
+
+	/**
+	 * Bucht einen bewusst nicht blockierten Request, etwa den vom Nutzer ausgeloesten
+	 * Verbindungstest. Er zaehlt fuer laufende Requests und die Antwortreihenfolge,
+	 * umgeht aber Reserve und Sperrfrist.
+	 *
+	 * @returns Die Buchung fuer `recordResponse()`.
+	 */
+	public trackRequest(): RequestPermit {
+		const permit: RequestPermit = { sequence: this.nextRequestSequence++ };
+		this.inFlight.add(permit.sequence);
+		this.lastRequestAt = this.now();
 		// Vor dem Request speichern, nicht erst nach der Antwort: Ein Absturz genau
 		// dazwischen ist der Fall, gegen den die Sperrfrist ueberhaupt gebaut ist.
 		this.persist();
-		return 'ok';
+		return permit;
 	}
 
 	/**
@@ -240,17 +268,41 @@ export class QuotaManager {
 	 * `RateLimit-*`-Header steht in Schicht 1 und soll nicht ein zweites Mal
 	 * danebenstehen.
 	 *
+	 * Eine spaete Antwort eines frueher abgesetzten Requests darf einen bereits
+	 * neueren Headerstand nicht wieder erhoehen. Niedrigere Werte werden trotzdem
+	 * konservativ uebernommen. Ohne Buchung gilt die Meldung als neue, externe
+	 * Beobachtung; das ist fuer gezielte Initialisierung und Tests gedacht.
+	 *
 	 * @param meta Die Begleitangaben aus `ApiResult`.
+	 * @param permit Die Buchung aus `tryAcquire`, sofern der Request dort begann.
 	 */
-	public recordResponse(meta: ApiMeta): void {
+	public recordResponse(meta: ApiMeta, permit?: RequestPermit): void {
 		const now = this.now();
-		this.inFlight = Math.max(0, this.inFlight - 1);
+		if (permit && !this.inFlight.delete(permit.sequence)) {
+			// Eine Antwort darf dieselbe Buchung nicht zweimal abschliessen.
+			return;
+		}
+		const sequence = permit?.sequence ?? this.nextRequestSequence++;
+		const stale = sequence < this.lastResponseSequence;
+		this.lastResponseSequence = Math.max(this.lastResponseSequence, sequence);
 
 		if (meta.rateLimit) {
-			// Die Header sind die Wahrheit, auch wenn sie mehr melden als erwartet.
-			this.limit = meta.rateLimit.limit > 0 ? meta.rateLimit.limit : this.limit;
-			this.remaining = Math.max(0, Math.min(meta.rateLimit.remaining, this.limit));
-			this.resetAt = now + meta.rateLimit.resetInSeconds * 1000;
+			const reportedLimit = meta.rateLimit.limit > 0 ? meta.rateLimit.limit : this.limit;
+			const reportedRemaining = Math.max(0, Math.min(meta.rateLimit.remaining, reportedLimit));
+			const reportedResetAt = now + meta.rateLimit.resetInSeconds * 1000;
+			const sameWindow = Math.abs(reportedResetAt - this.resetAt) <= RESET_WINDOW_TOLERANCE_MS;
+			if (stale && sameWindow) {
+				// Ein alter Header darf den Reststand nie anheben. Eine niedrigere Zahl
+				// ist dagegen die sichere Annahme, falls noch ein weiterer Verbraucher
+				// denselben Schluessel benutzt.
+				this.remaining = Math.min(this.remaining, reportedRemaining);
+			} else if (!stale) {
+				// Die neuesten Header sind die Wahrheit, auch wenn sie mehr melden als
+				// erwartet oder das serverseitige Limit geaendert wurde.
+				this.limit = reportedLimit;
+				this.remaining = reportedRemaining;
+				this.resetAt = reportedResetAt;
+			}
 			this.confirmed = true;
 		} else if (meta.consumedQuota) {
 			// Keine Header, also ein Netzwerkfehler: Der Verbrauch ist unbekannt und
@@ -273,15 +325,25 @@ export class QuotaManager {
 			remaining: this.remaining,
 			resetAt: this.resetAt,
 			reserveFree: Math.max(0, this.available - this.commandReserve),
-			inFlight: this.inFlight,
+			inFlight: this.inFlight.size,
 			lastRequestAt: this.lastRequestAt,
 			confirmed: this.confirmed,
 		};
 	}
 
+	/**
+	 * Wartet, bis der neueste Quota-Stand gespeichert ist. Gedacht fuer ein sauberes
+	 * Herunterfahren und fuer Tests eines Neustarts.
+	 */
+	public async flush(): Promise<void> {
+		while (this.saveTask) {
+			await this.saveTask;
+		}
+	}
+
 	/** Was nach Abzug der laufenden Requests tatsaechlich noch frei ist. */
 	private get available(): number {
-		return Math.max(0, this.remaining - this.inFlight);
+		return Math.max(0, this.remaining - this.inFlight.size);
 	}
 
 	/**
@@ -318,6 +380,23 @@ export class QuotaManager {
 			resetAt: this.resetAt,
 			lastRequestAt: this.lastRequestAt,
 		};
-		void this.store.save(state).catch((error: unknown) => this.onStoreError?.(error));
+		this.pendingSave = state;
+		if (!this.saveTask) {
+			this.saveTask = this.flushSaves();
+		}
+	}
+
+	/** Schreibt ausstehende Staende streng nacheinander und behaelt nur den neuesten. */
+	private async flushSaves(): Promise<void> {
+		while (this.pendingSave) {
+			const state = this.pendingSave;
+			this.pendingSave = undefined;
+			try {
+				await this.store?.save(state);
+			} catch (error: unknown) {
+				this.onStoreError?.(error);
+			}
+		}
+		this.saveTask = undefined;
 	}
 }

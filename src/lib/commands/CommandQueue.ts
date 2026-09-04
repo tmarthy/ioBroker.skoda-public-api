@@ -358,7 +358,7 @@ export class CommandQueue {
 		}
 
 		const permission = this.quota.tryAcquire('command');
-		if (permission !== 'ok') {
+		if ('reason' in permission) {
 			const now = this.now();
 			if (now + permission.waitMs >= entry.expiresAt) {
 				// Warten waere laenger als die Lebensdauer: Dann lieber jetzt ehrlich
@@ -394,7 +394,7 @@ export class CommandQueue {
 		} finally {
 			this.inFlight.delete(key);
 		}
-		this.quota.recordResponse(result.meta);
+		this.quota.recordResponse(result.meta, permission);
 		this.onResponse?.(result.meta, result.ok ? undefined : result.error);
 
 		if (result.ok) {
