@@ -192,6 +192,49 @@ dem gebuchten Budget, ein Befehl über `charging.enabled` mit `info.lastCommand.
 auf `CHARGING`) — und nach einem Neustart **kein** sofortiger Poll, weil die Sperrfrist
 des QuotaManagers greift.
 
+### Auf dem Produktivsystem installieren
+
+Das Repository ist **privat**, `iob url https://github.com/...` scheitert also an der
+Anmeldung. Und ein GitHub-*Tarball* (der ZIP-Download) enthält **kein `build/`**, weil
+`prepare` dabei nicht läuft (Fallstrick 7). Was funktioniert, ist ein selbst gepacktes
+Paket: `npm pack` führt `prepare` aus, das Kompilat liegt also im Archiv — nachgemessen
+195 kB mit `build/main.js`, `io-package.json` und `admin/`.
+
+Auf dem Entwicklungsrechner:
+
+```bash
+npm pack
+scp iobroker.skoda-public-api-0.0.1.tgz USER@IOBROKER-VM:/tmp/
+```
+
+Auf der VM:
+
+```bash
+cd /opt/iobroker
+iob url /tmp/iobroker.skoda-public-api-0.0.1.tgz
+iob add skoda-public-api
+```
+
+Nimmt `iob url` den lokalen Pfad nicht an, tut es der direkte Weg — so ist es im
+dev-server nachweislich gelaufen:
+
+```bash
+sudo -u iobroker npm install /tmp/iobroker.skoda-public-api-0.0.1.tgz --omit=dev
+```
+
+Danach:
+
+- **Schlüssel und VIN in der Admin-UI eintragen, nicht im Objektbrowser** — der
+  Schlüssel steht unter `encryptedNative` (Fallstrick 12).
+- **`SKODA_API_BASE_URL` darf auf der VM nicht gesetzt sein.** Sie zeigt den Adapter auf
+  den Entwicklungs-Mock.
+- Der Knopf „Verbindung testen" kostet einen der 20 Requests pro Stunde.
+- **Update:** derselbe Weg mit einem neuen Paket, danach
+  `iob restart skoda-public-api.0`. Instanzkonfiguration und Objektbaum bleiben stehen —
+  der Adapter löscht nie (E13).
+
+Voraussetzungen: Node 22 (`engines: >= 22`), js-controller ≥ 6.0.11, Admin ≥ 7.0.23.
+
 ### Umgebung
 
 - Entwicklung auf macOS, **Node 26**. Produktivsystem ist eine Debian-VM mit **Node 22**.
