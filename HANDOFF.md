@@ -82,9 +82,26 @@ auskommentiert, wie `create-adapter` ihn ausliefert.
 
 Vier Workflows, alle nachweislich sauber (Lauf 33676066653, keine Annotations):
 
+**Die Matrix ist gestaffelt, und zwar aus Kostengründen.** GitHub rechnet Linux
+einfach, Windows doppelt und **macOS zehnfach** ab. Mit der vollen Matrix kostete ein
+einziger Push rund **385 abgerechnete Minuten** — bei 2000 Freiminuten im Monat sind
+das fünf Pushes. Deshalb:
+
+| Anlass | Was läuft | Kosten |
+|---|---|---|
+| Push, Pull Request | `check-and-lint` + `adapter-tests` auf **Ubuntu** × Node 22/24 | ~40 min |
+| Versions-Tag (`v*`) | zusätzlich Windows und macOS | ~385 min |
+| `workflow_dispatch` mit `full_matrix` | dasselbe auf Zuruf | ~385 min |
+
+Dazu: `paths-ignore` für `**.md` und `docs/**` (reine Dokumentations-Pushes lösen
+nichts aus), `[skip ci]` in der Commit-Nachricht wirkt weiterhin, und **jeder Job hat
+jetzt ein `timeout-minutes`**. Ohne das läuft ein hängender Job bis zum GitHub-Standard
+von sechs Stunden — auf macOS wären das 3600 abgerechnete Minuten aus einem einzigen
+Versehen.
+
 | Workflow | Auslöser | Stand |
 |---|---|---|
-| `Test and Release` | Push auf `main`, Tags, PRs | ✓ 7 Jobs: `check-and-lint` plus `adapter-tests` auf Ubuntu, macOS und Windows × Node 22 und 24 |
+| `Test and Release` | Push auf `main`, Tags, PRs, `workflow_dispatch` | ✓ Ubuntu × Node 22/24; volle Matrix nur bei Tags oder auf Zuruf |
 | `Check Škoda API spec` | **nur** `schedule` (Mo 05:17 UTC) und `workflow_dispatch` | ✓ manuell geprüft, „Spec unveraendert" |
 | `Auto-Merge Dependabot PRs` | `pull_request_target` | noch nie gelaufen — wartet auf den ersten Dependabot-PR (monatlich am 21.) |
 | Deploy | Tag `v*` | auskommentiert, bis ein `NPM_TOKEN` hinterlegt ist |

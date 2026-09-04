@@ -1,7 +1,12 @@
 name: Test and Release
 
-# Run this job on all pushes and pull requests
-# as well as tags with a semantic version
+# Laeuft bei jedem Push und Pull Request sowie bei Versions-Tags.
+#
+# Die Matrix ist bewusst gestaffelt: Auf jeden Push geht nur Linux, die volle
+# Matrix erst zum Release-Tag oder auf Zuruf. Grund ist die Abrechnung von
+# GitHub Actions - Linux zaehlt einfach, Windows doppelt, **macOS zehnfach**.
+# Mit der vollen Matrix kostete ein einziger Push rund 385 abgerechnete Minuten;
+# bei 2000 Freiminuten im Monat waeren das fuenf Pushes.
 on:
   push:
     branches:
@@ -11,7 +16,18 @@ on:
       - "v[0-9]+.[0-9]+.[0-9]+"
       # pre-releases
       - "v[0-9]+.[0-9]+.[0-9]+-**"
+    # Reine Dokumentationsaenderungen brauchen keinen Testlauf.
+    paths-ignore:
+      - "**.md"
+      - "docs/**"
+      - ".vscode/**"
   pull_request: {}
+  workflow_dispatch:
+    inputs:
+      full_matrix:
+        description: "Auch auf Windows und macOS testen (teuer)"
+        type: boolean
+        default: false
 
 # Cancel previous PR/branch runs when a new commit is pushed
 concurrency:
@@ -24,6 +40,10 @@ jobs:
     if: contains(github.event.head_commit.message, '[skip ci]') == false
 
     runs-on: ubuntu-latest
+    # Ohne Obergrenze laeuft ein haengender Job bis zum GitHub-Standard von sechs
+    # Stunden - auf macOS waeren das 3600 abgerechnete Minuten aus einem einzigen
+    # Versehen.
+    timeout-minutes: 15
 
     steps:
       - uses: ioBroker/testing-action-check@v2
@@ -34,15 +54,25 @@ jobs:
           type-checking: true
           lint: true
 
-  # Runs adapter tests on all supported node versions and OSes
+  # Testet den Adapter auf allen unterstuetzten Node-Versionen.
+  #
+  # Betriebssysteme: Auf jeden Push nur Linux. Windows und macOS kommen beim
+  # Release-Tag dazu oder wenn der Lauf von Hand mit "full_matrix" gestartet wird -
+  # dann, wenn ein Plattformunterschied tatsaechlich Folgen haette.
   adapter-tests:
     if: contains(github.event.head_commit.message, '[skip ci]') == false
 
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
     strategy:
       matrix:
         node-version: [22.x, 24.x]
-        os: [ubuntu-latest, windows-latest, macos-latest]
+        os: >-
+          ${{ fromJSON(
+            (github.ref_type == 'tag' || inputs.full_matrix)
+            && '["ubuntu-latest", "windows-latest", "macos-latest"]'
+            || '["ubuntu-latest"]'
+          ) }}
 
     steps:
       - uses: ioBroker/testing-action-adapter@v1
