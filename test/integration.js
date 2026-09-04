@@ -84,6 +84,27 @@ async function waitFor(what, check, timeoutMs = 30000) {
 }
 
 /**
+ * Wartet, bis ein Zustand da ist, und liefert ihn.
+ *
+ * Der Adapter schreibt seinen Objektbaum Zustand fuer Zustand; auf einer langsamen
+ * Maschine liegen zwischen dem ersten und dem letzten spuerbar Millisekunden. Wer
+ * einen einzelnen davon abfragt, muss auf genau ihn warten.
+ *
+ * @param {any} harness Der Testaufbau.
+ * @param {string} id Vollstaendige Zustands-ID.
+ * @param {number} timeoutMs Wie lange gewartet wird.
+ * @returns {Promise<any>} Der Zustand.
+ */
+async function readState(harness, id, timeoutMs = 30000) {
+	let state = null;
+	await waitFor(`den Zustand ${id}`, async () => {
+		state = await getState(harness, id);
+		return state !== null && state !== undefined;
+	}, timeoutMs);
+	return state;
+}
+
+/**
  * Traegt Schluessel und Fahrzeug in die Instanz ein, wie es die Admin-UI taete.
  *
  * @param {any} harness Der Testaufbau.
@@ -160,33 +181,23 @@ tests.integration(path.join(__dirname, '..'), {
 				expect(mock.requests[0].status).to.equal(200);
 
 				// `info.connection` steht schon, sobald die API geantwortet hat - der
-				// Objektbaum entsteht einen Wimpernschlag spaeter.
-				await waitFor('den geschriebenen Objektbaum', async () => {
-					const state = await getState(harness, `${VEHICLE}.odometer.mileageInKm`);
-					return state !== null && state !== undefined;
-				});
-
-				const odometer = await getState(harness, `${VEHICLE}.odometer.mileageInKm`);
+				// Objektbaum entsteht danach, Zustand fuer Zustand.
+				const odometer = await readState(harness, `${VEHICLE}.odometer.mileageInKm`);
 				expect(odometer.val).to.be.a('number');
-				const chargingState = await getState(harness, `${VEHICLE}.charging.status.state`);
+				const chargingState = await readState(harness, `${VEHICLE}.charging.status.state`);
 				expect(chargingState.val).to.equal('CONNECT_CABLE');
 				// Der zusaetzliche Zustand aus E7, den die API selbst nicht liefert.
-				const position = await getState(harness, `${VEHICLE}.parkingPosition.position`);
+				const position = await readState(harness, `${VEHICLE}.parkingPosition.position`);
 				expect(position.val).to.match(/^-?\d+(\.\d+)?;-?\d+(\.\d+)?$/);
 			});
 
 			it('schreibt Budget und Schluesselablauf aus den Headern', async function () {
 				this.timeout(60000);
-				await waitFor('die Zustaende unter info', async () => {
-					const days = await getState(harness, `${INSTANCE}.info.apiKey.daysRemaining`);
-					return days !== null && days !== undefined;
-				});
-
-				const remaining = await getState(harness, `${INSTANCE}.info.rateLimit.remaining`);
+				const remaining = await readState(harness, `${INSTANCE}.info.rateLimit.remaining`);
 				expect(remaining.val).to.equal(19);
-				const limit = await getState(harness, `${INSTANCE}.info.rateLimit.limit`);
+				const limit = await readState(harness, `${INSTANCE}.info.rateLimit.limit`);
 				expect(limit.val).to.equal(20);
-				const days = await getState(harness, `${INSTANCE}.info.apiKey.daysRemaining`);
+				const days = await readState(harness, `${INSTANCE}.info.apiKey.daysRemaining`);
 				expect(days.val).to.be.greaterThan(80);
 			});
 
@@ -207,11 +218,11 @@ tests.integration(path.join(__dirname, '..'), {
 					return result && result.val === 'SENT';
 				});
 
-				const name = await getState(harness, `${VEHICLE}.info.lastCommand.name`);
+				const name = await readState(harness, `${VEHICLE}.info.lastCommand.name`);
 				expect(name.val).to.equal('charging.start');
 				// `ack: true` heisst "an die API uebergeben", nicht "das Auto hat es
 				// getan" (E6) - der Beweis dafuer steht im Mock.
-				const enabled = await getState(harness, `${VEHICLE}.charging.enabled`);
+				const enabled = await readState(harness, `${VEHICLE}.charging.enabled`);
 				expect(enabled.ack).to.equal(true);
 				expect(mock.vehicleState.charging.status.state).to.equal('CHARGING');
 			});
@@ -260,7 +271,7 @@ tests.integration(path.join(__dirname, '..'), {
 				await delay(10000);
 				expect(mock.requests, 'Der Adapter hat trotz Sperrfrist gefragt').to.have.length(0);
 
-				const remaining = await getState(harness, `${INSTANCE}.info.rateLimit.remaining`);
+				const remaining = await readState(harness, `${INSTANCE}.info.rateLimit.remaining`);
 				expect(remaining.val, 'Der Budgetstand hat den Neustart nicht ueberlebt').to.equal(8);
 			});
 		});
@@ -295,7 +306,7 @@ tests.integration(path.join(__dirname, '..'), {
 				// Anders als nach einem erfolgreichen Poll bleibt die Verbindung unten;
 				// gefragt wird ab jetzt nur noch einmal pro Stunde (E10).
 				await delay(3000);
-				const connection = await getState(harness, `${INSTANCE}.info.connection`);
+				const connection = await readState(harness, `${INSTANCE}.info.connection`);
 				expect(connection.val).to.equal(false);
 				expect(mock.requests).to.have.length(1);
 				// Die Notification selbst laeuft ueber den Host-Prozess, den dieser
