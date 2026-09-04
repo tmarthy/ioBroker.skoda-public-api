@@ -68,7 +68,7 @@
     "mode": "daemon",
     "messagebox": true,
     "type": "vehicle",
-    "compact": true,
+    "compact": false,
     "connectionType": "cloud",
     "dataSource": "poll",
     "adminUI": {
@@ -151,7 +151,8 @@
             "en": "The API key expires within the next week. A new one has to be created in the MyŠkoda app; the adapter cannot renew it.",
             "de": "Der API-Schlüssel läuft innerhalb der nächsten Woche ab. Ein neuer muss in der MyŠkoda-App erzeugt werden; der Adapter kann ihn nicht erneuern."
           },
-          "regex": []
+          "regex": [],
+          "limit": 3
         },
         {
           "category": "apiKeyExpired",
@@ -164,7 +165,8 @@
             "en": "The API key has expired. The adapter only polls once per hour until a new key is configured.",
             "de": "Der API-Schlüssel ist abgelaufen. Der Adapter fragt nur noch einmal pro Stunde nach, bis ein neuer Schlüssel eingetragen ist."
           },
-          "regex": []
+          "regex": [],
+          "limit": 3
         }
       ]
     }

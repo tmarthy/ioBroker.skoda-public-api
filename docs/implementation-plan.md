@@ -627,7 +627,30 @@ Benachrichtigung bei Ladeende**), Hinweis auf `REDUCED` für Überschussladen,
 Beschreibung von `info.*`, und der Aussage, dass `ack=true` nur die Übergabe an
 die API bedeutet.
 
-### Phase 12 — Release-Vorbereitung · S
+### Phase 12 — Release-Vorbereitung · S · **erledigt bis auf die Entscheidung**
+
+> **Wie geprüft wurde:** Der Adapter-Checker (`@iobroker/repochecker`) arbeitet
+> ausschließlich über die GitHub-API und kommt an ein **privates** Repository nicht
+> heran. Stattdessen wurde sein Regelkatalog lokal ausgewertet und die relevanten
+> Regeln von Hand nachgefahren; `io-package.json` und `admin/jsonConfig.json` sind
+> zusätzlich gegen die offiziellen JSON-Schemata validiert.
+>
+> **Gefunden und behoben:**
+> - `notifications[].categories[].limit` fehlte — vom io-package-Schema verlangt.
+>   Jetzt 3 je Kategorie; gemeldet wird ohnehin höchstens einmal am Tag.
+> - **`common.compact` steht jetzt auf `false`.** Der Adapter liest
+>   `SKODA_API_BASE_URL` aus der Umgebung (E12), und im Compact-Modus teilen sich
+>   mehrere Instanzen einen Prozess — der Checker meldet das sonst als Fehler
+>   (`E5049`). Compact-Modus war für diesen Adapter ohnehin nie ein Ziel.
+> - `iob_npm.done` fehlte in `.gitignore` (`E9003`).
+> - `adapter-tests` hat jetzt `needs: check-and-lint` (`S3014`). Das spart nebenbei
+>   Actions-Minuten: Scheitert die Prüfung, starten die teuren Testläufe gar nicht.
+>
+> **Bewusst offen:** `W3027` — die OS-Matrix ist auf Ubuntu reduziert. Windows und
+> macOS laufen beim Release-Tag, also genau dann, wenn ein Plattformunterschied Folgen
+> hätte. Der Grund steht in Abschnitt „Stand der CI" der HANDOFF: mit der vollen
+> Matrix kostet ein Push 385 abgerechnete Minuten.
+
 
 `@alcalzone/release-script`, Übersetzungen mit `@iobroker/adapter-dev translate`
 (DE/EN von Hand, Rest maschinell), Adapter-Checker durchlaufen lassen,
