@@ -58,7 +58,7 @@ Ziel-SoC setzen, Ladeprofile ändern, Schlüssel automatisch erneuern.
 | 9 | Schlüsselablauf und Notifications | **fertig** |
 | 10 | Tests und CI vervollständigen | **fertig** |
 | 11 | Beispielskript und Dokumentation | **fertig** |
-| 12 | Release-Vorbereitung | **fertig bis auf die Entscheidung aus E1** |
+| 12 | Release-Vorbereitung | **fertig** — Entscheidung aus E1: bleibt privat |
 
 Letzter vollständig grüner Lauf (2026-09-04):
 
@@ -471,41 +471,31 @@ zweites Mal hineinläuft oder eine Korrektur versehentlich zurückdreht.
 
 ## 7. Der nächste Schritt
 
-**Alle zwölf Phasen sind abgearbeitet.** Was bleibt, ist keine Programmieraufgabe,
-sondern eine Entscheidung — die aus E1: **Wird der Adapter eingereicht, oder bleibt er
-privat?** Daran hängt der Rest.
+**Alle zwölf Phasen sind abgearbeitet, und die Entscheidung aus E1 ist gefallen: Der
+Adapter bleibt privat.** Keine Einreichung, keine npm-Veröffentlichung, kein Sentry.
+Was das im Einzelnen bedeutet, steht bei E1 in `docs/design-decisions.md`; die
+Entscheidung ist umkehrbar, und was dann zu tun wäre, steht ebendort.
 
-### Bleibt er privat
+Damit ist der nächste Schritt kein Code mehr, sondern **Betrieb**: den Adapter auf der
+Debian-VM laufen lassen und ein paar Tage am echten Fahrzeug beobachten. Alles bisher
+Gemessene stammt vom Mock oder aus vier Aufnahmen.
 
-Dann ist nichts weiter zu tun. Der Adapter läuft, ist getestet und dokumentiert. Vor dem
-ersten Dauerbetrieb fällig:
+Worauf dabei zu achten ist — in dieser Reihenfolge, weil hier die Annahmen stecken:
 
-- **Auf dem Produktivsystem laufen lassen** (Debian-VM, Node 22) und ein paar Tage am
-  echten Fahrzeug beobachten. Alles bisher Gemessene stammt vom Mock oder aus vier
-  Aufnahmen. Besonders im Auge behalten: die Kadenz über einen ganzen Tag (schläft das
-  Auto so, wie der Backoff annimmt?) und das erste `429`.
-- `npm run release` interaktiv laufen lassen, wenn eine Version gesetzt werden soll. Der
-  Trockenlauf ist durch: `check:git`, `check:package`, `check:changelog` und
-  `check:iobroker` melden alle „ok"; danach fragt das Skript nach der Versionsnummer —
-  bewusst eine Handentscheidung.
-
-### Wird er eingereicht
-
-Dann kommt dazu:
-
-1. **Repository öffentlich machen.** Der Adapter-Checker arbeitet über die GitHub-API
-   und sieht ein privates Repo nicht; erst danach lässt er sich überhaupt ausführen.
-2. **Sprache vereinheitlichen.** Heute sind Logmeldungen, Notification-Texte und der
-   Verbindungstest deutsch, README und Admin-Labels englisch. Für eine Einreichung
-   erwartet man Englisch durchgehend — das betrifft rund 40 Zeichenketten in
-   `client.ts`, `errors.ts`, `PollScheduler.ts`, `CommandQueue.ts`, `keyExpiry.ts`,
-   `connectionTest.ts`, `config.ts` und `main.ts`.
-3. **npm einrichten:** Trusted Publishing im npm-Konto, danach den `deploy`-Job im
-   Workflow einkommentieren.
-4. **Sentry entscheiden** (E14: vorbereitet, aber nicht scharfgeschaltet).
-5. **`W3027` erklären oder aufheben:** Die OS-Matrix läuft bei Pushes nur auf Ubuntu.
-   Wer das nicht erklären mag, setzt Windows und macOS wieder in die Push-Matrix — und
-   zahlt die 385 Minuten pro Push.
+1. **Die Kadenz über einen ganzen Tag.** Der Frische-Backoff nimmt an, dass ein
+   schlafendes Auto denselben `carCapturedTimestamp` liefert. Stimmt das nicht — meldet
+   das Fahrzeug etwa alle paar Minuten einen neuen Zeitstempel, ohne dass sich etwas
+   ändert —, greift der größte Einzelhebel nicht und das Budget ist vor dem Abend weg.
+   Nachsehen: `<vin>.info.dataAge` und die Debug-Zeilen „naechster in … min".
+2. **Das erste echte `429`.** Bis heute kam es nur vom Mock. Interessant ist, ob
+   `Retry-After` und `RateLimit-Reset` sich so verhalten wie angenommen.
+3. **Die Ladeleistung.** Die 5 kW stammen aus einer einzigen Aufnahme. Wer
+   Überschussladen fährt, sollte `charging.status.chargePowerInKw` über mehrere
+   Ladevorgänge mitschreiben, bevor er die Schwellen im Beispielskript festzurrt.
+4. **Der Schlüsselablauf.** Die Warnung bei 14 Tagen ist der erste Ernstfall, den bisher
+   nur ein Test gesehen hat.
+5. **Der Spec-Wächter** läuft montags weiter und meldet, wenn Škoda die API ändert. Die
+   Spec trägt `version: v0`; das ist keine Formalie.
 
 ### Was aus Phase 11 zu wissen ist
 

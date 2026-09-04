@@ -35,6 +35,20 @@ Tests, CI. Die Entscheidung über die Einreichung ins offizielle Repo fällt sp�
 **Begründung:** Die Kosten des Gerüsts fallen einmalig am Anfang an; Nachrüsten ist
 deutlich teurer.
 
+> **Entschieden am 2026-09-04 (nach Phase 12): Der Adapter bleibt privat.**
+> Keine Einreichung, keine npm-Veröffentlichung, kein Sentry. Was daraus folgt:
+> - Die gemischte Sprache bleibt: Logmeldungen, Notification-Texte und der
+>   Verbindungstest sind deutsch, README und Admin-Labels englisch. Für den
+>   Eigenbetrieb ist das stimmig.
+> - Der `deploy`-Job im Workflow bleibt auskommentiert.
+> - `W3027` des Adapter-Checkers (reduzierte OS-Matrix) bleibt bewusst stehen —
+>   Windows und macOS laufen nur beim Release-Tag, weil ein Push mit voller Matrix
+>   385 abgerechnete Actions-Minuten kostet.
+>
+> Das Gerüst aus E1 war trotzdem richtig: Ohne Tests und CI wäre keine der zwölf
+> Phasen belastbar gewesen. Die Entscheidung ist umkehrbar — was für eine spätere
+> Einreichung zu tun wäre, steht in HANDOFF.md, Abschnitt 7.
+
 ### E2 — Name: `ioBroker.skoda-public-api`
 npm-Paket `iobroker.skoda-public-api`. Bindestrich statt Unterstrich (Konvention:
 271 von 797 Repo-Adaptern nutzen Bindestriche, 8 nutzen Unterstriche).
