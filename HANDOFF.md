@@ -1,6 +1,6 @@
 # Handoff — ioBroker.skoda-public-api
 
-**Stand: 2026-09-04, nach Phase 11.** Auf GitHub. Die CI kann derzeit keine Jobs starten (Abrechnung des GitHub-Kontos, siehe Abschnitt 2); der letzte vollständige Lauf liegt vor der Umstellung der Matrix. Der Adapter liest, steuert und meldet den Ablauf seines Schlüssels; die Admin-UI ist vollständig. Der Lebenslauf einer Instanz — Poll, Objektbaum, Befehl, Verbindungstest, Neustart mitten im Quota-Fenster, abgelaufener Schlüssel — läuft seit Phase 10 als Integrationstest gegen den Mock, in einer echten ioBroker-Instanz. Diese Datei ist der Einstieg für jeden, der die
+**Stand: 2026-09-04, nach Phase 12.** Auf GitHub. Die CI kann derzeit keine Jobs starten (Abrechnung des GitHub-Kontos, siehe Abschnitt 2); der letzte vollständige Lauf liegt vor der Umstellung der Matrix. Der Adapter liest, steuert und meldet den Ablauf seines Schlüssels; die Admin-UI ist vollständig. Der Lebenslauf einer Instanz — Poll, Objektbaum, Befehl, Verbindungstest, Neustart mitten im Quota-Fenster, abgelaufener Schlüssel — läuft seit Phase 10 als Integrationstest gegen den Mock, in einer echten ioBroker-Instanz. Diese Datei ist der Einstieg für jeden, der die
 Arbeit übernimmt oder nach einer Pause wieder aufnimmt. Sie beschreibt, wo das Projekt
 steht, was als Nächstes ansteht und welche Fallstricke bereits bekannt sind.
 
@@ -58,7 +58,7 @@ Ziel-SoC setzen, Ladeprofile ändern, Schlüssel automatisch erneuern.
 | 9 | Schlüsselablauf und Notifications | **fertig** |
 | 10 | Tests und CI vervollständigen | **fertig** |
 | 11 | Beispielskript und Dokumentation | **fertig** |
-| 12 | Release-Vorbereitung | offen — **als Nächstes** |
+| 12 | Release-Vorbereitung | **fertig bis auf die Entscheidung aus E1** |
 
 Letzter vollständig grüner Lauf (2026-09-04):
 
@@ -471,27 +471,41 @@ zweites Mal hineinläuft oder eine Korrektur versehentlich zurückdreht.
 
 ## 7. Der nächste Schritt
 
-**Phase 12 — Release-Vorbereitung.** Die letzte Phase, und die einzige, die eine
-Entscheidung verlangt statt Code.
+**Alle zwölf Phasen sind abgearbeitet.** Was bleibt, ist keine Programmieraufgabe,
+sondern eine Entscheidung — die aus E1: **Wird der Adapter eingereicht, oder bleibt er
+privat?** Daran hängt der Rest.
 
-- **`@alcalzone/release-script`** ist eingerichtet (`npm run release`). Es erwartet den
-  Abschnitt `### **WORK IN PROGRESS**` in der README-Changelog und baut vorher
-  (`before_commit: npm run build`).
-- **Adapter-Checker durchlaufen lassen** (`npx @iobroker/adapter-checker` oder der
-  Web-Checker). Zu erwarten sind Hinweise auf die fehlende npm-Veröffentlichung, den
-  auskommentierten Deploy-Job und möglicherweise auf die Sprache der README.
-- **Übersetzungen prüfen:** Deutsch ist von Hand gesetzt, neun Sprachen kommen
-  maschinell aus dem Englischen. Die Notification-Texte in `io-package.json` haben nur
-  Englisch und Deutsch.
-- **Die Entscheidung aus E1:** Einreichung ins offizielle Repo — oder privat lassen.
-  Daran hängen Sentry (vorbereitet, aber nicht scharf), der Deploy-Job und die Frage,
-  ob Oberfläche und Log auf Englisch umgestellt werden. Heute sind Logmeldungen,
-  Notification-Texte und der Verbindungstest deutsch, die README englisch. Für den
-  Eigenbetrieb ist das stimmig, für eine Einreichung nicht.
+### Bleibt er privat
 
-Vor dem ersten Release außerdem fällig: **den Adapter einmal auf dem Produktivsystem
-laufen lassen** (Debian-VM, Node 22) und ihn eine Weile am echten Fahrzeug beobachten.
-Alles bisher Gemessene stammt vom Mock oder aus vier Aufnahmen.
+Dann ist nichts weiter zu tun. Der Adapter läuft, ist getestet und dokumentiert. Vor dem
+ersten Dauerbetrieb fällig:
+
+- **Auf dem Produktivsystem laufen lassen** (Debian-VM, Node 22) und ein paar Tage am
+  echten Fahrzeug beobachten. Alles bisher Gemessene stammt vom Mock oder aus vier
+  Aufnahmen. Besonders im Auge behalten: die Kadenz über einen ganzen Tag (schläft das
+  Auto so, wie der Backoff annimmt?) und das erste `429`.
+- `npm run release` interaktiv laufen lassen, wenn eine Version gesetzt werden soll. Der
+  Trockenlauf ist durch: `check:git`, `check:package`, `check:changelog` und
+  `check:iobroker` melden alle „ok"; danach fragt das Skript nach der Versionsnummer —
+  bewusst eine Handentscheidung.
+
+### Wird er eingereicht
+
+Dann kommt dazu:
+
+1. **Repository öffentlich machen.** Der Adapter-Checker arbeitet über die GitHub-API
+   und sieht ein privates Repo nicht; erst danach lässt er sich überhaupt ausführen.
+2. **Sprache vereinheitlichen.** Heute sind Logmeldungen, Notification-Texte und der
+   Verbindungstest deutsch, README und Admin-Labels englisch. Für eine Einreichung
+   erwartet man Englisch durchgehend — das betrifft rund 40 Zeichenketten in
+   `client.ts`, `errors.ts`, `PollScheduler.ts`, `CommandQueue.ts`, `keyExpiry.ts`,
+   `connectionTest.ts`, `config.ts` und `main.ts`.
+3. **npm einrichten:** Trusted Publishing im npm-Konto, danach den `deploy`-Job im
+   Workflow einkommentieren.
+4. **Sentry entscheiden** (E14: vorbereitet, aber nicht scharfgeschaltet).
+5. **`W3027` erklären oder aufheben:** Die OS-Matrix läuft bei Pushes nur auf Ubuntu.
+   Wer das nicht erklären mag, setzt Windows und macOS wieder in die Push-Matrix — und
+   zahlt die 385 Minuten pro Push.
 
 ### Was aus Phase 11 zu wissen ist
 
