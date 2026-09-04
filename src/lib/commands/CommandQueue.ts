@@ -18,7 +18,7 @@
  * `ack: true` heisst hier **an die API uebergeben**, nicht "das Auto hat es getan" (E6).
  */
 import type { ApiError } from '../api/errors';
-import type { ApiResult, CommandBody } from '../api/client';
+import type { ApiMeta, ApiResult, CommandBody } from '../api/client';
 import type { CommandAction, CommandDomain, VehicleResponse } from '../api/types';
 import type { QuotaManager } from '../quota/QuotaManager';
 import { COMMAND_DEFS, type CommandDomainDef, type CommandReport, type CommandResult } from '../states/commandDefs';
@@ -66,6 +66,8 @@ export interface CommandQueueOptions {
 	onCommandSent?: (vin: string) => void;
 	/** Meldet `info.connection`, wenn der Schluessel abgelehnt wird (E10). */
 	onConnectionChange?: (connected: boolean) => void;
+	/** Wird nach jeder Antwort gerufen - daran haengt der Schluesselablauf (E10). */
+	onResponse?: (meta: ApiMeta, error?: ApiError) => void;
 	/** Lebensdauer eines wartenden Befehls. */
 	ttlMs?: number;
 	/** S-PIN aus der Instanzkonfiguration, niemals aus einem State. */
@@ -107,6 +109,7 @@ export class CommandQueue {
 	private readonly onReport: CommandQueueOptions['onReport'];
 	private readonly onCommandSent?: (vin: string) => void;
 	private readonly onConnectionChange?: (connected: boolean) => void;
+	private readonly onResponse?: (meta: ApiMeta, error?: ApiError) => void;
 	private readonly log: CommandLog;
 	private readonly ttlMs: number;
 	private readonly spin?: string;
@@ -138,6 +141,7 @@ export class CommandQueue {
 		this.onReport = options.onReport;
 		this.onCommandSent = options.onCommandSent;
 		this.onConnectionChange = options.onConnectionChange;
+		this.onResponse = options.onResponse;
 		this.log = options.log;
 		this.ttlMs = options.ttlMs ?? DEFAULT_TTL_MS;
 		this.spin = options.spin;
@@ -344,6 +348,7 @@ export class CommandQueue {
 
 		const result = await this.client.sendCommand(command.vin, command.def.domain, command.action, body);
 		this.quota.recordResponse(result.meta);
+		this.onResponse?.(result.meta, result.ok ? undefined : result.error);
 
 		if (result.ok) {
 			this.entries.delete(key);

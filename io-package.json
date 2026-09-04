@@ -127,5 +127,46 @@
   "protectedNative": [
     "apiKey",
     "spin"
+  ],
+  "notifications": [
+    {
+      "scope": "skoda-public-api",
+      "name": {
+        "en": "Škoda Public API",
+        "de": "Škoda Public API"
+      },
+      "description": {
+        "en": "Notifications of the Škoda Public API adapter",
+        "de": "Meldungen des Adapters Škoda Public API"
+      },
+      "categories": [
+        {
+          "category": "apiKeyExpiring",
+          "name": {
+            "en": "API key expires soon",
+            "de": "API-Schlüssel läuft bald ab"
+          },
+          "severity": "notify",
+          "description": {
+            "en": "The API key expires within the next week. A new one has to be created in the MyŠkoda app; the adapter cannot renew it.",
+            "de": "Der API-Schlüssel läuft innerhalb der nächsten Woche ab. Ein neuer muss in der MyŠkoda-App erzeugt werden; der Adapter kann ihn nicht erneuern."
+          },
+          "regex": []
+        },
+        {
+          "category": "apiKeyExpired",
+          "name": {
+            "en": "API key expired",
+            "de": "API-Schlüssel abgelaufen"
+          },
+          "severity": "alert",
+          "description": {
+            "en": "The API key has expired. The adapter only polls once per hour until a new key is configured.",
+            "de": "Der API-Schlüssel ist abgelaufen. Der Adapter fragt nur noch einmal pro Stunde nach, bis ein neuer Schlüssel eingetragen ist."
+          },
+          "regex": []
+        }
+      ]
+    }
   ]
 }

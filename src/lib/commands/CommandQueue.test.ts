@@ -114,6 +114,17 @@ describe('commands/CommandQueue => Soll-Zustand, Coalescing, TTL', () => {
 			expect(quota.snapshot().remaining).to.equal(19);
 		});
 
+		it('reicht die Antwort fuer den Schluesselablauf weiter', async () => {
+			const seen: Array<string | undefined> = [];
+			queue = buildQueue({ onResponse: (_meta, error) => seen.push(error?.kind) });
+
+			await queue.submit(`${DEFAULT_VIN}.charging.enabled`, true);
+			mock.scenario = 'api-key-expired';
+			await queue.submit(`${DEFAULT_VIN}.charging.enabled`, false);
+
+			expect(seen).to.deep.equal([undefined, 'api-key-expired']);
+		});
+
 		it('ignoriert Zustaende fremder Fahrzeuge', async () => {
 			await queue.submit('TMBJC1NY0SF123456.charging.enabled', true);
 			expect(reports).to.have.length(0);

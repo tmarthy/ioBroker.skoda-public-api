@@ -523,7 +523,27 @@ man sonst nicht auseinanderhält — Schlüssel abgelaufen, Schlüssel gilt nich
 VIN, VIN unbekannt, Budget erschöpft. Nachgewiesen: unit gegen den Mock, und einmal von
 Hand im Admin des dev-servers (siehe HANDOFF.md, Abschnitt 3).
 
-### Phase 9 — Key-Ablauf und Notifications · S
+### Phase 9 — Key-Ablauf und Notifications · S · **erledigt**
+
+> **Abweichungen und Funde:**
+> - Der Ablauf hängt an **einem** neuen Rückkanal: `onResponse(meta, error)` an
+>   PollScheduler und CommandQueue. Er wird nach **jeder** Antwort gerufen, auch nach
+>   einer fehlerhaften — `X-API-Key-Expires-At` steht ja in jeder. Ein zweiter Kanal
+>   nur für den abgelehnten Schlüssel wäre Ballast gewesen.
+> - Der Block `notifications` steht in `io-package.json` auf der **obersten Ebene**,
+>   nicht unter `common`: Der Notification-Handler des js-controllers liest
+>   `instanceObject.notifications`. Nachgesehen im Quelltext und in einer laufenden
+>   Instanz bestätigt.
+> - **`401 api-key-expired` schlägt jede Rechnerei mit Tagen.** Sagt die API, der
+>   Schlüssel sei abgelaufen, wird das gemeldet, auch wenn der zuletzt gesehene Header
+>   noch Restlaufzeit behauptet.
+> - Eine gescheiterte Notification wird **abgefangen und geloggt**, statt den Adapter
+>   mitzureißen: Sie ist die Zugabe, die Logzeile ist die eigentliche Meldung.
+> - Meldungen dieser Stufe sind deutsch **mit Umlauten** — sie erscheinen als
+>   Notification in der Oberfläche, nicht nur im Log.
+> - `info.apiKey.expiresAt` ist die ISO-Zeichenkette aus dem Header (`role: date`), wie
+>   alle Zeitstempel dieser API im Baum; `info.rateLimit.resetAt` bleibt eine Zahl, weil
+>   der Adapter ihn selbst ausrechnet.
 
 - `X-API-Key-Expires-At` aus jeder Antwort nach `info.apiKey.expiresAt`,
   daraus `info.apiKey.daysRemaining`.
@@ -533,6 +553,12 @@ Hand im Admin des dev-servers (siehe HANDOFF.md, Abschnitt 3).
 - Bei `401 api-key-expired`: `info.connection = false`, Polling auf 1×/h,
   Notification.
 - `info.connection` bleibt bei `429` **true** (E10).
+
+**Fertig, wenn:** Die drei Stufen und der abgelaufene Schlüssel melden sich je einmal am
+Tag, und ein erneuerter Schlüssel setzt die Eskalation zurück. Nachgewiesen: 16 Tests
+gegen die Logik, und einmal in einer echten Instanz — `api-key-expired` im Mock
+erzeugte die Logzeile, `info.connection = false`, die Drosselung auf 1×/h und den
+Eintrag `{"apiKeyExpired":{"count":1}}` im Notification-Zustand des Hosts.
 
 ### Phase 10 — Tests und CI vervollständigen · M
 

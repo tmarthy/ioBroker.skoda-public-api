@@ -8,6 +8,7 @@ import { readConfig } from './lib/config';
 import { pickTestTarget, testConnection } from './lib/connectionTest';
 import { AdapterQuotaStore } from './lib/quota/AdapterQuotaStore';
 import { QuotaManager } from './lib/quota/QuotaManager';
+import { KeyExpiryWatcher } from './lib/notifications/keyExpiry';
 import { PollScheduler } from './lib/scheduler/PollScheduler';
 import { StateWriter } from './lib/states/StateWriter';
 
@@ -23,6 +24,7 @@ class SkodaPublicApi extends utils.Adapter {
 	private scheduler?: PollScheduler;
 	private queue?: CommandQueue;
 	private quota?: QuotaManager;
+	private keyExpiry?: KeyExpiryWatcher;
 
 	public constructor(options: Partial<utils.AdapterOptions> = {}) {
 		super({
@@ -65,6 +67,19 @@ class SkodaPublicApi extends utils.Adapter {
 
 		const writer = new StateWriter({ api: this });
 
+		// Der Schluessel erneuert sich nicht von selbst, und sein Ablauf faellt sonst
+		// wochenlang nicht auf: Die Werte im Baum bleiben laut E8 ja stehen.
+		this.keyExpiry = new KeyExpiryWatcher({
+			states: this,
+			log: this.log,
+			notify: (category, message) =>
+				// Eine gescheiterte Notification darf den Adapter nicht mitreissen: Sie
+				// ist die Zugabe, die Logzeile ist die eigentliche Meldung.
+				this.registerNotification('skoda-public-api', category, message).catch((error: unknown) =>
+					this.log.warn(`Notification "${category}" konnte nicht abgesetzt werden: ${String(error)}`),
+				),
+		});
+
 		this.scheduler = new PollScheduler({
 			client,
 			quota,
@@ -79,6 +94,7 @@ class SkodaPublicApi extends utils.Adapter {
 			onConnectionChange: connected => {
 				void this.setState('info.connection', connected, true);
 			},
+			onResponse: (meta, error) => void this.keyExpiry?.observe(meta, error),
 			intervals: {
 				idleMs: settings.idleMs,
 				activeMs: settings.activeMs,
@@ -103,6 +119,7 @@ class SkodaPublicApi extends utils.Adapter {
 			onConnectionChange: connected => {
 				void this.setState('info.connection', connected, true);
 			},
+			onResponse: (meta, error) => void this.keyExpiry?.observe(meta, error),
 			ttlMs: settings.commandTtlMs,
 			// Der S-PIN kommt aus der Instanzkonfiguration, niemals aus einem State.
 			spin: settings.spin || undefined,
@@ -173,8 +190,10 @@ class SkodaPublicApi extends utils.Adapter {
 		const client = new SkodaApiClient({ apiKey, secrets: this.config.spin ? [this.config.spin] : [] });
 		const result = await testConnection(client, vin);
 		if (result.meta) {
-			// Der Test kostet einen Request aus demselben Budget wie das Polling.
+			// Der Test kostet einen Request aus demselben Budget wie das Polling - und
+			// bringt nebenbei das Ablaufdatum des Schluessels mit.
 			this.quota?.recordResponse(result.meta);
+			await this.keyExpiry?.observe(result.meta);
 		}
 		// Absichtlich ohne den Text: Er nennt Fahrzeugname und Kennzeichen, und die
 		// muessen nicht ins Log, das im Forum landet (E14).
@@ -210,6 +229,7 @@ class SkodaPublicApi extends utils.Adapter {
 			this.queue?.stop();
 			this.queue = undefined;
 			this.quota = undefined;
+			this.keyExpiry = undefined;
 			callback();
 		} catch (error) {
 			this.log.error(`Fehler beim Entladen: ${(error as Error).message}`);

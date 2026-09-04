@@ -23,6 +23,15 @@ declare global {
 			/** Parkposition mitlesen. Aus heisst: gar nicht erst anfordern. */
 			readParkingPosition: boolean;
 		}
+
+		/**
+		 * Die Notification-Kategorien dieses Adapters. Sie stehen unter
+		 * `common.notifications` in `io-package.json`; ohne diese Deklaration nimmt
+		 * `registerNotification()` den Namensraum nicht an.
+		 */
+		interface NotificationScopes {
+			'skoda-public-api': 'apiKeyExpiring' | 'apiKeyExpired';
+		}
 	}
 }
 

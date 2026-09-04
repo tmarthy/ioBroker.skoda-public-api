@@ -1,6 +1,6 @@
 # Handoff — ioBroker.skoda-public-api
 
-**Stand: 2026-09-04, nach Phase 8.** Auf GitHub, CI grün. Der Adapter liest und steuert, die Admin-UI ist vollständig — und beides ist einmal von Hand in einer echten ioBroker-Instanz gegen den Mock durchgespielt worden. Diese Datei ist der Einstieg für jeden, der die
+**Stand: 2026-09-04, nach Phase 9.** Auf GitHub, CI grün. Der Adapter liest, steuert und meldet den Ablauf seines Schlüssels; die Admin-UI ist vollständig — und alles davon ist einmal von Hand in einer echten ioBroker-Instanz gegen den Mock durchgespielt worden. Diese Datei ist der Einstieg für jeden, der die
 Arbeit übernimmt oder nach einer Pause wieder aufnimmt. Sie beschreibt, wo das Projekt
 steht, was als Nächstes ansteht und welche Fallstricke bereits bekannt sind.
 
@@ -55,15 +55,16 @@ Ziel-SoC setzen, Ladeprofile ändern, Schlüssel automatisch erneuern.
 | 6 | PollScheduler, Verdrahtung → **Meilenstein 1: lesender Adapter** | **fertig** |
 | 7 | CommandQueue → **Meilenstein 2: steuernder Adapter** | **fertig** |
 | 8 | Admin-UI, Verbindungstest, Übersetzungen | **fertig** |
-| 9 | Schlüsselablauf und Notifications | offen — **als Nächstes** |
-| 10–12 | Tests/CI, Doku, Release | offen |
+| 9 | Schlüsselablauf und Notifications | **fertig** |
+| 10 | Tests und CI vervollständigen | offen — **als Nächstes** |
+| 11–12 | Beispielskript, Doku, Release | offen |
 
 Letzter vollständig grüner Lauf (2026-09-04):
 
 ```
 npm run check            tsc --noEmit, fehlerfrei
 npm run lint             0 Fehler, 0 Warnungen
-npm run test:ts          299 Tests
+npm run test:ts          317 Tests
 npm run test:package     57 Tests
 npm run test:integration  1 Test  (startet den Adapter in einer echten ioBroker-Instanz)
 npm run build            Type-Check und esbuild fehlerfrei
@@ -336,6 +337,7 @@ Client direkt auf.
 | `src/lib/commands/CommandQueue.ts` | Soll-Zustand, Coalescing, TTL (E5) | fertig |
 | `src/lib/commands/commandMap.ts` | State-ID → Endpunkt + Body-Builder | fertig |
 | `src/lib/connectionTest.ts` | „Verbindung testen" der Admin-UI | fertig |
+| `src/lib/notifications/keyExpiry.ts` | Schlüsselablauf: Schwellen 14/7/2 (E10) | fertig |
 | `src/main.ts` | Lifecycle, Verdrahtung der vier Schichten | fertig |
 
 ---
@@ -426,80 +428,57 @@ zweites Mal hineinläuft oder eine Korrektur versehentlich zurückdreht.
 
 ## 7. Der nächste Schritt
 
-**Phase 9 — Schlüsselablauf und Notifications.** Klein, und die letzte Lücke im
-Betriebsverhalten: Ein abgelaufener Schlüssel fällt sonst wochenlang nicht auf, weil die
-Werte laut E8 absichtlich stehenbleiben.
+**Phase 10 — Tests und CI vervollständigen.** Der größte offene Posten ist der
+**Integrationstest gegen den Mock in einer echten Instanz**: Was in Phase 8 und 9 von
+Hand durchgespielt wurde (Abschnitt 3), soll automatisch laufen — inklusive Neustart
+mitten im Quota-Fenster.
 
-Alles Nötige liegt bereit: `X-API-Key-Expires-At` kommt aus **jeder** Antwort als
-`meta.apiKeyExpiresAt` (ein `Date`) beim Aufrufer an — bisher wertet es niemand aus.
-Zu bauen ist:
+Zwei Dinge, die dabei zu wissen sind:
 
-- `info.apiKey.expiresAt` und `info.apiKey.daysRemaining` (der StateWriter kann das
-  über `writeDerived`, wie er es für `info.rateLimit.*` und `info.lastCommand.*` schon
-  tut — der Weg dorthin führt über `main.ts`, wo `meta` ohnehin durchläuft).
-- Log-Eskalation bei 14 (`info`), 7 (`warn`) und 2 Tagen (`error`), **höchstens einmal
-  pro Tag** — sonst steht bei einer Kadenz von 15 Minuten hundertmal dasselbe im Log.
-- `notifications`-Scope in `io-package.json` und `registerNotification()` ab sieben
-  Tagen (E10).
-- Bei `401 api-key-expired` ist die Drosselung auf einmal pro Stunde und
-  `info.connection = false` bereits umgesetzt (Phase 6); es fehlt nur die
-  Benachrichtigung.
+- **Der API-Schlüssel steht unter `encryptedNative`** (Fallstrick 12). Ein Test, der die
+  Instanz selbst konfiguriert, muss ihn mit dem Systemschlüssel aus `system.config`
+  verschlüsseln — js-controller legt ihn als `$/aes-192-cbc:…` ab.
+- `@iobroker/testing` bietet dafür `defineAdditionalTests` mit einem Harness, der
+  `changeAdapterConfig`, `startAdapterAndWait` und Zugriff auf States kann. Der
+  Mock läuft dabei im selben Prozess wie die Tests.
 
-Danach **Phase 10**: den Durchlauf aus Abschnitt 3 automatisieren (Adapter gegen den
-Mock über eine simulierte Stunde, mit Neustart mitten im Fenster). Von Hand ist er
-gelaufen; was fehlt, ist ein Test, der ihn festhält. **Achtung:** Der Schlüssel steht
-unter `encryptedNative` — ein Test, der die Instanz selbst konfiguriert, muss ihn mit
-dem Systemschlüssel aus `system.config` verschlüsseln (Fallstrick 12).
+Danach **Phase 11** (Beispielskript `examples/pv-surplus-charging.js` und README) und
+**Phase 12** (Release-Vorbereitung, Adapter-Checker, Entscheidung über die Einreichung).
 
-### Was aus Phase 8 zu wissen ist
+Für die README schon jetzt notiert, weil es sonst niemand ahnt:
 
-- **Der Verbindungstest ist der einzige `sendTo`-Weg im Adapter.** Er hängt an
-  `common.messagebox: true` (Fallstrick 13) und an `src/lib/connectionTest.ts`; die
-  Nachricht kommt in `main.ts` an.
-- Er fordert **nur `include=info`** an: Name und Kennzeichen zum Wiedererkennen, aber
-  keine Parkposition (E14). Er kostet einen Request und wird im QuotaManager gebucht,
-  aber nicht von ihm blockiert — ein `429` ist selbst eine brauchbare Antwort.
-- **Die Texte der Oberfläche sind deutsch mit Umlauten**, der übrige Code bleibt bei
-  der ASCII-Umschrift. Wer neue UI-Texte schreibt, hält sich an die Oberfläche.
-- **Englisch ist die Quellsprache der Übersetzungen.** Die Schlüssel in
-  `admin/i18n/en.json` sind Identitäten, Deutsch steht von Hand daneben, die übrigen
-  neun Sprachen kommen aus `npm run translate`. Wer ein Feld ergänzt: erst nach
-  `en.json`, dann übersetzen lassen (Fallstrick 6).
+- **`ack=true` heißt „an die API übergeben"**, nicht „das Auto hat es getan" (E6).
+- **Kein sekundengenaues Monitoring, keine sofortige Benachrichtigung bei Ladeende** —
+  bei 20 Requests pro Stunde ist das Physik, kein Versäumnis.
+- Für das Überschussladen muss der AC-Ladestrom in der MyŠkoda-App auf `REDUCED`
+  stehen; die API kann ihn nicht setzen (E3).
 
-### Was aus Phase 7 zu wissen ist
+### Was aus Phase 9 zu wissen ist
 
-- **Ein Befehl kostet zwei Requests, nicht einen:** den POST und den Verifikations-Poll
-  60 Sekunden später. Die API antwortet mit `202` und kennt keinen Endpunkt, der den
-  Ausgang meldet.
-- **`ack: true` heißt „an die API übergeben"**, nicht „das Auto hat es getan" (E6). Das
-  gehört in die README, sonst baut jemand eine Regelung auf eine Zusage, die der
-  Adapter nicht geben kann.
-- **Der Soll-Schalter ist idempotent, der Knopf nicht.** Entspricht `enabled` dem
-  zuletzt gepollten Ist, geht kein Request hinaus (`COALESCED`). Wer trotzdem senden
-  will — weil die Daten zehn Minuten alt sind —, nimmt `start`/`stop`.
-- **Sechs Ergebnisse** in `info.lastCommand.result`: `SENT`, `QUEUED`, `COALESCED`,
-  `EXPIRED`, `REJECTED_BY_VEHICLE`, `FAILED`. Das letzte steht nicht in E5 und ist
-  bewusst ergänzt: Ein `500` ist weder eine Ablehnung noch ein Verfall.
-- **Der S-PIN kommt aus der Instanzkonfiguration, niemals aus einem State** (E6/E14).
-  Fehlt er, verfällt der Befehl, ohne einen Request zu kosten. Der Client bekommt ihn
-  als `secrets` und maskiert ihn damit in jeder Meldung.
-- **`operation-not-supported` wird dauerhaft gemerkt**, aber kein Objekt angefasst:
-  Gelöscht wird nie (E13), und ein stilles `write: false` würde den Schalter
-  unbrauchbar machen, ohne dass jemand sähe warum.
+- **`onResponse(meta, error)`** ist der Rückkanal für alles, was in *jeder* Antwort
+  steht. Bisher hängt nur der Schlüsselablauf daran; wer etwas Ähnliches braucht (der
+  Header `RateLimit-*` geht schon an den QuotaManager), hängt es dort ein.
+- **Der Block `notifications` steht in `io-package.json` auf oberster Ebene**, nicht
+  unter `common` — der Notification-Handler liest `instanceObject.notifications`. Neue
+  Kategorien müssen zusätzlich in `adapter-config.d.ts` unter `NotificationScopes`
+  deklariert werden, sonst nimmt `registerNotification()` sie nicht an.
+- Gemeldet wird **höchstens einmal am Tag je Stufe**, und ein erneuerter Schlüssel
+  (mehr als 14 Tage Restlaufzeit) setzt die Eskalation zurück.
+- Nachsehen, ob eine Notification wirklich ankam: der Zustand
+  `system.host.<host>.notifications.skoda-public-api` enthält sie als JSON.
 
-### Was aus Phase 6 zu wissen ist
+### Was aus den Phasen 6 bis 8 zu wissen ist
 
 - **Der Scheduler schreibt keine States.** Er reicht die Antwort über `onVehicleData`
-  nach oben, wo `main.ts` StateWriter und CommandQueue bedient. Wer das umdreht, hebt
-  die Schichtung auf.
+  nach oben, wo `main.ts` StateWriter und CommandQueue bedient.
 - **`tick()` ist der ganze Motor** — bei Scheduler wie Queue: Es arbeitet ab, was fällig
-  ist, und liefert die Zeit bis zum nächsten Mal. Tests brauchen deshalb keine echten
-  Timer, sondern stellen die Uhr um den Rückgabewert vor.
-- **Der Frische-Backoff greift im Befehlsfenster nicht.** Dass ein Auto 60 Sekunden nach
-  einem Befehl noch nichts gemeldet hat, ist der Normalfall.
+  ist, und liefert die Zeit bis zum nächsten Mal. Tests stellen die Uhr um den
+  Rückgabewert vor und brauchen keine echten Timer.
+- **Der Soll-Schalter ist idempotent, der Knopf nicht.** Entspricht `enabled` dem
+  zuletzt gepollten Ist, geht kein Request hinaus (`COALESCED`).
 - **`404` setzt eine VIN dauerhaft aus, `401`/`403` drosseln auf einmal pro Stunde**
-  und setzen `info.connection` auf false. Bei `429` bleibt die Verbindung bestehen — ein
-  leeres Budget ist Normalbetrieb (E10).
+  und setzen `info.connection` auf false. Bei `429` bleibt die Verbindung bestehen.
+- **Der S-PIN kommt aus der Instanzkonfiguration, niemals aus einem State** (E6/E14).
 
 ### Was aus den Phasen 3 bis 5 zu wissen ist
 
@@ -507,9 +486,7 @@ dem Systemschlüssel aus `system.config` verschlüsseln (Fallstrick 12).
   die eine URL, eine VIN oder ein Geheimnis enthalten könnte, nimmt `createSanitizer()`.
 - **`vehicleErrors(response)`** ist die einzige Stelle, die `errors ?? []` umsetzt
   (Fallstrick 10).
-- **Die beiden `429` unterscheiden sich nur am `type`.** `rate-limit-exceeded` darf
-  geduldig warten, `vehicle-not-accepting-requests` kommt vom Auto und höchstens
-  dreimal.
+- **Die beiden `429` unterscheiden sich nur am `type`.**
 - **Der QuotaManager glaubt den Headern, nicht seiner eigenen Rechnung.** Polls halten
   bei der Reserve an, Befehle dürfen sie aufbrauchen.
 - **Der StateWriter legt nur an, was in der Antwort steht, und löscht nie.** Fehlende

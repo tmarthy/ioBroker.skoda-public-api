@@ -20,7 +20,7 @@
  * Zustaende: Die Antwort geht ueber `onVehicleData` nach oben an den StateWriter.
  * So bleibt die Schichtung aus dem Architekturbild erhalten.
  */
-import { vehicleErrors, type ApiResult } from '../api/client';
+import { vehicleErrors, type ApiMeta, type ApiResult } from '../api/client';
 import type { ApiError } from '../api/errors';
 import { partFromErrorType } from '../api/parts';
 import { VEHICLE_PARTS, type VehiclePart, type VehicleResponse } from '../api/types';
@@ -95,6 +95,13 @@ export interface PollSchedulerOptions {
 	log: SchedulerLog;
 	/** Meldet Wechsel von `info.connection` (E10). */
 	onConnectionChange?: (connected: boolean) => void;
+	/**
+	 * Wird nach **jeder** Antwort gerufen, auch nach einer fehlerhaften.
+	 *
+	 * Daran haengt der Schluesselablauf: `X-API-Key-Expires-At` steht in jeder Antwort,
+	 * es kostet also nichts, ihn bei jedem Poll nachzusehen (E10).
+	 */
+	onResponse?: (meta: ApiMeta, error?: ApiError) => void;
 	/** Abweichungen von den Vorgabewerten. */
 	intervals?: Partial<PollIntervals>;
 	/** Parkposition mitlesen. Aus heisst: gar nicht erst anfordern (E14). */
@@ -159,6 +166,7 @@ export class PollScheduler {
 	private readonly quota: QuotaManager;
 	private readonly onVehicleData: PollSchedulerOptions['onVehicleData'];
 	private readonly onConnectionChange?: (connected: boolean) => void;
+	private readonly onResponse?: (meta: ApiMeta, error?: ApiError) => void;
 	private readonly log: SchedulerLog;
 	private readonly intervals: PollIntervals;
 	private readonly readParkingPosition: boolean;
@@ -180,6 +188,7 @@ export class PollScheduler {
 		this.quota = options.quota;
 		this.onVehicleData = options.onVehicleData;
 		this.onConnectionChange = options.onConnectionChange;
+		this.onResponse = options.onResponse;
 		this.log = options.log;
 		this.readParkingPosition = options.readParkingPosition ?? true;
 		this.now = options.now ?? (() => Date.now());
@@ -301,6 +310,7 @@ export class PollScheduler {
 
 		const result = await this.client.getVehicle(state.vin, this.includeFor(state));
 		this.quota.recordResponse(result.meta);
+		this.onResponse?.(result.meta, result.ok ? undefined : result.error);
 
 		if (result.ok) {
 			await this.handleSuccess(state, result.data);

@@ -417,6 +417,25 @@ describe('scheduler/PollScheduler => Kadenz unter 20 Requests pro Stunde', () =>
 		});
 	});
 
+	it('reicht jede Antwort weiter, auch die fehlerhafte', async () => {
+		// Daran haengt der Schluesselablauf: X-API-Key-Expires-At steht in jeder
+		// Antwort, es kostet also nichts, ihn bei jedem Poll nachzusehen (E10).
+		const seen: Array<[boolean, string | undefined]> = [];
+		const scheduler = buildScheduler({
+			onResponse: (meta, error) => seen.push([meta.consumedQuota, error?.kind]),
+		});
+
+		await scheduler.tick();
+		mock.scenario = 'server-error';
+		clock += 15 * MINUTE;
+		await scheduler.tick();
+
+		expect(seen).to.deep.equal([
+			[true, undefined],
+			[true, 'server-error'],
+		]);
+	});
+
 	it('nennt die VIN im Log nur gekuerzt', async () => {
 		mock.scenario = 'not-found';
 		const scheduler = buildScheduler();
