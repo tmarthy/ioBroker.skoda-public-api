@@ -647,8 +647,11 @@ die API bedeutet.
 > - `adapter-tests` hat jetzt `needs: check-and-lint` (`S3014`). Das spart nebenbei
 >   Actions-Minuten: Scheitert die Prüfung, starten die teuren Testläufe gar nicht.
 >
-> `W3027` ist behoben: Die Workflow-Matrix nennt Ubuntu, Windows und macOS statisch und
-> läuft für Node 22 und 24. Der Deploy-Job ist für npm Trusted Publishing definiert.
+> Die statisch deklarierte vollständige Workflow-Matrix läuft für Node 22 und 24 auf
+> Ubuntu, Windows und macOS bei Versionstags und manuellen Aufrufen. Pushes und Pull
+> Requests führen in einem getrennten Job nur die Mindestprüfung mit Ubuntu und Node 22
+> aus. Dadurch bleibt `E3027` behoben, ohne jeden Commit durch sechs Kombinationen zu
+> verzögern. Der Deploy-Job ist für npm Trusted Publishing definiert.
 >
 > **Repochecker 5.20.14 am 2026-09-05:** Alle lokal behebbaren Fehler sind beseitigt.
 > Offen bleiben erwartungsgemäß `E2000` (noch nicht auf npm), `E3032` (noch kein

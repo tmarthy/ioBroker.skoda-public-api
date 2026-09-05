@@ -148,18 +148,16 @@ dieses Repository eingerichtet werden.
 
 ### Stand der CI
 
-Vier Workflows. Die frühere Abrechnungssperre ist behoben. Der zuletzt geprüfte Lauf
-für Commit `15550e7` war vollständig grün: Check und Lint sowie Adaptertests auf
-Ubuntu mit Node 22 und 24. Vor dem Release wird zusätzlich die vollständige
-Plattformmatrix ausgeführt.
+Vier Workflows. Der vollständige Matrixlauf für Commit `3d7a7f6` war grün: Check und
+Lint sowie Adaptertests auf Ubuntu, Windows und macOS mit Node 22 und 24.
 
-**Die Matrix ist vollständig, wie es der Repository-Checker verlangt.** Seit das
-Repository öffentlich ist, sind die verwendeten Standard-Runner von GitHub Actions
-für Ubuntu, Windows und macOS kostenfrei.
+**Normale Commits erhalten bewusst nur die Mindestprüfung.** Sie prüft und lintet mit
+Node 24 und führt den Adaptertest auf Ubuntu mit der ältesten unterstützten Version
+Node 22 aus. Die vollständige Matrix bleibt für Tags und manuelle Läufe erhalten.
 
 | Anlass | Was läuft | Abrechnung |
 |---|---|---|
-| Push, Pull Request | `check-and-lint` + `adapter-tests` auf Ubuntu, Windows und macOS × Node 22/24 | kostenfrei im öffentlichen Repository |
+| Push, Pull Request | `check-and-lint` mit Node 24 + `adapter-tests` auf Ubuntu mit Node 22 | kostenfrei im öffentlichen Repository |
 | Versions-Tag (`v*`) | volle Testmatrix, danach Deploy | kostenfrei im öffentlichen Repository |
 | `workflow_dispatch` | vollständige Matrix auf Zuruf | kostenfrei im öffentlichen Repository |
 
@@ -170,7 +168,7 @@ von sechs Stunden und bindet unnötig einen Runner.
 
 | Workflow | Auslöser | Stand |
 |---|---|---|
-| `Test and Release` | Push auf `main`, Tags, PRs, `workflow_dispatch` | vollständige Matrix: Ubuntu, Windows, macOS × Node 22/24 |
+| `Test and Release` | Push auf `main`, Tags, PRs, `workflow_dispatch` | schnell bei Push/PR; vollständige Matrix bei Tag oder manuellem Lauf |
 | `Check Škoda API spec` | **nur** `schedule` (Mo 05:17 UTC) und `workflow_dispatch` | ✓ manuell geprüft, „Spec unveraendert" |
 | `Auto-Merge Dependabot PRs` | `pull_request_target` | noch nie gelaufen — wartet auf den ersten Dependabot-PR; npm am 8., Actions am 22. jedes Monats |
 | Deploy | Tag `v*` | definiert; Veröffentlichung funktioniert nach Einrichtung von npm Trusted Publishing |
@@ -179,8 +177,10 @@ von sechs Stunden und bindet unnötig einen Runner.
 prüfen will, muss ihn von Hand auslösen: Actions → *Check Škoda API spec* →
 *Run workflow*.
 
-Der `adapter-tests`-Job baut den Adapter über `build: true` und prüft ihn in sechs
-OS/Node-Kombinationen. Windows braucht dafür 4–5 Minuten, der Rest gut eine.
+Beide Adaptertest-Jobs bauen über `build: true`. `adapter-tests-minimal` läuft bei
+Pushes und Pull Requests nur auf Ubuntu mit Node 22. Der statische Matrixjob
+`adapter-tests` prüft bei Tags und manuellen Läufen sechs OS/Node-Kombinationen; diese
+Trennung hält normale Läufe kurz und bleibt für den Repository-Checker erkennbar.
 
 ---
 

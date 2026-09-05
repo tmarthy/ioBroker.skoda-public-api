@@ -2,8 +2,8 @@ name: Test and Release
 
 # Laeuft bei jedem Push und Pull Request sowie bei Versions-Tags.
 #
-# Die vollstaendige Plattformmatrix ist eine Veroeffentlichungsanforderung des
-# ioBroker-Repository-Checkers und laeuft deshalb bei Pushes und Pull Requests.
+# Pushes und Pull Requests erhalten eine schnelle Mindestpruefung. Die vollstaendige
+# Plattformmatrix laeuft vor einer Veroeffentlichung oder auf manuellen Aufruf.
 on:
   push:
     branches:
@@ -45,13 +45,31 @@ jobs:
           type-checking: true
           lint: true
 
-  # Testet den Adapter auf allen unterstuetzten Node-Versionen.
-  #
-  # Alle drei vom ioBroker-Repository-Checker verlangten Betriebssysteme.
-  adapter-tests:
-    if: contains(github.event.head_commit.message, '[skip ci]') == false
+  # Schneller Test fuer normale Commits: aelteste unterstuetzte Node-Version auf Linux.
+  adapter-tests-minimal:
+    if: |
+      contains(github.event.head_commit.message, '[skip ci]') == false &&
+      github.ref_type != 'tag' &&
+      github.event_name != 'workflow_dispatch'
     # Erst pruefen, dann testen: Wenn Lint oder Typpruefung scheitern, muessen die
     # teuren Testlaeufe gar nicht erst starten.
+    needs: check-and-lint
+
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - uses: ioBroker/testing-action-adapter@v1
+        with:
+          node-version: '22.x'
+          os: ubuntu-latest
+          build: true
+
+  # Checker-konforme vollstaendige Matrix fuer Releases und manuelle Abnahmen.
+  adapter-tests:
+    if: |
+      contains(github.event.head_commit.message, '[skip ci]') == false &&
+      (github.ref_type == 'tag' || github.event_name == 'workflow_dispatch')
     needs: check-and-lint
 
     runs-on: ${{ matrix.os }}
