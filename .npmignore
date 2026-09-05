@@ -1,0 +1,2 @@
+# package.json contains the authoritative publish allow-list.
+# Keep this file so npm does not reuse .gitignore, which intentionally excludes build/.

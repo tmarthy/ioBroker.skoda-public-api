@@ -15,6 +15,7 @@ import type { ApiMeta, ApiResult } from './api/client';
 import type { ApiError } from './api/errors';
 import type { VehiclePart, VehicleResponse } from './api/types';
 import type { VehicleQuota } from './quota/VehicleQuotaManager';
+import { translateFallback, type Translate } from './i18n';
 
 /** Nur Antworten fuer den aktiven Schluessel duerfen dessen Betriebszustand aendern. */
 export interface ConnectionTestTracking {
@@ -54,6 +55,7 @@ const VIN_PATTERN = /^[A-HJ-NPR-Z0-9]{17}$/;
  * @param vin Die zu pruefende Fahrgestellnummer.
  * @param now Jetzt-Zeitpunkt in Millisekunden, ersetzbar fuer Tests.
  * @param tracking Optionaler Betriebszustand der laufenden Instanz.
+ * @param t Uebersetzer fuer das Ergebnis.
  * @returns Ergebnis samt Text fuer die Admin-UI.
  */
 export async function testConnection(
@@ -61,6 +63,7 @@ export async function testConnection(
 	vin: string,
 	now: number = Date.now(),
 	tracking?: ConnectionTestTracking,
+	t: Translate = translateFallback,
 ): Promise<ConnectionTestResult> {
 	const active = tracking?.testedKey === tracking?.activeKey ? tracking : undefined;
 	const permit = active?.quota?.trackRequest(vin);
@@ -68,7 +71,7 @@ export async function testConnection(
 	active?.quota?.recordResponse(vin, result.meta, permit);
 	await active?.onResponse?.(result.meta);
 	if (!result.ok) {
-		return { ok: false, text: explainError(result.error, result.meta, now), meta: result.meta };
+		return { ok: false, text: explainError(result.error, result.meta, now, t), meta: result.meta };
 	}
 
 	const vehicle = result.data.vehicle as unknown as Record<string, unknown>;
@@ -79,12 +82,12 @@ export async function testConnection(
 		(value): value is string => typeof value === 'string' && value.length > 0,
 	);
 
-	const parts = [`Verbindung steht${label ? ` - ${label}` : ''}.`];
-	const expiry = describeKeyExpiry(result.meta, now);
+	const parts = [t('Connection established%s.', label ? ` - ${label}` : '')];
+	const expiry = describeKeyExpiry(result.meta, now, t);
 	if (expiry) {
 		parts.push(expiry);
 	}
-	const quota = describeQuota(result.meta);
+	const quota = describeQuota(result.meta, t);
 	if (quota) {
 		parts.push(quota);
 	}
@@ -126,32 +129,34 @@ export interface ConnectionTestTarget {
  * @param fallback Die gespeicherte Instanzkonfiguration.
  * @param fallback.apiKey Der gespeicherte Schluessel.
  * @param fallback.vins Die gespeicherte Fahrzeugliste.
+ * @param t Uebersetzer fuer Beanstandungen.
  * @returns Das Ziel, oder die Beanstandung fuer die Admin-UI.
  */
 export function pickTestTarget(
 	payload: unknown,
 	fallback: { apiKey?: string; vins?: unknown },
+	t: Translate = translateFallback,
 ): ConnectionTestTarget | { problem: string } {
 	const data = (payload ?? {}) as Record<string, unknown>;
 	const apiKey = (typeof data.apiKey === 'string' ? data.apiKey.trim() : '') || (fallback.apiKey ?? '').trim();
 	if (!apiKey) {
 		return {
-			problem: 'Kein API-Schlüssel eingetragen. Er wird in der MyŠkoda-App unter "API-Schlüssel" erzeugt.',
+			problem: t('No API key entered. Create one in the MyŠkoda app under "API key".'),
 		};
 	}
 
 	const rows = Array.isArray(data.vins) && data.vins.length > 0 ? data.vins : fallback.vins;
 	const first = Array.isArray(rows) ? rows[0] : undefined;
 	if (first === undefined) {
-		return { problem: 'Kein Fahrzeug eingetragen.' };
+		return { problem: t('No vehicle entered.') };
 	}
 
 	const vin = normalizeVin(typeof first === 'string' ? first : (first as { vin?: unknown }).vin);
 	if (!vin) {
 		return {
-			problem:
-				'Die erste Zeile der Fahrzeugliste ist keine gültige VIN: 17 Zeichen, ' +
-				'Ziffern und Großbuchstaben außer I, O und Q.',
+			problem: t(
+				'The first row of the vehicle list is not a valid VIN: 17 digits and uppercase letters excluding I, O and Q.',
+			),
 		};
 	}
 	return { apiKey, vin };
@@ -163,31 +168,34 @@ export function pickTestTarget(
  * @param error Der Fehler aus dem Client.
  * @param meta Die Begleitangaben der Antwort.
  * @param now Jetzt-Zeitpunkt in Millisekunden.
+ * @param t Uebersetzer fuer das Ergebnis.
  * @returns Der Text fuer die Admin-UI.
  */
-function explainError(error: ApiError, meta: ApiMeta, now: number): string {
+function explainError(error: ApiError, meta: ApiMeta, now: number, t: Translate): string {
 	switch (error.kind) {
 		case 'api-key-expired':
-			return 'Der API-Schlüssel ist abgelaufen. In der MyŠkoda-App unter "API-Schlüssel" einen neuen erzeugen.';
+			return t('The API key has expired. Create a new one in the MyŠkoda app under "API key".');
 		case 'api-key-not-authorized':
-			return (
-				'Der Schlüssel gilt nicht für diese VIN. Zwei häufige Ursachen: Die VIN ist vertippt, oder das ' +
-				'Fahrzeug war beim Erzeugen des Schlüssels in der App nicht ausgewählt.'
+			return t(
+				'The key is not valid for this VIN. Common causes are a mistyped VIN or a vehicle which was not selected when the key was created.',
 			);
 		case 'not-found':
-			return 'Zu dieser VIN gibt es kein Fahrzeug. Bitte die 17 Zeichen nachsehen.';
+			return t('No vehicle exists for this VIN. Please check all 17 characters.');
 		case 'rate-limit-exceeded': {
-			const duration = formatMinutes(error.retryAfterMs ?? metaResetMs(meta));
-			return `Das Stundenbudget ist erschöpft${duration ? `, in ${duration} wieder versuchen` : ''}. Der Schlüssel selbst ist in Ordnung.`;
+			const duration = formatMinutes(error.retryAfterMs ?? metaResetMs(meta), t);
+			return t(
+				'The hourly quota is exhausted%s. The key itself is valid.',
+				duration ? t(', try again in %s', duration) : '',
+			);
 		}
 		case 'vehicle-not-accepting-requests':
-			return 'Das Fahrzeug nimmt gerade keine Anfragen an. Schlüssel und VIN sind in Ordnung; später erneut versuchen.';
+			return t('The vehicle is currently not accepting requests. The key and VIN are valid; try again later.');
 		case 'network-error':
-			return `Die API war nicht erreichbar: ${error.message}`;
+			return t('The API could not be reached: %s', error.message);
 		case 'server-error':
-			return `Die API meldet eine Störung: ${error.message}`;
+			return t('The API reports a service disruption: %s', error.message);
 		default:
-			return `Der Test ist fehlgeschlagen: ${error.message}${describeExpiryHint(meta, now)}`;
+			return t('The test failed: %s%s', error.message, describeExpiryHint(meta, now, t));
 	}
 }
 
@@ -196,10 +204,11 @@ function explainError(error: ApiError, meta: ApiMeta, now: number): string {
  *
  * @param meta Die Begleitangaben der Antwort.
  * @param now Jetzt-Zeitpunkt in Millisekunden.
+ * @param t Uebersetzer fuer das Ergebnis.
  * @returns Der Zusatz, oder eine leere Zeichenkette.
  */
-function describeExpiryHint(meta: ApiMeta, now: number): string {
-	const expiry = describeKeyExpiry(meta, now);
+function describeExpiryHint(meta: ApiMeta, now: number, t: Translate): string {
+	const expiry = describeKeyExpiry(meta, now, t);
 	return expiry ? ` ${expiry}` : '';
 }
 
@@ -208,32 +217,39 @@ function describeExpiryHint(meta: ApiMeta, now: number): string {
  *
  * @param meta Die Begleitangaben der Antwort.
  * @param now Jetzt-Zeitpunkt in Millisekunden.
+ * @param t Uebersetzer fuer das Ergebnis.
  * @returns Der Satz, oder undefined wenn die Antwort nichts dazu sagte.
  */
-function describeKeyExpiry(meta: ApiMeta, now: number): string | undefined {
+function describeKeyExpiry(meta: ApiMeta, now: number, t: Translate): string | undefined {
 	if (!meta.apiKeyExpiresAt) {
 		return undefined;
 	}
 	const days = Math.floor((meta.apiKeyExpiresAt.getTime() - now) / 86_400_000);
 	const date = meta.apiKeyExpiresAt.toISOString().slice(0, 10);
 	if (days < 0) {
-		return `Der Schlüssel ist seit dem ${date} abgelaufen.`;
+		return t('The key has been expired since %s.', date);
 	}
-	return `Der Schlüssel gilt noch ${days} Tage (bis ${date}).`;
+	return t('The key is valid for another %s day%s (until %s).', days, days === 1 ? '' : t('s'), date);
 }
 
 /**
  * Beschreibt den Stand des Stundenbudgets.
  *
  * @param meta Die Begleitangaben der Antwort.
+ * @param t Uebersetzer fuer das Ergebnis.
  * @returns Der Satz, oder undefined wenn die Header fehlten.
  */
-function describeQuota(meta: ApiMeta): string | undefined {
+function describeQuota(meta: ApiMeta, t: Translate): string | undefined {
 	if (!meta.rateLimit) {
 		return undefined;
 	}
-	const duration = formatMinutes(meta.rateLimit.resetInSeconds * 1000);
-	return `Budget: ${meta.rateLimit.remaining} von ${meta.rateLimit.limit} Requests frei, Fenster setzt in ${duration} zurück.`;
+	const duration = formatMinutes(meta.rateLimit.resetInSeconds * 1000, t);
+	return t(
+		'Quota: %s of %s requests available; window resets in %s.',
+		meta.rateLimit.remaining,
+		meta.rateLimit.limit,
+		duration,
+	);
 }
 
 /**
@@ -250,12 +266,13 @@ function metaResetMs(meta: ApiMeta): number | undefined {
  * Formt Millisekunden zu einer lesbaren Wartezeit.
  *
  * @param ms Die Wartezeit.
+ * @param t Uebersetzer fuer die Zeitangabe.
  * @returns Etwas wie `42 Minuten`, oder eine leere Zeichenkette.
  */
-function formatMinutes(ms: number | undefined): string {
+function formatMinutes(ms: number | undefined, t: Translate): string {
 	if (ms === undefined || ms <= 0) {
 		return '';
 	}
 	const minutes = Math.ceil(ms / 60_000);
-	return minutes === 1 ? 'einer Minute' : `${minutes} Minuten`;
+	return minutes === 1 ? t('one minute') : t('%s minutes', minutes);
 }

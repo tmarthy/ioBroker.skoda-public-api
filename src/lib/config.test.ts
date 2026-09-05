@@ -24,13 +24,13 @@ describe('config => Instanzkonfiguration pruefen', () => {
 	it('beanstandet einen fehlenden Schluessel und sagt, wo er herkommt', () => {
 		const { settings, problems } = readConfig({ vins: [{ vin: VIN }] });
 		expect(settings).to.equal(undefined);
-		expect(problems[0]).to.contain('MySkoda-App');
+		expect(problems[0]).to.contain('MyŠkoda app');
 	});
 
 	it('beanstandet eine fehlende Fahrzeugliste', () => {
 		const { problems } = readConfig({ apiKey: 'sk-live-4f2a9c7e1b8d' });
 		expect(problems).to.have.length(1);
-		expect(problems[0]).to.contain('Fahrgestellnummer');
+		expect(problems[0]).to.contain('No vehicle');
 	});
 
 	it('nimmt VINs als Tabelle und als blosse Zeichenkette', () => {
@@ -51,7 +51,7 @@ describe('config => Instanzkonfiguration pruefen', () => {
 		const falsch = 'TMBJB9NY5RF99999';
 		const { settings, problems } = readConfig({ ...vollstaendig, vins: [{ vin: falsch }] });
 		expect(settings).to.equal(undefined);
-		expect(problems[0]).to.contain('Zeile 1');
+		expect(problems[0]).to.contain('Row 1');
 		expect(problems[0]).to.not.contain(falsch);
 	});
 

@@ -64,7 +64,9 @@ describe('objectOverlay => resolveCommon', () => {
 			const common = resolveCommon(path, def);
 			expect(common.type, path).to.be.oneOf(['number', 'string', 'boolean']);
 			expect(common.role, path).to.be.a('string').and.not.empty;
-			expect(common.name, path).to.be.a('string').and.not.empty;
+			expect(common.name, path).to.be.an('object').that.includes.keys('en', 'de');
+			expect((common.name as ioBroker.Translated).en, path).to.not.be.empty;
+			expect((common.name as ioBroker.Translated).de, path).to.not.be.empty;
 		}
 	});
 });

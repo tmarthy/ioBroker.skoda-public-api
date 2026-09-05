@@ -31,6 +31,8 @@ export interface CommandDomainDef {
 	activeStates: readonly string[];
 	/** Name des Soll-Schalters im Objektbaum. */
 	label: string;
+	/** Deutscher Anzeigename des Soll-Schalters. */
+	labelDe: string;
 }
 
 export const COMMAND_DEFS: readonly CommandDomainDef[] = [
@@ -40,6 +42,7 @@ export const COMMAND_DEFS: readonly CommandDomainDef[] = [
 		statePath: 'status.state',
 		activeStates: ['CHARGING'],
 		label: 'Charging on/off',
+		labelDe: 'Laden ein/aus',
 	},
 	{
 		domain: 'air-conditioning',
@@ -47,6 +50,7 @@ export const COMMAND_DEFS: readonly CommandDomainDef[] = [
 		statePath: 'state',
 		activeStates: ['COOLING', 'HEATING', 'HEATING_AUXILIARY', 'VENTILATION'],
 		label: 'Air conditioning on/off',
+		labelDe: 'Klimatisierung ein/aus',
 	},
 	{
 		domain: 'auxiliary-heating',
@@ -54,6 +58,7 @@ export const COMMAND_DEFS: readonly CommandDomainDef[] = [
 		statePath: 'state',
 		activeStates: ['PREHEATING', 'HEATING_AUXILIARY', 'VENTILATION'],
 		label: 'Auxiliary heating on/off',
+		labelDe: 'Standheizung ein/aus',
 	},
 	{
 		domain: 'active-ventilation',
@@ -61,6 +66,7 @@ export const COMMAND_DEFS: readonly CommandDomainDef[] = [
 		statePath: 'state',
 		activeStates: ['PREHEATING', 'VENTILATION'],
 		label: 'Active ventilation on/off',
+		labelDe: 'Aktive Belüftung ein/aus',
 	},
 ];
 

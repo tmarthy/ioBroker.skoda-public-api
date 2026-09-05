@@ -10,6 +10,7 @@
  * ein internes Ablagefach.
  */
 import type { PersistedQuota, QuotaStore } from './QuotaManager';
+import { translated } from '../i18n';
 
 /** Der Ausschnitt der Adapter-Schnittstelle, den die Ablage braucht. */
 export interface QuotaStateApi {
@@ -19,6 +20,10 @@ export interface QuotaStateApi {
 	getStateAsync(id: string): ioBroker.GetStatePromise;
 	/** Schreibt einen Zustand, sofern er sich geaendert hat. */
 	setStateChangedAsync(id: string, state: ioBroker.SettableState): ioBroker.SetStateChangedPromise;
+	/** Liest vorhandene Metadaten fuer die Sprachmigration. */
+	getObjectAsync(id: string): ioBroker.GetObjectPromise;
+	/** Aktualisiert nur den Standardnamen eines vorhandenen Objekts. */
+	extendObjectAsync(id: string, obj: ioBroker.PartialObject): ioBroker.SetObjectPromise;
 }
 
 /**
@@ -35,13 +40,46 @@ export const LEGACY_QUOTA_CHANNEL = 'info.rateLimit';
 
 /** Die vier Zustaende und ihr `common`. */
 const FIELDS: ReadonlyArray<readonly [keyof PersistedQuota, ioBroker.StateCommon]> = [
-	['limit', { name: 'Requests allowed per window', type: 'number', role: 'value', read: true, write: false }],
+	[
+		'limit',
+		{
+			name: translated('Requests allowed per window', 'Erlaubte Requests pro Zeitfenster'),
+			type: 'number',
+			role: 'value',
+			read: true,
+			write: false,
+		},
+	],
 	[
 		'remaining',
-		{ name: 'Requests left in the current window', type: 'number', role: 'value', read: true, write: false },
+		{
+			name: translated('Requests left in the current window', 'Verbleibende Requests im aktuellen Zeitfenster'),
+			type: 'number',
+			role: 'value',
+			read: true,
+			write: false,
+		},
 	],
-	['resetAt', { name: 'When the window resets', type: 'number', role: 'date', read: true, write: false }],
-	['lastRequestAt', { name: 'Last request sent', type: 'number', role: 'date', read: true, write: false }],
+	[
+		'resetAt',
+		{
+			name: translated('When the window resets', 'Zeitpunkt der Rücksetzung des Zeitfensters'),
+			type: 'number',
+			role: 'date',
+			read: true,
+			write: false,
+		},
+	],
+	[
+		'lastRequestAt',
+		{
+			name: translated('Last request sent', 'Zeitpunkt des letzten Requests'),
+			type: 'number',
+			role: 'date',
+			read: true,
+			write: false,
+		},
+	],
 ];
 
 /** Legt die Ablage in den Zustandsbaum des Adapters. */
@@ -110,15 +148,37 @@ export class AdapterQuotaStore implements QuotaStore {
 		this.objectsReady = true;
 		await this.api.setObjectNotExistsAsync(this.channel, {
 			type: 'channel',
-			common: { name: 'API rate limit for this vehicle' },
+			common: { name: translated('API rate limit for this vehicle', 'API-Limit für dieses Fahrzeug') },
 			native: {},
 		});
+		await this.migrateName(
+			this.channel,
+			translated('API rate limit for this vehicle', 'API-Limit für dieses Fahrzeug'),
+		);
 		for (const [field, common] of FIELDS) {
-			await this.api.setObjectNotExistsAsync(`${this.channel}.${field}`, {
+			const id = `${this.channel}.${field}`;
+			await this.api.setObjectNotExistsAsync(id, {
 				type: 'state',
 				common,
 				native: {},
 			});
+			await this.migrateName(id, common.name);
+		}
+	}
+
+	/**
+	 * Migrates adapter defaults while preserving names changed by the user.
+	 *
+	 * @param id Relative Objekt-ID.
+	 * @param name Neuer zweisprachiger Standardname.
+	 */
+	private async migrateName(id: string, name: ioBroker.StringOrTranslated): Promise<void> {
+		if (typeof name === 'string') {
+			return;
+		}
+		const existing = await this.api.getObjectAsync(id);
+		if (existing && existing.common.name === name.en) {
+			await this.api.extendObjectAsync(id, { common: { name } });
 		}
 	}
 }

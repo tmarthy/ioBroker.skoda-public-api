@@ -108,7 +108,8 @@
     "pollBackoffMax": 60,
     "commandReserve": 6,
     "commandTtl": 10,
-    "readParkingPosition": true
+    "readParkingPosition": true,
+    "backendLanguage": "system"
   },
   "objects": [],
   "instanceObjects": [
@@ -116,7 +117,10 @@
       "_id": "info",
       "type": "channel",
       "common": {
-        "name": "Information"
+        "name": {
+          "en": "Information",
+          "de": "Information"
+        }
       },
       "native": {}
     },
@@ -125,7 +129,10 @@
       "type": "state",
       "common": {
         "role": "indicator.connected",
-        "name": "Device or service connected",
+        "name": {
+          "en": "Device or service connected",
+          "de": "Gerät oder Dienst verbunden"
+        },
         "type": "boolean",
         "read": true,
         "write": false,

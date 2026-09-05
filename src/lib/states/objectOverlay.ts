@@ -9,6 +9,7 @@
  * Aufloesungsreihenfolge: Anzeigeumrechnung > exakter Pfad > Endungsregel > Generat.
  */
 import type { GeneratedStateDef } from './objectDefs.generated';
+import { localizedObjectName } from './objectNames';
 
 /** Handgepflegte Zusatzangaben zu einem Zustand, die die OpenAPI-Spec nicht hergibt. */
 export interface OverlayEntry {
@@ -214,7 +215,7 @@ export function resolveCommon(path: string, def: GeneratedStateDef): ioBroker.St
 	const overlay = lookupOverlay(path);
 
 	const common: ioBroker.StateCommon = {
-		name: def.desc ?? path,
+		name: localizedObjectName(path, def.desc ?? path),
 		type: def.type,
 		role: overlay?.role ?? defaultRole(def),
 		read: true,
@@ -241,7 +242,7 @@ export function resolveCommon(path: string, def: GeneratedStateDef): ioBroker.St
 	const conversion = displayConversions[path];
 	if (conversion) {
 		common.unit = conversion.unit;
-		common.name = conversion.name;
+		common.name = localizedObjectName(path, conversion.name);
 	}
 
 	return common;

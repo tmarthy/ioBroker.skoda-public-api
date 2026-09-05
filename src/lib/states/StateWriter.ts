@@ -26,6 +26,8 @@ import type { VehicleResponse } from '../api/types';
 import { COMMAND_DEFS, COMMAND_RESULTS, type CommandReport } from './commandDefs';
 import { generatedChannels, generatedStateDefs } from './objectDefs.generated';
 import { displayConversions, resolveCommon } from './objectOverlay';
+import { localizedObjectName } from './objectNames';
+import { translateFallback, translated, type Translate } from '../i18n';
 
 /**
  * Quality-Flag "general problem".
@@ -73,6 +75,8 @@ export interface StateWriterOptions {
 	api: StateApi;
 	/** Zeitquelle fuer `info.dataAge`, ersetzbar fuer Tests. */
 	now?: () => number;
+	/** Backend-Uebersetzung fuer Warnungen. */
+	t?: Translate;
 }
 
 /** Einheiten der Zieltemperatur. Die Skala steht im Geschwisterfeld `unit`. */
@@ -91,6 +95,7 @@ const PROFILES_PATH = 'chargingProfiles.profiles';
 export class StateWriter {
 	private readonly api: StateApi;
 	private readonly now: () => number;
+	private readonly t: Translate;
 
 	/** Bereits angelegte Objekte - Anlage genau einmal pro Pfad (E13). */
 	private readonly createdObjects = new Set<string>();
@@ -110,6 +115,7 @@ export class StateWriter {
 	public constructor(options: StateWriterOptions) {
 		this.api = options.api;
 		this.now = options.now ?? (() => Date.now());
+		this.t = options.t ?? translateFallback;
 	}
 
 	/**
@@ -194,18 +200,18 @@ export class StateWriter {
 	 */
 	public async writeCommandResult(vin: string, report: CommandReport): Promise<void> {
 		await this.ensureDevice(vin, {});
-		await this.ensureChannel(vin, 'info', 'Adapter information');
-		await this.ensureChannel(vin, 'info.lastCommand', 'Last command');
+		await this.ensureChannel(vin, 'info', translated('Adapter information', 'Adapterinformationen'));
+		await this.ensureChannel(vin, 'info.lastCommand', translated('Last command', 'Letzter Befehl'));
 
 		await this.writeDerived(vin, 'info.lastCommand.name', report.name, {
-			name: 'Last command',
+			name: translated('Last command', 'Letzter Befehl'),
 			type: 'string',
 			role: 'text',
 			read: true,
 			write: false,
 		});
 		await this.writeDerived(vin, 'info.lastCommand.result', report.result, {
-			name: 'Result of the last command',
+			name: translated('Result of the last command', 'Ergebnis des letzten Befehls'),
 			type: 'string',
 			role: 'text',
 			read: true,
@@ -213,14 +219,14 @@ export class StateWriter {
 			states: { ...COMMAND_RESULTS },
 		});
 		await this.writeDerived(vin, 'info.lastCommand.timestamp', report.timestamp, {
-			name: 'When the last command was processed',
+			name: translated('When the last command was processed', 'Zeitpunkt der Verarbeitung des letzten Befehls'),
 			type: 'number',
 			role: 'date',
 			read: true,
 			write: false,
 		});
 		await this.writeDerived(vin, 'info.lastCommand.problemType', report.problemType ?? '', {
-			name: 'Problem type reported by the API',
+			name: translated('Problem type reported by the API', 'Von der API gemeldeter Problemtyp'),
 			type: 'string',
 			role: 'text',
 			read: true,
@@ -288,7 +294,13 @@ export class StateWriter {
 	 * @param node Der Teilbaum.
 	 */
 	private async writeObjectNode(vin: string, path: string, node: Record<string, unknown>): Promise<void> {
-		await this.ensureChannel(vin, path, generatedChannels[path]);
+		const generatedName = generatedChannels[path];
+		await this.ensureChannel(
+			vin,
+			path,
+			localizedObjectName(path, generatedName ?? path),
+			generatedName ? [generatedName] : [path],
+		);
 
 		// Die Zieltemperatur traegt ihre Skala im Geschwisterfeld `unit`. Aus der Spec
 		// laesst sich die Einheit deshalb nicht ableiten, aus den Daten schon.
@@ -336,7 +348,7 @@ export class StateWriter {
 	 * @param profiles Die Profile aus der Antwort.
 	 */
 	private async writeChargingProfiles(vin: string, profiles: unknown[]): Promise<void> {
-		await this.ensureChannel(vin, PROFILES_PATH, 'Charging profiles by id');
+		await this.ensureChannel(vin, PROFILES_PATH, translated('Charging profiles by id', 'Ladeprofile nach ID'));
 
 		for (const entry of profiles) {
 			if (typeof entry !== 'object' || entry === null) {
@@ -374,13 +386,23 @@ export class StateWriter {
 			}
 			// Alles unterhalb der Profilebene als JSON - so geht nichts verloren, ohne
 			// dass dutzende Objekte entstehen, die niemand pflegt.
-			await this.writeJsonLeaf(vin, `${base}.settingsJson`, profile.settings, 'Charging profile settings');
-			await this.writeJsonLeaf(vin, `${base}.timersJson`, profile.timers, 'Charging timers');
+			await this.writeJsonLeaf(
+				vin,
+				`${base}.settingsJson`,
+				profile.settings,
+				translated('Charging profile settings', 'Einstellungen des Ladeprofils'),
+			);
+			await this.writeJsonLeaf(
+				vin,
+				`${base}.timersJson`,
+				profile.timers,
+				translated('Charging timers', 'Ladezeitpläne'),
+			);
 			await this.writeJsonLeaf(
 				vin,
 				`${base}.preferredChargingTimesJson`,
 				profile.preferredChargingTimes,
-				'Preferred charging times',
+				translated('Preferred charging times', 'Bevorzugte Ladezeiten'),
 			);
 		}
 	}
@@ -393,7 +415,12 @@ export class StateWriter {
 	 * @param value Der Wert; undefined legt nichts an.
 	 * @param name Anzeigename des Zustands.
 	 */
-	private async writeJsonLeaf(vin: string, path: string, value: unknown, name: string): Promise<void> {
+	private async writeJsonLeaf(
+		vin: string,
+		path: string,
+		value: unknown,
+		name: ioBroker.StringOrTranslated,
+	): Promise<void> {
 		if (value === undefined) {
 			return;
 		}
@@ -427,6 +454,7 @@ export class StateWriter {
 		const id = `${vin}.${path}`;
 		if (!this.createdObjects.has(id)) {
 			await this.api.setObjectNotExistsAsync(id, { type: 'state', common, native: {} });
+			await this.migrateStandardName(id, common.name);
 			this.createdObjects.add(id);
 			this.createdStates.add(id);
 		}
@@ -450,11 +478,13 @@ export class StateWriter {
 		const id = `${vin}.${path}`;
 		const conversion = displayConversions[path];
 		if (!this.createdObjects.has(id)) {
+			const common = { ...this.commonFor(path, value), ...overrides };
 			await this.api.setObjectNotExistsAsync(id, {
 				type: 'state',
-				common: { ...this.commonFor(path, value), ...overrides },
+				common,
 				native: {},
 			});
+			await this.migrateStandardName(id, common.name, [generatedStateDefs[path]?.desc ?? path, path]);
 			if (conversion) {
 				const existing = await this.api.getObjectAsync(id);
 				const oldName = generatedStateDefs[path]?.desc;
@@ -495,8 +525,10 @@ export class StateWriter {
 			this.warnedPaths.add(path);
 			// Ohne VIN: Die Meldung landet im Log und das Log im Forum (E14).
 			this.api.log.warn(
-				`Unbekannter Pfad "${path}" in der Antwort - vermutlich hat Skoda die Spec erweitert. ` +
-					'Der Zustand wird mit geratenem Typ angelegt; "npm run codegen" holt ihn nach.',
+				this.t(
+					'Unknown path "%s" in the response; Škoda probably extended the specification. The state is created with an inferred type; run "npm run codegen" to add it.',
+					path,
+				),
 			);
 		}
 		const type = typeof value === 'number' ? 'number' : typeof value === 'boolean' ? 'boolean' : 'string';
@@ -509,8 +541,14 @@ export class StateWriter {
 	 * @param vin Fahrgestellnummer.
 	 * @param path Punktpfad des Kanals.
 	 * @param name Anzeigename, ersatzweise der Pfad.
+	 * @param legacyNames Bisherige Standardnamen, die migriert werden duerfen.
 	 */
-	private async ensureChannel(vin: string, path: string, name?: string): Promise<void> {
+	private async ensureChannel(
+		vin: string,
+		path: string,
+		name?: ioBroker.StringOrTranslated,
+		legacyNames?: readonly string[],
+	): Promise<void> {
 		const id = `${vin}.${path}`;
 		if (this.createdObjects.has(id)) {
 			return;
@@ -520,7 +558,33 @@ export class StateWriter {
 			common: { name: name ?? path },
 			native: {},
 		});
+		await this.migrateStandardName(id, name, legacyNames);
 		this.createdObjects.add(id);
+	}
+
+	/**
+	 * Replaces only adapter-provided English names, preserving user customizations.
+	 *
+	 * @param id Relative Objekt-ID.
+	 * @param name Neuer zweisprachiger Standardname.
+	 * @param legacyNames Bisherige Standardnamen.
+	 */
+	private async migrateStandardName(
+		id: string,
+		name: ioBroker.StringOrTranslated | undefined,
+		legacyNames: readonly string[] = [],
+	): Promise<void> {
+		if (!name || typeof name === 'string') {
+			return;
+		}
+		const existing = await this.api.getObjectAsync(id);
+		if (
+			existing &&
+			typeof existing.common.name === 'string' &&
+			(existing.common.name === name.en || legacyNames.includes(existing.common.name))
+		) {
+			await this.api.extendObjectAsync(id, { common: { name } });
+		}
 	}
 
 	/**
@@ -559,7 +623,7 @@ export class StateWriter {
 			return;
 		}
 		await this.writeDerived(vin, 'parkingPosition.position', `${coordinates.latitude};${coordinates.longitude}`, {
-			name: 'Parking position as lat;lon',
+			name: translated('Parking position as lat;lon', 'Parkposition als lat;lon'),
 			type: 'string',
 			role: 'value.gps',
 			read: true,
@@ -589,7 +653,7 @@ export class StateWriter {
 				await this.api.setObjectNotExistsAsync(enabledId, {
 					type: 'state',
 					common: {
-						name: def.label,
+						name: translated(def.label, def.labelDe),
 						type: 'boolean',
 						role: 'switch',
 						read: true,
@@ -597,6 +661,7 @@ export class StateWriter {
 					},
 					native: {},
 				});
+				await this.migrateStandardName(enabledId, translated(def.label, def.labelDe));
 				this.createdObjects.add(enabledId);
 				this.createdStates.add(enabledId);
 
@@ -605,7 +670,10 @@ export class StateWriter {
 					await this.api.setObjectNotExistsAsync(buttonId, {
 						type: 'state',
 						common: {
-							name: `${def.label} - ${action}`,
+							name: translated(
+								`${def.label} - ${action}`,
+								`${def.labelDe} - ${action === 'start' ? 'starten' : 'stoppen'}`,
+							),
 							type: 'boolean',
 							role: 'button',
 							read: false,
@@ -613,6 +681,13 @@ export class StateWriter {
 						},
 						native: {},
 					});
+					await this.migrateStandardName(
+						buttonId,
+						translated(
+							`${def.label} - ${action}`,
+							`${def.labelDe} - ${action === 'start' ? 'starten' : 'stoppen'}`,
+						),
+					);
 					this.createdObjects.add(buttonId);
 				}
 			}
@@ -637,12 +712,12 @@ export class StateWriter {
 	 * @param response Die vollstaendige Antwort.
 	 */
 	private async writeInfo(vin: string, vehicle: Record<string, unknown>, response: VehicleResponse): Promise<void> {
-		await this.ensureChannel(vin, 'info', 'Adapter information');
+		await this.ensureChannel(vin, 'info', translated('Adapter information', 'Adapterinformationen'));
 
 		const captured = newestCapturedAt(vehicle);
 		if (captured !== undefined) {
 			await this.writeDerived(vin, 'info.dataAge', Math.max(0, Math.round((this.now() - captured) / 1000)), {
-				name: 'Age of the newest vehicle data',
+				name: translated('Age of the newest vehicle data', 'Alter der neuesten Fahrzeugdaten'),
 				type: 'number',
 				role: 'value.interval',
 				unit: 's',
@@ -652,7 +727,7 @@ export class StateWriter {
 		}
 
 		await this.writeDerived(vin, 'info.lastErrors', JSON.stringify(vehicleErrors(response)), {
-			name: 'Errors reported with the last response',
+			name: translated('Errors reported with the last response', 'Mit der letzten Antwort gemeldete Fehler'),
 			type: 'string',
 			role: 'json',
 			read: true,

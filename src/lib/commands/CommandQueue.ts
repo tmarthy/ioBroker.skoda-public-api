@@ -24,6 +24,7 @@ import { newestCapturedAt } from '../api/vehicleData';
 import type { VehicleQuota } from '../quota/VehicleQuotaManager';
 import { COMMAND_DEFS, type CommandDomainDef, type CommandReport, type CommandResult } from '../states/commandDefs';
 import { buildCommandBody, parseCommandState, type ParsedCommand } from './commandMap';
+import { translateFallback, type Translate } from '../i18n';
 
 /** Der Ausschnitt des Clients, den die Queue braucht. */
 export interface CommandSender {
@@ -63,6 +64,8 @@ export interface CommandQueueOptions {
 	onReport: (vin: string, report: CommandReport) => Promise<void> | void;
 	/** Wohin die Meldungen gehen. */
 	log: CommandLog;
+	/** Backend-Uebersetzung; ohne Adapter-Kontext wird Englisch verwendet. */
+	t?: Translate;
 	/** Wird nach einem abgesetzten Befehl gerufen: Verifikations-Poll (Phase 6). */
 	onCommandSent?: (vin: string) => void;
 	/** Meldet `info.connection`, wenn der Schluessel abgelehnt wird (E10). */
@@ -114,6 +117,7 @@ export class CommandQueue {
 	private readonly onConnectionChange?: (connected: boolean) => void;
 	private readonly onResponse?: (meta: ApiMeta, error?: ApiError) => void;
 	private readonly log: CommandLog;
+	private readonly t: Translate;
 	private readonly ttlMs: number;
 	private readonly spin?: string;
 	private readonly retryMs: number;
@@ -150,6 +154,7 @@ export class CommandQueue {
 		this.onConnectionChange = options.onConnectionChange;
 		this.onResponse = options.onResponse;
 		this.log = options.log;
+		this.t = options.t ?? translateFallback;
 		this.ttlMs = options.ttlMs ?? DEFAULT_TTL_MS;
 		this.spin = options.spin;
 		this.retryMs = options.retryMs ?? 15_000;
@@ -223,7 +228,7 @@ export class CommandQueue {
 		const key = this.keyOf(command);
 
 		if (this.unsupported.has(key)) {
-			this.log.warn(`${command.name}: Das Fahrzeug unterstuetzt diesen Befehl nicht.`);
+			this.log.warn(this.t('%s: The vehicle does not support this command.', command.name));
 			await this.report(command, 'REJECTED_BY_VEHICLE');
 			return;
 		}
@@ -249,14 +254,16 @@ export class CommandQueue {
 				: this.isActive(command) === command.desired;
 		if (command.viaSwitch && alreadyDesired) {
 			if (this.entries.delete(key)) {
-				this.log.debug(`${command.name}: wartender Befehl verfaellt, Soll entspricht dem Ist.`);
+				this.log.debug(
+					this.t('%s: Pending command dropped because the target state is already reached.', command.name),
+				);
 			}
 			await this.report(command, 'COALESCED');
 			return;
 		}
 
 		if (this.entries.has(key)) {
-			this.log.debug(`${command.name}: ersetzt den wartenden Befehl derselben Domaene.`);
+			this.log.debug(this.t('%s: Replaced the pending command for the same domain.', command.name));
 		}
 		const now = this.now();
 		this.entries.set(key, {
@@ -288,7 +295,9 @@ export class CommandQueue {
 			const now = this.now();
 			if (now >= entry.expiresAt) {
 				this.entries.delete(key);
-				this.log.info(`${entry.command.name}: verfallen, nicht innerhalb der Lebensdauer absetzbar.`);
+				this.log.info(
+					this.t('%s: Expired because it could not be sent within its lifetime.', entry.command.name),
+				);
 				await this.report(entry.command, 'EXPIRED');
 				continue;
 			}
@@ -323,9 +332,7 @@ export class CommandQueue {
 				// Eine abgewiesene Promise darf die serielle Kette nicht dauerhaft
 				// vergiften. Der konkrete Client liefert Fehler als ApiResult; hier landen
 				// nur unerwartete Fehler aus einem Port oder Callback.
-				this.log.error(
-					'Unerwarteter Fehler in der Befehlswarteschlange; der naechste Versuch wird verzoegert.',
-				);
+				this.log.error(this.t('Unexpected error in the command queue; the next attempt will be delayed.'));
 				const next = this.msUntilNext();
 				this.arm(next === undefined ? undefined : Math.max(this.retryMs, next));
 			});
@@ -371,7 +378,7 @@ export class CommandQueue {
 		});
 		if (problem) {
 			this.entries.delete(key);
-			this.log.error(`${command.name}: ${problem}`);
+			this.log.error(this.t('%s: %s', command.name, this.t(problem)));
 			await this.report(command, 'FAILED');
 			return;
 		}
@@ -384,8 +391,11 @@ export class CommandQueue {
 				// verwerfen als in zehn Minuten (E15).
 				this.entries.delete(key);
 				this.log.info(
-					`${command.name}: verworfen, das Budget oeffnet sich erst in ` +
-						`${Math.round(permission.waitMs / 60_000)} min.`,
+					this.t(
+						'%s: Dropped because quota becomes available only in %s min.',
+						command.name,
+						Math.round(permission.waitMs / 60_000),
+					),
 				);
 				await this.report(command, 'EXPIRED');
 				return;
@@ -394,8 +404,12 @@ export class CommandQueue {
 			if (!entry.queuedReported) {
 				entry.queuedReported = true;
 				this.log.info(
-					`${command.name}: wartet auf Budget (${permission.reason}), ` +
-						`naechster Versuch in ${Math.round(permission.waitMs / 1000)} s.`,
+					this.t(
+						'%s: Waiting for quota (%s), next attempt in %s s.',
+						command.name,
+						permission.reason,
+						Math.round(permission.waitMs / 1000),
+					),
 				);
 				await this.report(command, 'QUEUED');
 			}
@@ -422,7 +436,7 @@ export class CommandQueue {
 				sentAt: this.now(),
 				expiresAt: this.now() + this.ttlMs,
 			});
-			this.log.info(`${command.name}: an die API uebergeben.`);
+			this.log.info(this.t('%s: Sent to the API.', command.name));
 			// Die Verifikation gehoert zum Request-Lebenslauf und darf nicht davon
 			// abhaengen, ob das anschliessende Schreiben des Reports gelingt.
 			this.onCommandSent?.(command.vin);
@@ -477,7 +491,7 @@ export class CommandQueue {
 			if (this.entries.has(key)) {
 				// Ein neuerer Befehl derselben Domaene wartet bereits. Die alte Absicht
 				// darf nach einem Retry nicht wieder vor sie gesetzt werden.
-				this.log.debug(`${command.name}: Wiederholung entfaellt zugunsten eines neueren Befehls.`);
+				this.log.debug(this.t('%s: Retry skipped in favor of a newer command.', command.name));
 				return;
 			}
 			const now = this.now();
@@ -485,8 +499,11 @@ export class CommandQueue {
 			if (now + waitMs >= entry.expiresAt) {
 				this.entries.delete(key);
 				this.log.info(
-					`${command.name}: verworfen, die Wartezeit von ${Math.round(waitMs / 60_000)} min ` +
-						'ist laenger als seine Lebensdauer.',
+					this.t(
+						'%s: Dropped because the wait time of %s min exceeds its lifetime.',
+						command.name,
+						Math.round(waitMs / 60_000),
+					),
 				);
 				await this.report(command, 'EXPIRED', error.problemType);
 				return;
@@ -496,7 +513,13 @@ export class CommandQueue {
 			entry.notBefore = now + waitMs;
 			this.entries.set(key, entry);
 			this.log.warn(
-				`${command.name}: ${error.message} - Versuch ${entry.attempts} in ${Math.round(waitMs / 1000)} s.`,
+				this.t(
+					'%s: %s - attempt %s in %s s.',
+					command.name,
+					error.message,
+					entry.attempts,
+					Math.round(waitMs / 1000),
+				),
 			);
 			if (!entry.queuedReported) {
 				entry.queuedReported = true;
@@ -538,7 +561,7 @@ export class CommandQueue {
 		} catch {
 			// Fehlertexte des State-Backends koennen die volle State-ID und damit die
 			// VIN enthalten. Deshalb nur eine eigene, maskierungsfreie Meldung loggen.
-			this.log.error(`${command.name}: Ergebnis konnte nicht in ioBroker-Zustaende geschrieben werden.`);
+			this.log.error(this.t('%s: Result could not be written to ioBroker states.', command.name));
 		}
 	}
 

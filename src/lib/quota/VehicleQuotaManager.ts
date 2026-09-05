@@ -44,7 +44,7 @@ export interface VehicleQuotaManagerOptions extends Omit<QuotaManagerOptions, 's
 export function quotaForVehicle(vin: string, bucket: QuotaManager): VehicleQuota {
 	const assertVin = (requestedVin: string): void => {
 		if (requestedVin !== vin) {
-			throw new Error('Quota-Bucket fuer unbekanntes Fahrzeug angefordert');
+			throw new Error('Quota bucket requested for an unknown vehicle');
 		}
 	};
 	return {

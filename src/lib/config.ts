@@ -7,6 +7,7 @@
  * sonst erst als `403 api-key-not-authorized` - eine Meldung, aus der niemand die
  * Ursache erraet.
  */
+import { translateFallback, type Translate } from './i18n';
 
 /** Die geprueften Einstellungen, in den Einheiten, die der Code braucht. */
 export interface AdapterSettings {
@@ -75,11 +76,12 @@ function number(value: unknown, fallback: number, min: number, max: number): num
  *
  * @param raw Der Rohwert des Feldes `vins`.
  * @param problems Sammelstelle fuer Beanstandungen.
+ * @param t Uebersetzer fuer nutzerseitige Beanstandungen.
  * @returns Die gueltigen, gross geschriebenen VINs ohne Dubletten.
  */
-function readVins(raw: unknown, problems: string[]): string[] {
+function readVins(raw: unknown, problems: string[], t: Translate): string[] {
 	if (!Array.isArray(raw) || raw.length === 0) {
-		problems.push('Keine Fahrgestellnummer konfiguriert - der Adapter kann kein Fahrzeug abfragen.');
+		problems.push(t('No vehicle is configured, so the adapter cannot query vehicle data.'));
 		return [];
 	}
 
@@ -91,8 +93,10 @@ function readVins(raw: unknown, problems: string[]): string[] {
 			// Die fehlerhafte VIN steht bewusst nicht in der Meldung: Sie ist meist
 			// die echte mit einem Tippfehler, und das Log landet im Forum (E14).
 			problems.push(
-				`Zeile ${index + 1} der Fahrzeugliste ist keine gueltige VIN ` +
-					'(17 Zeichen, Ziffern und Grossbuchstaben ausser I, O und Q).',
+				t(
+					'Row %s of the vehicle list is not a valid VIN (17 digits and uppercase letters excluding I, O and Q).',
+					index + 1,
+				),
 			);
 			return;
 		}
@@ -107,20 +111,19 @@ function readVins(raw: unknown, problems: string[]): string[] {
  * Prueft die Instanzkonfiguration und rechnet sie in Millisekunden um.
  *
  * @param raw `this.config` der Adapter-Instanz.
+ * @param t Uebersetzer fuer nutzerseitige Beanstandungen.
  * @returns Die Einstellungen, oder die Liste der Beanstandungen.
  */
-export function readConfig(raw: unknown): ConfigResult {
+export function readConfig(raw: unknown, t: Translate = translateFallback): ConfigResult {
 	const config = (raw ?? {}) as Record<string, unknown>;
 	const problems: string[] = [];
 
 	const apiKey = typeof config.apiKey === 'string' ? config.apiKey.trim() : '';
 	if (!apiKey) {
-		problems.push(
-			'Kein API-Schluessel konfiguriert - er wird in der MySkoda-App erzeugt (Menue "API-Schluessel").',
-		);
+		problems.push(t('No API key is configured. Create one in the MyŠkoda app under "API key".'));
 	}
 
-	const vins = readVins(config.vins, problems);
+	const vins = readVins(config.vins, problems, t);
 	if (problems.length > 0) {
 		return { problems };
 	}

@@ -297,6 +297,28 @@ describe('states/StateWriter => Antwort in den Objektbaum', () => {
 			expect(raw).to.deep.equal(response);
 			expect(adapter.objects.get(id)?.common?.name).to.equal('Meine Reichweite');
 		});
+
+		it('migriert bisherige englische Standardnamen auf zweisprachige Metadaten', async () => {
+			const path = 'charging.status.battery.stateOfChargeInPercent';
+			const id = `${VIN}.${path}`;
+			await adapter.setObjectNotExistsAsync(id, {
+				type: 'state',
+				common: {
+					name: generatedStateDefs[path].desc!,
+					type: 'number',
+					role: 'value.battery',
+					read: true,
+					write: false,
+				},
+				native: {},
+			});
+			await writer.write(VIN, {
+				vehicle: {
+					charging: { isVehicleInSavedLocation: false, status: { battery: { stateOfChargeInPercent: 80 } } },
+				},
+			});
+			expect(adapter.objects.get(id)?.common?.name).to.deep.equal({ en: 'State of charge', de: 'Ladestand' });
+		});
 	});
 
 	describe('Ladeprofile', () => {

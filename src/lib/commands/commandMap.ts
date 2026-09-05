@@ -145,7 +145,7 @@ export function buildCommandBody(command: ParsedCommand, context: CommandBodyCon
 	if (command.def.domain === 'auxiliary-heating') {
 		if (!context.spin) {
 			return {
-				problem: 'Fuer die Standheizung ist ein S-PIN noetig; in der Instanzkonfiguration steht keiner.',
+				problem: 'Auxiliary heating requires an S-PIN, but none is set in the instance configuration.',
 			};
 		}
 		const body: StartAuxiliaryHeatingConfiguration = { spin: context.spin };

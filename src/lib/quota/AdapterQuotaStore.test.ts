@@ -29,6 +29,10 @@ describe('quota/AdapterQuotaStore => Budget ueberlebt den Neustart', () => {
 			role: 'value',
 		});
 		expect(adapter.objects.get(`${QUOTA_CHANNEL}.resetAt`)?.common).to.include({ role: 'date' });
+		expect(adapter.objects.get(`${QUOTA_CHANNEL}.remaining`)?.common?.name).to.deep.equal({
+			en: 'Requests left in the current window',
+			de: 'Verbleibende Requests im aktuellen Zeitfenster',
+		});
 	});
 
 	it('schreibt und liest denselben Zustand', async () => {

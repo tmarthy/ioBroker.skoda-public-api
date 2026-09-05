@@ -553,7 +553,7 @@ describe('commands/CommandQueue => Soll-Zustand, Coalescing, TTL', () => {
 
 			expect(mock.requests.filter(request => request.method === 'POST')).to.have.length(2);
 			expect(verified).to.deep.equal([DEFAULT_VIN, DEFAULT_VIN]);
-			expect(log.lines.some(line => line.includes('Ergebnis konnte nicht'))).to.equal(true);
+			expect(log.lines.some(line => line.includes('Result could not be written'))).to.equal(true);
 		});
 	});
 

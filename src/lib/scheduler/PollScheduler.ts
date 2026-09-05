@@ -27,6 +27,7 @@ import { VEHICLE_PARTS, type VehiclePart, type VehicleResponse } from '../api/ty
 import { detectParts, newestCapturedAt } from '../api/vehicleData';
 import type { VehicleQuota } from '../quota/VehicleQuotaManager';
 import { COMMAND_DEFS } from '../states/commandDefs';
+import { translateFallback, type Translate } from '../i18n';
 
 /** Der Ausschnitt des Clients, den der Scheduler braucht. */
 export interface VehicleReader {
@@ -93,6 +94,8 @@ export interface PollSchedulerOptions {
 	onVehicleData: (vin: string, response: VehicleResponse) => Promise<void> | void;
 	/** Wohin die Meldungen gehen. */
 	log: SchedulerLog;
+	/** Backend-Uebersetzung; ohne Adapter-Kontext wird Englisch verwendet. */
+	t?: Translate;
 	/** Meldet Wechsel von `info.connection` (E10). */
 	onConnectionChange?: (connected: boolean) => void;
 	/**
@@ -172,6 +175,7 @@ export class PollScheduler {
 	private readonly onConnectionChange?: (connected: boolean) => void;
 	private readonly onResponse?: (meta: ApiMeta, error?: ApiError) => void;
 	private readonly log: SchedulerLog;
+	private readonly t: Translate;
 	private readonly intervals: PollIntervals;
 	private readonly readParkingPosition: boolean;
 	private readonly now: () => number;
@@ -195,6 +199,7 @@ export class PollScheduler {
 		this.onConnectionChange = options.onConnectionChange;
 		this.onResponse = options.onResponse;
 		this.log = options.log;
+		this.t = options.t ?? translateFallback;
 		this.readParkingPosition = options.readParkingPosition ?? true;
 		this.now = options.now ?? (() => Date.now());
 		this.random = options.random ?? Math.random;
@@ -322,8 +327,12 @@ export class PollScheduler {
 			// Befehlen (E15). Der Poll kommt wieder, wenn das Fenster sich oeffnet.
 			state.nextDueAt = this.now() + Math.max(MIN_SLEEP_MS, permission.waitMs);
 			this.log.debug(
-				`Poll fuer ${maskVin(state.vin)} verschoben (${permission.reason}), ` +
-					`naechster Versuch in ${Math.round(permission.waitMs / 1000)} s`,
+				this.t(
+					'Poll for %s postponed (%s), next attempt in %s s.',
+					maskVin(state.vin),
+					permission.reason,
+					Math.round(permission.waitMs / 1000),
+				),
 			);
 			return;
 		}
@@ -392,8 +401,12 @@ export class PollScheduler {
 			state.pendingWrite = { response, unchanged };
 			state.nextDueAt = this.now() + this.intervals.retryMs;
 			this.log.error(
-				`Fahrzeugdaten fuer ${maskVin(state.vin)} konnten nicht geschrieben werden: ${String(error)}. ` +
-					`Neuer Schreibversuch in ${Math.round(this.intervals.retryMs / 1000)} s, ohne API-Abfrage.`,
+				this.t(
+					'Vehicle data for %s could not be written: %s. Retrying the write in %s s without an API request.',
+					maskVin(state.vin),
+					String(error),
+					Math.round(this.intervals.retryMs / 1000),
+				),
 			);
 			return;
 		}
@@ -402,9 +415,13 @@ export class PollScheduler {
 		const interval = this.intervalFor(state);
 		state.nextDueAt = Math.min(this.now() + interval, state.verificationDueAt ?? Infinity);
 		this.log.debug(
-			`Poll fuer ${maskVin(state.vin)}: ${state.active ? 'aktiv' : 'ruhend'}` +
-				`${unchanged ? `, unveraendert (Backoff ${state.backoff})` : ''}, ` +
-				`naechster in ${Math.round(interval / 60_000)} min`,
+			this.t(
+				'Poll for %s: %s%s, next in %s min.',
+				maskVin(state.vin),
+				this.t(state.active ? 'active' : 'idle'),
+				unchanged ? this.t(', unchanged (backoff %s)', state.backoff) : '',
+				Math.round(interval / 60_000),
+			),
 		);
 	}
 
@@ -425,7 +442,7 @@ export class PollScheduler {
 			// Diese VIN gibt es unter diesem Schluessel nicht. Weiterfragen kostet nur
 			// Budget - bis zur naechsten Konfigurationsaenderung ist hier Schluss.
 			state.suspended = true;
-			this.log.error(`Fahrzeug ${maskVin(state.vin)} nicht gefunden - Polling ausgesetzt. ${error.message}`);
+			this.log.error(this.t('Vehicle %s not found; polling suspended. %s', maskVin(state.vin), error.message));
 			return;
 		}
 
@@ -434,7 +451,7 @@ export class PollScheduler {
 			// (E10). Bis dahin einmal pro Stunde nachsehen.
 			this.setConnected(false);
 			state.nextDueAt = now + this.intervals.errorMs;
-			this.log.error(`${error.message} - Polling auf einmal pro Stunde gedrosselt.`);
+			this.log.error(this.t('%s - polling reduced to once per hour.', error.message));
 			return;
 		}
 
@@ -442,13 +459,13 @@ export class PollScheduler {
 			state.attempts += 1;
 			const waitMs = error.retryAfterMs ?? this.jitteredRetry();
 			state.nextDueAt = now + waitMs;
-			this.log.warn(`${error.message} - Versuch ${state.attempts} in ${Math.round(waitMs / 1000)} s.`);
+			this.log.warn(this.t('%s - attempt %s in %s s.', error.message, state.attempts, Math.round(waitMs / 1000)));
 			return;
 		}
 
 		state.attempts = 0;
 		state.nextDueAt = now + this.intervalFor(state);
-		this.log.warn(`${error.message} - naechster regulaerer Poll.`);
+		this.log.warn(this.t('%s - next regular poll.', error.message));
 	}
 
 	/**
@@ -483,7 +500,7 @@ export class PollScheduler {
 
 		const learned = VEHICLE_PARTS.filter(part => known.has(part));
 		if (state.parts === undefined) {
-			this.log.info(`Fahrzeug ${maskVin(state.vin)} liefert: ${learned.join(', ')}`);
+			this.log.info(this.t('Vehicle %s provides: %s', maskVin(state.vin), learned.join(', ')));
 		}
 		state.parts = learned;
 	}
@@ -646,7 +663,7 @@ export class PollScheduler {
 		} catch (error: unknown) {
 			// Ein Fehler hier darf die Schleife nicht anhalten - sonst steht der
 			// Adapter still, bis jemand die Instanz neu startet.
-			this.log.error(`Unerwarteter Fehler im Poll-Durchlauf: ${String(error)}`);
+			this.log.error(this.t('Unexpected error during polling: %s', String(error)));
 			if (this.running) {
 				this.arm(this.intervals.retryMs);
 			}

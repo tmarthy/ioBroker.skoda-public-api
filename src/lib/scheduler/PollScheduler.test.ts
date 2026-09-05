@@ -238,7 +238,7 @@ describe('scheduler/PollScheduler => Kadenz unter 20 Requests pro Stunde', () =>
 			expect(wait).to.equal(15_000);
 			expect(mock.requests).to.have.length(1);
 			expect(writes).to.equal(1);
-			expect(log.lines.some(line => line.includes('konnten nicht geschrieben werden'))).to.equal(true);
+			expect(log.lines.some(line => line.includes('could not be written'))).to.equal(true);
 
 			// Ein weiterer Schleifendurchlauf zur selben Zeit tut nichts. Nach der
 			// kurzen Fehlerpause wird nur dieselbe Antwort erneut geschrieben.

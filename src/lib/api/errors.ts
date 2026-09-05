@@ -308,7 +308,7 @@ export function httpApiError(input: HttpErrorInput): HttpApiError {
 		parts.push(detail);
 	}
 	if (instance) {
-		parts.push(`bei ${instance}`);
+		parts.push(`at ${instance}`);
 	}
 	// Kein JSON-Objekt im Koerper: den Anfang des Textes mitgeben, sonst steht im Log
 	// nur eine nackte Zahl. Auch dieser Text wird maskiert.
@@ -345,7 +345,7 @@ export function networkApiError(cause: unknown, sanitizer: Sanitizer = createSan
 		kind: 'network-error',
 		status: undefined,
 		timeout,
-		message: `${timeout ? 'Zeitueberschreitung' : 'Netzwerkfehler'} - ${sanitizer(cause)}`,
+		message: `${timeout ? 'Timeout' : 'Network error'} - ${sanitizer(cause)}`,
 		consumesQuota: traits.consumesQuota,
 		retryable: traits.retryable,
 		maxRetries: traits.maxRetries,

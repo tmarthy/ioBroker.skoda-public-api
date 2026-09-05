@@ -22,6 +22,7 @@
  */
 import type { ApiMeta } from '../api/client';
 import type { ApiError } from '../api/errors';
+import { translateFallback, translated, type Translate } from '../i18n';
 
 /** Schwellen in Tagen, aufsteigend: Die kleinste passende bestimmt die Dringlichkeit. */
 export const EXPIRY_THRESHOLDS_DAYS = [2, 7, 14] as const;
@@ -41,6 +42,10 @@ export interface KeyExpiryStateApi {
 	setObjectNotExistsAsync(id: string, obj: ioBroker.SettableObject): ioBroker.SetObjectPromise;
 	/** Schreibt einen Zustand, sofern er sich geaendert hat. */
 	setStateChangedAsync(id: string, state: ioBroker.SettableState): ioBroker.SetStateChangedPromise;
+	/** Liest vorhandene Metadaten fuer die Sprachmigration. */
+	getObjectAsync(id: string): ioBroker.GetObjectPromise;
+	/** Aktualisiert nur den Standardnamen eines vorhandenen Objekts. */
+	extendObjectAsync(id: string, obj: ioBroker.PartialObject): ioBroker.SetObjectPromise;
 }
 
 /** Die Logstufen, die der Waechter benutzt. */
@@ -63,6 +68,8 @@ export interface KeyExpiryOptions {
 	notify?: (category: KeyNotificationCategory, message: string) => Promise<void> | void;
 	/** Zeitquelle, ersetzbar fuer Tests. */
 	now?: () => number;
+	/** Backend-Uebersetzung; ohne Adapter-Kontext wird Englisch verwendet. */
+	t?: Translate;
 }
 
 /**
@@ -73,6 +80,7 @@ export class KeyExpiryWatcher {
 	private readonly log: KeyExpiryLog;
 	private readonly notify?: KeyExpiryOptions['notify'];
 	private readonly now: () => number;
+	private readonly t: Translate;
 
 	/** Was an welchem Tag schon gemeldet wurde - Schluessel auf Tagesnummer. */
 	private readonly announced = new Map<string, number>();
@@ -86,6 +94,7 @@ export class KeyExpiryWatcher {
 		this.log = options.log;
 		this.notify = options.notify;
 		this.now = options.now ?? (() => Date.now());
+		this.t = options.t ?? translateFallback;
 	}
 
 	/**
@@ -97,7 +106,7 @@ export class KeyExpiryWatcher {
 	public async observe(meta: ApiMeta, error?: ApiError): Promise<void> {
 		if (error?.kind === 'api-key-expired') {
 			// Die API sagt es ausdruecklich - das schlaegt jede Rechnerei mit Tagen.
-			await this.announceExpired('Der API-Schlüssel ist abgelaufen.');
+			await this.announceExpired(this.t('The API key has expired.'));
 			return;
 		}
 
@@ -116,7 +125,7 @@ export class KeyExpiryWatcher {
 		}
 
 		if (remainingDays <= 0) {
-			await this.announceExpired('Der API-Schlüssel ist abgelaufen oder läuft heute ab.');
+			await this.announceExpired(this.t('The API key has expired or expires today.'));
 			return;
 		}
 
@@ -125,10 +134,12 @@ export class KeyExpiryWatcher {
 			return;
 		}
 
-		const message =
-			`Der API-Schlüssel läuft in ${remainingDays} Tag${remainingDays === 1 ? '' : 'en'} ab ` +
-			`(${meta.apiKeyExpiresAt.toISOString().slice(0, 10)}). Ein neuer wird in der MyŠkoda-App erzeugt; ` +
-			'automatisch erneuern kann der Adapter ihn nicht.';
+		const message = this.t(
+			'The API key expires in %s day%s (%s). Create a new one in the MyŠkoda app; the adapter cannot renew it automatically.',
+			remainingDays,
+			remainingDays === 1 ? '' : this.t('s'),
+			meta.apiKeyExpiresAt.toISOString().slice(0, 10),
+		);
 
 		if (threshold <= 2) {
 			this.log.error(message);
@@ -152,9 +163,10 @@ export class KeyExpiryWatcher {
 		if (!this.isNewToday('expired')) {
 			return;
 		}
-		const message =
-			`${reason} Der Adapter fragt bis auf Weiteres nur noch einmal pro Stunde nach. ` +
-			'In der MyŠkoda-App unter "API-Schlüssel" einen neuen erzeugen und in der Instanz eintragen.';
+		const message = this.t(
+			'%s The adapter will poll only once per hour until further notice. Create a new key in the MyŠkoda app under "API key" and enter it in the instance configuration.',
+			reason,
+		);
 		this.log.error(message);
 		await this.notify?.('apiKeyExpired', message);
 	}
@@ -183,22 +195,36 @@ export class KeyExpiryWatcher {
 			return;
 		}
 		this.objectsReady = true;
+		const channelName = translated('API key', 'API-Schlüssel');
 		await this.states.setObjectNotExistsAsync(API_KEY_CHANNEL, {
 			type: 'channel',
-			common: { name: 'API key' },
+			common: { name: channelName },
 			native: {},
 		});
+		await this.migrateName(API_KEY_CHANNEL, channelName);
 		// Der Zeitpunkt bleibt die Zeichenkette aus dem Header - so, wie alle anderen
 		// Zeitstempel dieser API auch im Baum stehen.
+		const expiresName = translated('When the API key expires', 'Ablaufzeitpunkt des API-Schlüssels');
 		await this.states.setObjectNotExistsAsync(`${API_KEY_CHANNEL}.expiresAt`, {
 			type: 'state',
-			common: { name: 'When the API key expires', type: 'string', role: 'date', read: true, write: false },
+			common: {
+				name: expiresName,
+				type: 'string',
+				role: 'date',
+				read: true,
+				write: false,
+			},
 			native: {},
 		});
+		await this.migrateName(`${API_KEY_CHANNEL}.expiresAt`, expiresName);
+		const daysName = translated(
+			'Days left before the API key expires',
+			'Verbleibende Tage bis zum Ablauf des API-Schlüssels',
+		);
 		await this.states.setObjectNotExistsAsync(`${API_KEY_CHANNEL}.daysRemaining`, {
 			type: 'state',
 			common: {
-				name: 'Days left before the API key expires',
+				name: daysName,
 				type: 'number',
 				role: 'value',
 				unit: 'd',
@@ -207,6 +233,20 @@ export class KeyExpiryWatcher {
 			},
 			native: {},
 		});
+		await this.migrateName(`${API_KEY_CHANNEL}.daysRemaining`, daysName);
+	}
+
+	/**
+	 * Migrates adapter defaults while preserving names changed by the user.
+	 *
+	 * @param id Relative Objekt-ID.
+	 * @param name Neuer zweisprachiger Standardname.
+	 */
+	private async migrateName(id: string, name: ioBroker.Translated): Promise<void> {
+		const existing = await this.states.getObjectAsync(id);
+		if (existing && existing.common.name === name.en) {
+			await this.states.extendObjectAsync(id, { common: { name } });
+		}
 	}
 
 	/**

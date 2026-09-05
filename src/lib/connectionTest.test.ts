@@ -60,7 +60,7 @@ describe('connectionTest => ein Request, ein verstaendlicher Satz', () => {
 				);
 				const same = testedKey === DEFAULT_API_KEY;
 				expect(result.ok).to.equal(true);
-				expect(result.text).to.contain('19 von 20');
+				expect(result.text).to.contain('19 of 20');
 				expect(quota.snapshot().remaining).to.equal(same ? 19 : 0);
 				expect(quota.snapshot().inFlight).to.equal(0);
 				expect(inFlight).to.equal(same ? 1 : 0);
@@ -71,8 +71,8 @@ describe('connectionTest => ein Request, ein verstaendlicher Satz', () => {
 			const result = await testConnection(client, DEFAULT_VIN, clock);
 			expect(result.ok).to.equal(true);
 			expect(result.text).to.contain('Enyaq');
-			expect(result.text).to.contain('noch 30 Tage');
-			expect(result.text).to.contain('19 von 20 Requests frei');
+			expect(result.text).to.contain('another 30 days');
+			expect(result.text).to.contain('19 of 20 requests available');
 		});
 
 		it('kostet genau einen Request und fordert nur die Basisangaben an', async () => {
@@ -96,7 +96,7 @@ describe('connectionTest => ein Request, ein verstaendlicher Satz', () => {
 			mock.scenario = 'api-key-expired';
 			const result = await testConnection(client, DEFAULT_VIN, clock);
 			expect(result.ok).to.equal(false);
-			expect(result.text).to.contain('MyŠkoda-App');
+			expect(result.text).to.contain('MyŠkoda app');
 		});
 
 		it('nennt beim 403 beide moeglichen Ursachen', async () => {
@@ -105,28 +105,28 @@ describe('connectionTest => ein Request, ein verstaendlicher Satz', () => {
 			const fremd = new SkodaApiClient({ apiKey: 'falscher-schluessel', baseUrl: mock.baseUrl, timeoutMs: 2000 });
 			const result = await testConnection(fremd, DEFAULT_VIN, clock);
 			expect(result.ok).to.equal(false);
-			expect(result.text).to.contain('vertippt');
-			expect(result.text).to.contain('ausgewählt');
+			expect(result.text).to.contain('mistyped');
+			expect(result.text).to.contain('not selected');
 		});
 
 		it('unterscheidet ein erschoepftes Budget von einem kaputten Schluessel', async () => {
 			mock.scenario = 'rate-limit-exceeded';
 			const result = await testConnection(client, DEFAULT_VIN, clock);
 			expect(result.ok).to.equal(false);
-			expect(result.text).to.contain('Stundenbudget ist erschöpft');
-			expect(result.text).to.contain('Schlüssel selbst ist in Ordnung');
+			expect(result.text).to.contain('hourly quota is exhausted');
+			expect(result.text).to.contain('key itself is valid');
 		});
 
 		it('meldet ein nicht antwortendes Fahrzeug als solches', async () => {
 			mock.scenario = 'vehicle-not-accepting-requests';
 			const result = await testConnection(client, DEFAULT_VIN, clock);
-			expect(result.text).to.contain('Fahrzeug nimmt gerade keine Anfragen an');
+			expect(result.text).to.contain('vehicle is currently not accepting requests');
 		});
 
 		it('meldet eine unbekannte VIN', async () => {
 			mock.scenario = 'not-found';
 			const result = await testConnection(client, DEFAULT_VIN, clock);
-			expect(result.text).to.contain('kein Fahrzeug');
+			expect(result.text).to.contain('No vehicle');
 		});
 
 		it('meldet eine unerreichbare API', async () => {
@@ -137,7 +137,7 @@ describe('connectionTest => ein Request, ein verstaendlicher Satz', () => {
 			});
 			const result = await testConnection(offline, DEFAULT_VIN, clock);
 			expect(result.ok).to.equal(false);
-			expect(result.text).to.contain('nicht erreichbar');
+			expect(result.text).to.contain('could not be reached');
 		});
 
 		it('nennt in keiner Meldung die VIN oder den Schluessel', async () => {
@@ -168,19 +168,19 @@ describe('connectionTest => ein Request, ein verstaendlicher Satz', () => {
 
 		it('beanstandet einen fehlenden Schluessel, ohne einen Request zu kosten', () => {
 			const target = pickTestTarget({}, { vins: [{ vin: DEFAULT_VIN }] });
-			expect(target).to.have.property('problem').that.contains('MyŠkoda-App');
+			expect(target).to.have.property('problem').that.contains('MyŠkoda app');
 		});
 
 		it('beanstandet eine fehlende Fahrzeugliste', () => {
 			expect(pickTestTarget({}, { apiKey: 'x' }))
 				.to.have.property('problem')
-				.that.contains('Kein Fahrzeug');
+				.that.contains('No vehicle');
 		});
 
 		it('nimmt nicht still die zweite Zeile, wenn die erste unbrauchbar ist', () => {
 			// Sonst meldet der Test Erfolg fuer ein Fahrzeug, das niemand gemeint hat.
 			const target = pickTestTarget({ apiKey: 'x', vins: [{ vin: 'zu-kurz' }, { vin: DEFAULT_VIN }] }, {});
-			expect(target).to.have.property('problem').that.contains('erste Zeile');
+			expect(target).to.have.property('problem').that.contains('first row');
 		});
 	});
 

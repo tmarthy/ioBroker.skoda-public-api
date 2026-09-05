@@ -150,6 +150,14 @@ diesem Repository, und `NPM_TRUSTED_PUBLISHING=true` aktiviert den Deploy-Job.
 angenommen. Der Antrag für das offizielle ioBroker-Repository läuft als
 `ioBroker/ioBroker.repositories#6592`.
 
+Die nächste Veröffentlichung ist als **0.1.0** vorgesehen. Der lokale, noch nicht
+committete Arbeitsstand ergänzt Deutsch und Englisch für Backend-Meldungen,
+Benachrichtigungen, Verbindungstest und Objektbezeichnungen. Eine Instanzeinstellung
+wählt Systemsprache, Deutsch oder Englisch; bestehende Standardnamen werden migriert,
+eigene Namen bleiben erhalten. Stand der lokalen Abnahme: `npm run lint`,
+`npm run check`, `npm run build`, 359 Unit-Tests und 57 Pakettests grün. Ein
+`npm pack --dry-run` bestätigt `build/main.js` und `i18n/de.json` im Archiv.
+
 ### Stand der CI
 
 Vier Workflows. Der vollständige Matrixlauf für Commit `3d7a7f6` war grün: Check und
@@ -519,6 +527,9 @@ zweites Mal hineinläuft oder eine Korrektur versehentlich zurückdreht.
    veröffentlicht. **`build/` nicht wieder einchecken** — es würde bei jeder Änderung
    an `src/` einen zweiten Diff erzeugen. Installationen sollen nach dem ersten Release
    über npm erfolgen, nicht über einen GitHub-Tarball ohne Kompilat.
+   Eine eigene `.npmignore` muss dabei vorhanden bleiben: Ohne sie übernimmt npm die
+   `.gitignore` und lässt das dort ignorierte `build/` trotz `package.json#files` aus
+   dem Paket weg.
 8. **Generierte Dateien sind von ESLint und Prettier ausgenommen** (`src/**/*.generated.ts`).
    Nicht wieder einschließen — das erzeugt 738 Formatierungsfehler.
 9. **GitHub-Actions-Versionen im Blick behalten.** GitHub kündigt Node-Laufzeiten ab und

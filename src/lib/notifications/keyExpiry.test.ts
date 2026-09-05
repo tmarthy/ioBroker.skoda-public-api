@@ -68,6 +68,10 @@ describe('notifications/keyExpiry => der Schluessel laeuft ab', () => {
 				role: 'date',
 			});
 			expect(adapter.objects.get(`${API_KEY_CHANNEL}.daysRemaining`)?.common).to.include({ unit: 'd' });
+			expect(adapter.objects.get(API_KEY_CHANNEL)?.common?.name).to.deep.equal({
+				en: 'API key',
+				de: 'API-Schlüssel',
+			});
 		});
 
 		it('legt gar nichts an, solange die API nichts ueber den Ablauf sagt', async () => {
@@ -87,8 +91,8 @@ describe('notifications/keyExpiry => der Schluessel laeuft ab', () => {
 		it('meldet 14 Tage als Hinweis, ohne Notification', async () => {
 			await watcher.observe(inDays(14));
 			expect(levels()).to.deep.equal(['info']);
-			expect(log.lines[0][1]).to.contain('14 Tagen');
-			expect(log.lines[0][1]).to.contain('MyŠkoda-App');
+			expect(log.lines[0][1]).to.contain('14 days');
+			expect(log.lines[0][1]).to.contain('MyŠkoda app');
 			expect(notifications).to.have.length(0);
 		});
 
@@ -108,7 +112,7 @@ describe('notifications/keyExpiry => der Schluessel laeuft ab', () => {
 			// Ein Tag Restlaufzeit ist auch unter 14 und unter 7 - gemeldet wird die 2.
 			await watcher.observe(inDays(1));
 			expect(levels()).to.deep.equal(['error']);
-			expect(log.lines[0][1]).to.contain('1 Tag ');
+			expect(log.lines[0][1]).to.contain('1 day ');
 		});
 	});
 
@@ -140,7 +144,7 @@ describe('notifications/keyExpiry => der Schluessel laeuft ab', () => {
 			await watcher.observe(inDays(-1));
 			expect(levels()).to.deep.equal(['error']);
 			expect(notifications[0][0]).to.equal('apiKeyExpired');
-			expect(notifications[0][1]).to.contain('einmal pro Stunde');
+			expect(notifications[0][1]).to.contain('once per hour');
 		});
 
 		it('glaubt der API mehr als der eigenen Rechnung', async () => {

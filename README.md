@@ -204,6 +204,14 @@ at 2, plus an ioBroker notification from 7 days on and an alert once the key is 
 | Commands do nothing | Check `info.lastCommand.result`. `COALESCED` means the target already matched the last known state — use the `start`/`stop` buttons to force the call. |
 | States stop updating | Look at `<vin>.info.dataAge`. A sleeping vehicle is polled less and less often, on purpose. |
 
+## Languages
+
+The adapter configuration and object tree are available in English and German. Logs,
+notifications and connection-test results use the ioBroker system language by default.
+The instance setting **Language for logs and notifications** can override this with
+English or German. Other ioBroker UI languages continue to use English backend text as
+their fallback.
+
 ## Disclaimer
 
 Škoda and MyŠkoda are trademarks of Škoda Auto a.s. This project is an independent
@@ -214,9 +222,14 @@ reproduce the official Škoda logo; it is distributed under this project's MIT l
 
 ## Changelog
 <!--
+	Target for the current work-in-progress section: 0.1.0
 	Placeholder for the next version (at the beginning of the line):
 	### **WORK IN PROGRESS**
 -->
+### **WORK IN PROGRESS**
+* (Thomas Marthy) added German and English backend messages, notifications, connection-test results and object names
+* (Thomas Marthy) ensured compiled code and backend translations are included in the npm package
+
 ### 0.0.2 (2026-09-05)
 * (Thomas Marthy) enabled npm Trusted Publishing for automated releases
 

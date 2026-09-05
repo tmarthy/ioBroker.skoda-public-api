@@ -2,6 +2,7 @@
  * Created with @iobroker/create-adapter v3.1.5
  */
 import * as utils from '@iobroker/adapter-core';
+import { join } from 'node:path';
 import { SkodaApiClient } from './lib/api/client';
 import { CommandQueue } from './lib/commands/CommandQueue';
 import { readConfig } from './lib/config';
@@ -11,6 +12,7 @@ import { VehicleQuotaManager } from './lib/quota/VehicleQuotaManager';
 import { KeyExpiryWatcher } from './lib/notifications/keyExpiry';
 import { PollScheduler } from './lib/scheduler/PollScheduler';
 import { StateWriter } from './lib/states/StateWriter';
+import { translateFallback, type Translate } from './lib/i18n';
 
 /**
  * Der Adapter selbst ist nur die Verdrahtung: Er liest die Konfiguration, baut die
@@ -25,6 +27,7 @@ class SkodaPublicApi extends utils.Adapter {
 	private queue?: CommandQueue;
 	private quota?: VehicleQuotaManager;
 	private keyExpiry?: KeyExpiryWatcher;
+	private t: Translate = translateFallback;
 
 	public constructor(options: Partial<utils.AdapterOptions> = {}) {
 		super({
@@ -40,15 +43,22 @@ class SkodaPublicApi extends utils.Adapter {
 	/** Wird gerufen, sobald die Datenbanken verbunden sind und die Konfiguration steht. */
 	private async onReady(): Promise<void> {
 		await this.setState('info.connection', false, true);
+		const configuredLanguage = this.config.backendLanguage;
+		await utils.I18n.init(
+			join(__dirname, '..'),
+			configuredLanguage === 'de' || configuredLanguage === 'en' ? configuredLanguage : this,
+		);
+		const t = utils.I18n.t;
+		this.t = t;
 
-		const { settings, problems } = readConfig(this.config);
+		const { settings, problems } = readConfig(this.config, t);
 		if (!settings) {
 			for (const problem of problems) {
 				this.log.error(problem);
 			}
 			// Kein Abbruch: Der Adapter bleibt als Instanz stehen, damit die
 			// Konfiguration in der Admin-UI ergaenzt werden kann. Er fragt nur nichts.
-			this.log.error('Der Adapter bleibt untaetig, bis die Instanzkonfiguration vollstaendig ist.');
+			this.log.error(t('The adapter remains idle until the instance configuration is complete.'));
 			return;
 		}
 
@@ -61,23 +71,24 @@ class SkodaPublicApi extends utils.Adapter {
 			vins: settings.vins,
 			commandReserve: settings.commandReserve,
 			storeForVin: vin => new AdapterQuotaStore(this, vin),
-			onStoreError: error => this.log.warn(`Quota-Stand konnte nicht gespeichert werden: ${String(error)}`),
+			onStoreError: error => this.log.warn(t('Quota state could not be saved: %s', String(error))),
 		});
 		await quota.start();
 		this.quota = quota;
 
-		const writer = new StateWriter({ api: this });
+		const writer = new StateWriter({ api: this, t });
 
 		// Der Schluessel erneuert sich nicht von selbst, und sein Ablauf faellt sonst
 		// wochenlang nicht auf: Die Werte im Baum bleiben laut E8 ja stehen.
 		this.keyExpiry = new KeyExpiryWatcher({
 			states: this,
 			log: this.log,
+			t,
 			notify: (category, message) =>
 				// Eine gescheiterte Notification darf den Adapter nicht mitreissen: Sie
 				// ist die Zugabe, die Logzeile ist die eigentliche Meldung.
 				this.registerNotification('skoda-public-api', category, message).catch((error: unknown) =>
-					this.log.warn(`Notification "${category}" konnte nicht abgesetzt werden: ${String(error)}`),
+					this.log.warn(t('Notification "%s" could not be sent: %s', category, String(error))),
 				),
 		});
 
@@ -92,6 +103,7 @@ class SkodaPublicApi extends utils.Adapter {
 				this.queue?.updateFromResponse(vin, response);
 			},
 			log: this.log,
+			t,
 			onConnectionChange: connected => {
 				void this.setState('info.connection', connected, true);
 			},
@@ -114,6 +126,7 @@ class SkodaPublicApi extends utils.Adapter {
 			vins: settings.vins,
 			onReport: (vin, report) => writer.writeCommandResult(vin, report),
 			log: this.log,
+			t,
 			// Die API antwortet auf Befehle mit `202` und kennt keinen Status-Endpunkt:
 			// Ob das Fahrzeug den Befehl ausgefuehrt hat, zeigt erst der naechste Poll.
 			onCommandSent: vin => this.scheduler?.requestVerificationPoll(vin),
@@ -136,11 +149,16 @@ class SkodaPublicApi extends utils.Adapter {
 		this.subscribeStates('*.stop');
 
 		this.log.info(
-			`${settings.vins.length} Fahrzeug(e), Kadenz ${settings.idleMs / 60_000}/${settings.activeMs / 60_000} min, ` +
-				`Befehlsreserve ${settings.commandReserve} von 20 Requests pro Stunde und Fahrzeug.`,
+			t(
+				'%s vehicle(s), polling intervals %s/%s min, command reserve %s of 20 requests per hour and vehicle.',
+				settings.vins.length,
+				settings.idleMs / 60_000,
+				settings.activeMs / 60_000,
+				settings.commandReserve,
+			),
 		);
 		if (!settings.readParkingPosition) {
-			this.log.info('Parkposition ist abgeschaltet - sie wird gar nicht erst angefordert.');
+			this.log.info(t('Parking position is disabled and will not be requested.'));
 		}
 		this.scheduler.start();
 	}
@@ -182,7 +200,8 @@ class SkodaPublicApi extends utils.Adapter {
 	 * @returns Die Antwort fuer die Admin-UI.
 	 */
 	private async runConnectionTest(payload: unknown): Promise<{ result?: string; error?: string }> {
-		const target = pickTestTarget(payload, { apiKey: this.config.apiKey, vins: this.config.vins });
+		const t = utils.I18n.t;
+		const target = pickTestTarget(payload, { apiKey: this.config.apiKey, vins: this.config.vins }, t);
 		if ('problem' in target) {
 			return { error: target.problem };
 		}
@@ -193,15 +212,21 @@ class SkodaPublicApi extends utils.Adapter {
 		// Nutzerwunsch laufen. Eine freie Sequenzbuchung sorgt trotzdem dafuer, dass
 		// seine spaete Antwort keinen neueren Quota-Stand ueberschreibt.
 		const watcher = this.keyExpiry;
-		const result = await testConnection(client, vin, Date.now(), {
-			testedKey: apiKey,
-			activeKey: (this.config.apiKey ?? '').trim(),
-			quota: this.quota,
-			onResponse: meta => watcher?.observe(meta),
-		});
+		const result = await testConnection(
+			client,
+			vin,
+			Date.now(),
+			{
+				testedKey: apiKey,
+				activeKey: (this.config.apiKey ?? '').trim(),
+				quota: this.quota,
+				onResponse: meta => watcher?.observe(meta),
+			},
+			t,
+		);
 		// Absichtlich ohne den Text: Er nennt Fahrzeugname und Kennzeichen, und die
 		// muessen nicht ins Log, das im Forum landet (E14).
-		this.log.info(result.ok ? 'Verbindungstest erfolgreich.' : `Verbindungstest fehlgeschlagen: ${result.text}`);
+		this.log.info(result.ok ? t('Connection test succeeded.') : t('Connection test failed: %s', result.text));
 		return result.ok ? { result: result.text } : { error: result.text };
 	}
 
@@ -239,14 +264,14 @@ class SkodaPublicApi extends utils.Adapter {
 				void quota
 					.flush()
 					.catch((error: unknown) =>
-						this.log.warn(`Quota-Stand beim Entladen nicht gespeichert: ${String(error)}`),
+						this.log.warn(this.t('Quota state could not be saved during shutdown: %s', String(error))),
 					)
 					.finally(callback);
 			} else {
 				callback();
 			}
 		} catch (error) {
-			this.log.error(`Fehler beim Entladen: ${(error as Error).message}`);
+			this.log.error(this.t('Error during shutdown: %s', (error as Error).message));
 			callback();
 		}
 	}
