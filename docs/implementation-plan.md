@@ -656,17 +656,21 @@ die API bedeutet.
 > damit die einmalige manuelle Erstveröffentlichung und der erste Tag keinen
 > unkonfigurierten oder doppelten npm-Publish auslösen.
 >
-> **Repochecker 5.20.14 am 2026-09-05:** Alle lokal behebbaren Fehler sind beseitigt.
-> Offen bleiben erwartungsgemäß `E2000` (noch nicht auf npm), `E3032` (noch kein
-> Release-Tag), `W4001` (noch nicht in `latest`) und `S8005` (noch kein GitHub-Release).
-> Die Warnung zu `process.env` betrifft ausschließlich `SKODA_API_BASE_URL` für Mock-
-> und Integrationstests; deshalb bleibt `common.compact` ausdrücklich `false`.
+> **Repochecker 5.20.14 am 2026-09-05 nach Veröffentlichung:** `FINAL status 'OK'`.
+> npm-Paket `0.0.1`, Release-Tag und GitHub-Release werden erkannt. Offen bleiben
+> `W4001` bis zur Aufnahme in `latest`, `E2001` bis `bluefox` die bereits versandte
+> npm-Einladung annimmt und `E2008`, weil die einmalige manuelle Erstveröffentlichung
+> noch keine Provenance besitzt. Die Warnung zu `process.env` betrifft ausschließlich
+> `SKODA_API_BASE_URL` für Mock- und Integrationstests; deshalb bleibt
+> `common.compact` ausdrücklich `false`.
 
 
 `@alcalzone/release-script`, Übersetzungen mit `@iobroker/adapter-dev translate`
 (DE/EN von Hand, Rest maschinell), Adapter-Checker durchlaufen lassen, erstes Paket
 auf npm veröffentlichen und die Aufnahme in das offizielle Repository `latest`
-beantragen (E1). `stable` folgt erst nach öffentlichem Test und Rückmeldungen.
+beantragen (E1). npm und GitHub-Release `0.0.1` sind veröffentlicht; der `latest`-Antrag
+ist der verbleibende Schritt. `stable` folgt erst nach öffentlichem Test und
+Rückmeldungen.
 
 ---
 

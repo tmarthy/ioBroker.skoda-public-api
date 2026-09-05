@@ -126,7 +126,7 @@ Minuten. Kein Test gegen das echte Fahrzeug und keine Installation auf der Produ
 | 9 | Schlüsselablauf und Notifications | **fertig** |
 | 10 | Tests und CI vervollständigen | **fertig** |
 | 11 | Beispielskript und Dokumentation | **fertig** |
-| 12 | Release-Vorbereitung | **wieder geöffnet** — Veröffentlichung beschlossen |
+| 12 | Release-Vorbereitung | **fertig** — npm und GitHub-Release veröffentlicht; `latest`-Antrag folgt |
 
 Historischer vollständig grüner Lauf vor den Review-Korrekturen (2026-09-04):
 
@@ -142,9 +142,11 @@ npm run codegen          reproduzierbar (identische Prüfsummen bei erneutem Lau
 ```
 
 `main` ist nach `https://github.com/tmarthy/ioBroker.skoda-public-api` gepusht und das
-Repository ist öffentlich. Das Paket ist noch nicht auf npm veröffentlicht. Der
-Deploy-Job ist definiert; vor dem ersten Versions-Tag muss npm Trusted Publishing für
-dieses Repository eingerichtet werden.
+Repository ist öffentlich. Version `0.0.1` ist auf npm sowie als GitHub-Release
+veröffentlicht; Tag und npm-Paket basieren auf Commit `9f240c0`. `bluefox` wurde als
+npm-Maintainer eingeladen, hat die Einladung aber noch nicht angenommen. Für künftige
+Versionen ist der Deploy-Job vorbereitet; npm Trusted Publishing und anschließend die
+Repository-Variable `NPM_TRUSTED_PUBLISHING=true` müssen noch aktiviert werden.
 
 ### Stand der CI
 
@@ -171,7 +173,7 @@ von sechs Stunden und bindet unnötig einen Runner.
 | `Test and Release` | Push auf `main`, Tags, PRs, `workflow_dispatch` | schnell bei Push/PR; vollständige Matrix bei Tag oder manuellem Lauf |
 | `Check Škoda API spec` | **nur** `schedule` (Mo 05:17 UTC) und `workflow_dispatch` | ✓ manuell geprüft, „Spec unveraendert" |
 | `Auto-Merge Dependabot PRs` | `pull_request_target` | noch nie gelaufen — wartet auf den ersten Dependabot-PR; npm am 8., Actions am 22. jedes Monats |
-| Deploy | Tag `v*` | definiert; läuft nach Einrichtung von npm Trusted Publishing und Freigabe über `NPM_TRUSTED_PUBLISHING=true` |
+| Deploy | Tag `v*` | definiert; beim ersten, manuell veröffentlichten Tag bewusst übersprungen; läuft nach Einrichtung von npm Trusted Publishing und Freigabe über `NPM_TRUSTED_PUBLISHING=true` |
 
 **Der Spec-Wächter läuft bei einem Push nicht mit.** Wer ihn nach einer Änderung
 prüfen will, muss ihn von Hand auslösen: Actions → *Check Škoda API spec* →

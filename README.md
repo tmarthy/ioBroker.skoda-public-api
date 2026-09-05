@@ -15,9 +15,8 @@
 Read and control Škoda vehicles via the official
 [MyŠkoda Public API](https://public.api.connect.skoda-auto.cz/docs).
 
-> **Preparing the first public release.** The adapter reads and controls a vehicle
-> and has been run against a real ioBroker instance. Publication to npm and the
-> ioBroker `latest` repository is the current goal and has not happened yet. See
+> **Initial release available.** Version 0.0.1 is published on npm and as a GitHub
+> release. Inclusion in the ioBroker `latest` repository is in progress. See
 > [HANDOFF.md](HANDOFF.md) for the current state and how to run it against the
 > development mock. The design rationale lives in
 > [docs/design-decisions.md](docs/design-decisions.md), the roadmap in
