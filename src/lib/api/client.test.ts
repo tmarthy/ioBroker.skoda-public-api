@@ -6,7 +6,7 @@ import type { ApiErrorKind } from './errors';
 import type { VehiclePart } from './types';
 
 /**
- * Die Tests laufen gegen den Mock aus Phase 2, nicht gegen Fixtures: Nur so sind
+ * Die Tests laufen gegen den Mock, nicht gegen statische Fixtures: Nur so sind
  * Header, Statuscodes und Antwortkoerper wirklich die einer HTTP-Antwort. Gegen die
  * echte API laesst sich nicht testen - 20 Requests pro Stunde (E12).
  */
@@ -208,8 +208,8 @@ describe('api/client => HTTP-Schicht gegen den Mock', () => {
 			expect(first.ok).to.equal(true);
 			expect(first.meta.rateLimit?.remaining).to.equal(0);
 
-			// Kein Zurueckhalten, keine Warteschlange: Das ist Sache des QuotaManagers
-			// aus Phase 4. Der Client setzt den Request ab und meldet das Ergebnis.
+			// Kein Zurueckhalten, keine Warteschlange: Das ist Sache des QuotaManagers.
+			// Der Client setzt den Request ab und meldet das Ergebnis.
 			const second = await client.getVehicle(DEFAULT_VIN);
 			expect(second.ok).to.equal(false);
 			if (second.ok) {

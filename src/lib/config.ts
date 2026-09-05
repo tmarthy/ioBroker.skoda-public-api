@@ -128,8 +128,8 @@ export function readConfig(raw: unknown, t: Translate = translateFallback): Conf
 		return { problems };
 	}
 
-	// Die Untergrenzen stehen im Plan, Phase 6. Sie gelten auch fuer eine von Hand
-	// geschriebene Konfiguration - 20 Requests pro Stunde verzeihen keinen Tippfehler.
+	// Die Untergrenzen gelten auch fuer eine von Hand geschriebene Konfiguration:
+	// 20 Requests pro Stunde verzeihen keinen Tippfehler.
 	const idle = number(config.pollIntervalIdle, DEFAULTS.pollIntervalIdle, 5, 240);
 	const active = number(config.pollIntervalActive, DEFAULTS.pollIntervalActive, 3, 240);
 

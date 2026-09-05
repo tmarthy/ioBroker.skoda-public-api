@@ -60,13 +60,13 @@ export interface CommandQueueOptions {
 	quota: VehicleQuota;
 	/** Die konfigurierten Fahrzeuge; alles andere wird ignoriert. */
 	vins: readonly string[];
-	/** Wohin das Ergebnis geht - in Phase 7 der StateWriter. */
+	/** Wohin das Ergebnis geht: in der Adapterverdrahtung der StateWriter. */
 	onReport: (vin: string, report: CommandReport) => Promise<void> | void;
 	/** Wohin die Meldungen gehen. */
 	log: CommandLog;
 	/** Backend-Uebersetzung; ohne Adapter-Kontext wird Englisch verwendet. */
 	t?: Translate;
-	/** Wird nach einem abgesetzten Befehl gerufen: Verifikations-Poll (Phase 6). */
+	/** Wird nach einem abgesetzten Befehl gerufen: Verifikations-Poll des Schedulers. */
 	onCommandSent?: (vin: string) => void;
 	/** Meldet `info.connection`, wenn der Schluessel abgelehnt wird (E10). */
 	onConnectionChange?: (connected: boolean) => void;

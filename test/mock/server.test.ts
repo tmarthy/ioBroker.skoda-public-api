@@ -46,8 +46,8 @@ describe('Mock der Skoda-API', () => {
 		});
 
 		it('laesst errors bei fehlerfreier Antwort ganz weg statt ein leeres Array zu senden', async () => {
-			// Am 2026-09-02 an einem echten Enyaq nachgemessen: Die Antwort enthaelt dann
-			// nur `vehicle`. Wer `body.errors.map(...)` schreibt, faellt hier auf die Nase -
+			// Die echte API liefert bei Erfolg nur `vehicle`. Wer
+			// `body.errors.map(...)` schreibt, faellt hier auf die Nase -
 			// und genau deshalb darf der Mock nicht nachsichtiger sein als die API.
 			const body = (await (await get()).json()) as any;
 			expect(body).to.not.have.property('errors');
@@ -242,7 +242,7 @@ describe('Mock der Skoda-API', () => {
 
 	describe('Steuerschnittstelle', () => {
 		it('beantwortet /__mock auch ohne Schraegstrich', async () => {
-			// So steht es in HANDOFF.md - und so tippt man es auch.
+			// Der Status-Endpunkt soll mit und ohne abschliessenden Schraegstrich funktionieren.
 			const res = await fetch(`${base}/__mock`);
 			expect(res.status).to.equal(200);
 			expect((await res.json()) as any).to.have.property('quota');

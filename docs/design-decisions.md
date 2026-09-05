@@ -1,13 +1,12 @@
 # Entwurfsentscheidungen — ioBroker.skoda-public-api
 
-Ergebnis der Entwurfsdiskussion vom 2026-09-01. Jede Zeile hier ist eine bewusst
-getroffene Entscheidung, keine Vermutung. Wer den Adapter später ändert, sollte
-den Abschnitt "Begründung" lesen, bevor er eine davon umdreht.
+Dieses Dokument hält die geltenden Produkt- und Architekturentscheidungen fest. Wer
+eine davon ändert, sollte zuerst die Begründung und die betroffenen Invarianten prüfen.
 
 ## Randbedingungen der API (nicht verhandelbar)
 
-Quelle: <https://public.api.connect.skoda-auto.cz/docs>, Spec unter `spec/skoda-openapi.json`
-(`info.version: v0`, zuletzt aktualisiert 2026-09-05).
+Quelle: <https://public.api.connect.skoda-auto.cz/docs>, eingecheckte Spec unter
+`spec/skoda-openapi.json` (`info.version: v0`).
 
 | Eigenschaft | Wert |
 |---|---|
@@ -30,21 +29,13 @@ Schreib-States angeboten.
 
 ## Entscheidungen
 
-### E1 — Qualitätsniveau: Veröffentlichung über npm und ioBroker Latest
-Aufsetzen mit `@iobroker/create-adapter`, saubere `io-package.json`, JSON Config,
-Tests und CI. Ziel ist die Veröffentlichung auf npm und anschließend die Aufnahme in
-das offizielle ioBroker-Repository `latest`. `stable` folgt nach öffentlichem Test und
-Nutzerfeedback.
-**Begründung:** Die Kosten des Gerüsts fallen einmalig am Anfang an; Nachrüsten ist
-deutlich teurer.
-
-> **Neu entschieden am 2026-09-05: Der Adapter wird veröffentlicht.**
-> Die frühere Privatentscheidung vom 2026-09-04 ist aufgehoben. Vor dem ersten Release
-> werden Repository-Metadaten und Adapter-Checker bereinigt, die vollständige
-> Plattformmatrix ausgeführt und die npm-Veröffentlichung vorbereitet. Der erste
-> ioBroker-Schritt ist `latest`; `stable` wird nicht ohne öffentliche Testphase
-> beantragt. Sentry bleibt eine optionale, unabhängige Funktion und ist für den ersten
-> Release nicht vorgesehen.
+### E1 — Qualitätsniveau: Veröffentlichung über npm und ioBroker
+Der Adapter wird öffentlich auf npm und GitHub veröffentlicht und für das offizielle
+ioBroker-Repository `latest` gepflegt. `stable` folgt erst nach öffentlichem Test und
+Nutzerfeedback. Grundlage sind eine vollständige `io-package.json`, JSON Config,
+automatisierte Tests, eine Plattformmatrix für Releases und reproduzierbare npm-Pakete.
+**Begründung:** Öffentliche Verteilung braucht nachvollziehbare Metadaten, Migrationen
+und Prüfungen über alle unterstützten Plattformen.
 
 ### E2 — Name: `ioBroker.skoda-public-api`
 npm-Paket `iobroker.skoda-public-api`. Bindestrich statt Unterstrich (Konvention:
@@ -76,7 +67,7 @@ Befehl kommt in eine Queue, wird ausgeführt sobald Budget da ist, verfällt nac
 **Begründung:** Bang-Bang-Regelung produziert Schaltnervosität (Wolke zieht durch).
 Coalescing dämpft sie an der einzigen Stelle, die das Budget kennt.
 
-**Präzisiert am 2026-09-05:** Auch ein mit `202` angenommener Sollwert darf gleiche
+Auch ein mit `202` angenommener Sollwert darf gleiche
 Schreibvorgänge nur begrenzt unterdrücken. Die Bestätigungsfrist ab Annahme entspricht
 der konfigurierten TTL. Ein passender Ist-Zustand mit neuerem Fahrzeugzeitstempel hebt
 sie vorzeitig auf. Nach Ablauf werden neue Schreibvorgänge wieder gegen frische Daten
@@ -98,20 +89,20 @@ Wurzel ist die VIN. Struktur folgt exakt dem JSON der Antwort.
 Felder fallen beim Regenerieren als Compile-Fehler auf statt als State, der still
 aufhört sich zu aktualisieren.
 **Typisierung** kommt aus der Spec (`type`, `unit`, `role`, `common.states` mit
-deutschen Enum-Labels), unbekannte Felder werden dynamisch mit geratenem Typ angelegt.
+stabilen Enum-Labels), unbekannte Felder werden dynamisch mit geratenem Typ angelegt.
 **Ausnahmen vom 1:1-Prinzip:** zusätzlicher State `parkingPosition.position`
 im Format `lat;lon` mit `role: value.gps` für VIS-Karten und Geofence-Adapter.
 
-**Anzeigeeinheiten, Nutzerwunsch vom 2026-09-05:**
-`charging.status.battery.remainingCruisingRangeInMeters` wird durch 1000 geteilt und
+**Anzeigeeinheiten:** `charging.status.battery.remainingCruisingRangeInMeters` wird
+durch 1000 geteilt und
 in km dargestellt. `activeVentilation.durationInSeconds` und
 `auxiliaryHeating.durationInSeconds` werden durch 60 geteilt und in Minuten dargestellt.
 Die bestehenden IDs bleiben erhalten, auch wenn ihre Endung die API-Einheit nennt.
 Der StateWriter rechnet ausschließlich empfangene API-Werte um, ohne Rundung, und
 aktualisiert vorhandene Objekteinheiten und Standardbeschreibungen beim nächsten
-Empfang des Felds. Eigene Namen bleiben erhalten. Historien werden nicht umgerechnet;
-Skripte müssen die neuen Einheiten berücksichtigen. Spec, Fixtures und Befehlsdaten
-bleiben unverändert in den API-Einheiten.
+Empfang des Felds. Eigene Namen bleiben erhalten. Gespeicherte Zeitreihen werden nicht
+rückwirkend umgerechnet; Skripte müssen die Anzeigeeinheiten berücksichtigen. Spec,
+Fixtures und Befehlsdaten bleiben unverändert in den API-Einheiten.
 
 ### E8 — Umgang mit unvollständigen Antworten
 Fehlende Teile **nicht** auf `null` setzen. Letzter Wert bleibt stehen,
@@ -121,7 +112,7 @@ Quality-Flag wird auf "nicht gut" gesetzt, `errors[]` landet als JSON in
 **Begründung:** `200` ist laut Doku regelmäßig unvollständig. Ohne diese Regel
 flackert die VIS; ohne `dataAge` hält man tagealte Werte für aktuelle.
 
-**Präzisiert am 2026-09-05:** Der Writer übernimmt vorhandene States und Qualitätsflags
+Der Writer übernimmt vorhandene States und Qualitätsflags
 beim ersten Poll nach dem Start. Neben Teilfehlern in `errors[]` markiert er auch
 verschwundene Felder innerhalb gelieferter Teile und entfernte Profile. Absichtlich
 nicht angeforderte Teile bleiben unverändert. `dataAge` ist eine Momentaufnahme zum
@@ -147,11 +138,11 @@ Budget ist Normalbetrieb.
 Hand. Ohne aktive Meldung fällt der Ausfall wochenlang nicht auf, weil alte Werte
 laut E8 stehenbleiben.
 
-### E11 — Stack: TypeScript, keine Laufzeitabhängigkeiten
-Node ≥ 22 (Node 20 ist seit April 2026 EOL). CI-Matrix 22 und 24. Produktivsystem ist
-eine Debian-VM mit Node 22; entwickelt wird auf dem Mac unter Node 26 (bewusste
-Entscheidung, siehe Restrisiko 6). Typen generiert aus der eingecheckten Spec. Native `fetch` statt `axios`.
-JSON Config statt HTML-Admin. Wöchentlicher CI-Job diffed Škodas Live-Spec gegen
+### E11 — Stack: TypeScript, minimale Laufzeitabhängigkeiten
+Node ≥ 22, CI-Matrix 22 und 24. Typen werden aus der eingecheckten Spec generiert.
+HTTP-Aufrufe verwenden natives `fetch`; einzige direkte Laufzeitabhängigkeit ist
+`@iobroker/adapter-core`.
+JSON Config statt HTML-Admin. Ein wöchentlicher CI-Job vergleicht Škodas Live-Spec mit
 die eingecheckte Kopie.
 **Begründung:** Der Antwortbaum ist fünf Ebenen tief und auf jeder Ebene optional —
 in JS ist ein `TypeError` auf `undefined` nur eine Frage der Zeit.
@@ -176,8 +167,8 @@ Meldung, bevor sie das Modul verlässt. Nie eine Fehlermeldung aus einer rohen U
 Zusammen mit `formattedAddress` ergäbe das die Heimatadresse im Klartext.
 Parkposition standardmäßig **an**; abschaltbar, und dann via `include` gar nicht
 erst angefordert.
-Sentry ist optional und für den ersten Release nicht vorgesehen. Datenschutzrelevante
-Fehlertelemetrie wird nicht allein wegen der Veröffentlichung aktiviert.
+Externe Fehlertelemetrie ist nicht aktiviert und darf nur nach einer eigenen
+Datenschutzentscheidung ergänzt werden.
 
 ### E15 — Retries differenziert nach Fehlertyp
 Siehe Tabelle in `implementation-plan.md`, Abschnitt "Fehlerbehandlung".

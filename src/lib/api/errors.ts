@@ -13,7 +13,7 @@
  *    Request, der das Budget aufbraucht, derjenige sein, den das Auto ablehnt.
  * 2. **Nicht jede Antwort kostet Quota.** Was kostet und was nicht, steht in der
  *    Tabelle; diese Datei entscheidet daraus nichts, sie meldet es nur. Was daraus
- *    folgt, ist Sache des QuotaManagers (Phase 4) und der Kadenz (Phase 6).
+ *    folgt, ist Sache des QuotaManagers und des PollSchedulers.
  */
 import { createSanitizer, type Sanitizer } from './sanitize';
 import type { ProblemDetail } from './types';

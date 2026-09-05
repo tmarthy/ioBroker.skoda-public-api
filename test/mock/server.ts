@@ -594,7 +594,7 @@ export class MockSkodaApi {
 		}
 
 		// Die echte API laesst `errors` bei einer fehlerfreien Antwort **ganz weg** -
-		// sie sendet kein leeres Array. Am 2026-09-02 an einem echten Enyaq nachgemessen.
+		// sie sendet kein leeres Array.
 		// Wuerde der Mock hier immer ein Array liefern, waere er nachsichtiger als die
 		// Wirklichkeit und ein `body.errors.map(...)` bestuende jeden Test und schluege
 		// erst im Betrieb fehl.

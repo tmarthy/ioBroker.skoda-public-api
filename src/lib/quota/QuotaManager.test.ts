@@ -83,7 +83,7 @@ describe('quota/QuotaManager => ein Bucket einer VIN', () => {
 		return result;
 	};
 
-	// Ein Request von Anfang bis Ende, wie ihn Phase 6 absetzen wird.
+	// Ein Request von Anfang bis Ende, wie ihn der PollScheduler absetzt.
 	const roundTrip = (manager: QuotaManager, meta: ApiMeta, priority: 'poll' | 'command' = 'poll'): void => {
 		manager.recordResponse(meta, acquire(manager, priority));
 	};

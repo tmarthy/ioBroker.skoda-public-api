@@ -375,8 +375,7 @@ tests.integration(path.join(__dirname, '..'), {
 				expect(connection.val).to.equal(false);
 				expect(mock.requests).to.have.length(1);
 				// Die Notification selbst laeuft ueber den Host-Prozess, den dieser
-				// Testaufbau nicht hat; sie ist in einer echten Instanz nachgewiesen
-				// (siehe HANDOFF.md, Abschnitt 3).
+				// Testaufbau nicht bereitstellt.
 			});
 		});
 	},

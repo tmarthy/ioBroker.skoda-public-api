@@ -118,7 +118,7 @@ describe('Fixtures => was die echten Aufnahmen ueber die API verraten', () => {
 		// Beobachtet: 0, 2, 3 und 9 Nachkommastellen - teils Nanosekunden. Ein
 		// Zeichenketten-Vergleich zweier Zeitstempel ist deshalb unzuverlaessig;
 		// zum Vergleichen immer nach Millisekunden parsen (relevant fuer den
-		// Frische-Backoff in Phase 6).
+		// Frische-Backoff des PollSchedulers).
 		const stellen = new Set<number>();
 		for (const { fixture } of real) {
 			for (const m of JSON.stringify(fixture.body).matchAll(/"\d{4}-\d{2}-\d{2}T[\d:]+(\.\d+)?Z"/g)) {

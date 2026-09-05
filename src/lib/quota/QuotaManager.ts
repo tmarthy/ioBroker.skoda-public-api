@@ -2,7 +2,7 @@
  * Der QuotaManager - ein einzelner Bucket, durch den jeder Request einer VIN muss.
  *
  * Die harte Randbedingung des Projekts sind **20 Requests pro Stunde und
- * VIN**. Weder der PollScheduler (Phase 6) noch die CommandQueue (Phase 7)
+ * VIN**. Weder PollScheduler noch CommandQueue
  * rufen den Client direkt auf; sie fragen hier, ob sie duerfen, und melden hier, was
  * die Antwort ueber das Budget verraten hat.
  *
@@ -18,7 +18,7 @@
  *    ist eine Klimatisierung, die nicht laeuft.
  * 3. **Ein Neustart darf nicht wie ein leerer Bucket aussehen.** Ohne Persistenz
  *    verbrennt eine Instanz in Neustartschleife 20 Requests in 90 Sekunden. Deshalb
- *    wandert der Zustand in einen Speicher (Phase 6 haengt ihn an `<vin>.rateLimit.*`)
+ *    wandert der Zustand über den AdapterQuotaStore nach `<vin>.rateLimit.*`
  *    und nach dem Start gilt eine Sperrfrist.
  */
 import type { ApiMeta } from '../api/client';
@@ -60,7 +60,7 @@ export interface PersistedQuota {
  * Ablage fuer den Zustand ueber einen Neustart hinweg.
  *
  * Bewusst als Schnittstelle und nicht als ioBroker-Zugriff: Der QuotaManager kennt
- * keine Adapter-Instanz, und die Tests brauchen keine. Phase 6 haengt hier eine
+ * keine Adapter-Instanz, und die Tests brauchen keine. Die Verdrahtung haengt hier eine
  * Umsetzung ein, die `<vin>.rateLimit.*` liest und schreibt.
  */
 export interface QuotaStore {
@@ -102,7 +102,7 @@ export interface QuotaManagerOptions {
 	store?: QuotaStore;
 	/** Zeitquelle, ersetzbar fuer Tests. */
 	now?: () => number;
-	/** Wird gerufen, wenn die Persistenz scheitert. Phase 6 haengt hier das Log ein. */
+	/** Wird gerufen, wenn die Persistenz scheitert; die Adapterverdrahtung haengt hier das Log ein. */
 	onStoreError?: (error: unknown) => void;
 }
 
@@ -314,7 +314,7 @@ export class QuotaManager {
 	}
 
 	/**
-	 * Der aktuelle Stand, wie ihn Phase 6 loggt und Phase 9 in `info.*` schreibt.
+	 * Der aktuelle Stand für Logs und die persistenten `rateLimit.*`-States.
 	 *
 	 * @returns Grenzen, Reststand, Reserve und Zeitpunkt des Zuruecksetzens.
 	 */

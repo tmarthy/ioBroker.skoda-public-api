@@ -2,9 +2,9 @@
  * Zuordnung zwischen den vier steuerbaren Domaenen und dem Block der Antwort, aus dem
  * sich ihr Ist-Zustand ablesen laesst.
  *
- * Die Tabelle steht hier und nicht im StateWriter, weil zwei Phasen sie brauchen: Der
- * Writer legt aus ihr die Befehls-States an (Phase 5), die CommandQueue baut aus ihr
- * den Endpunktpfad und entscheidet, ob Soll und Ist auseinanderliegen (Phase 7).
+ * Die Tabelle steht hier und nicht im StateWriter, weil zwei Bausteine sie brauchen:
+ * Der Writer legt aus ihr die Befehls-States an, die CommandQueue baut aus ihr den
+ * Endpunktpfad und entscheidet, ob Soll und Ist auseinanderliegen.
  *
  * **Befehls-States entstehen aus derselben Faehigkeitserkennung wie die Lese-States**
  * (E13/E15): Fehlt der Block in der Antwort, kann das Fahrzeug es nicht, und es wird

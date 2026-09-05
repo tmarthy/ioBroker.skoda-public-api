@@ -15,12 +15,9 @@
 Read and control Škoda vehicles via the official
 [MyŠkoda Public API](https://public.api.connect.skoda-auto.cz/docs).
 
-> **Initial release available.** Version 0.0.2 is published on npm and as a GitHub
-> release. Inclusion in the ioBroker `latest` repository is in progress. See
-> [HANDOFF.md](HANDOFF.md) for the current state and how to run it against the
-> development mock. The design rationale lives in
-> [docs/design-decisions.md](docs/design-decisions.md), the roadmap in
-> [docs/implementation-plan.md](docs/implementation-plan.md).
+The adapter is published on npm. Inclusion in the ioBroker `latest` repository is
+tracked in [ioBroker.repositories#6592](https://github.com/ioBroker/ioBroker.repositories/pull/6592).
+Development status and open work are documented in [HANDOFF.md](HANDOFF.md).
 
 ### The one constraint that shapes everything
 
@@ -58,6 +55,7 @@ into garbage.
 | Command lifetime | 10 min | A queued command that could not be sent within this time is discarded. |
 | S-PIN | — | Only needed for auxiliary heating. Never put it into a state. |
 | Read parking position | on | When off, the position is **not even requested** from the API. |
+| Language for logs and notifications | System | Uses the ioBroker system language or forces English/German. |
 
 There is a **Test connection** button. It sends exactly one request (out of the 20) and
 tells you what is wrong in plain words — a typo in the VIN and a key that does not cover
@@ -113,9 +111,8 @@ the API field names, including the original unit suffixes:
 Other ranges and the odometer already use km; charging time already uses minutes.
 Values are divided without rounding. Existing object units and default descriptions
 are updated when the corresponding value is next received; custom names are retained.
-Scripts reading these three states must use km/min. Historical values recorded before
-this change retain their original m/s units. API responses and command payloads retain
-the API units.
+Scripts reading these three states must use km/min. Existing recorded time series are
+not rewritten. API responses and command payloads retain the API units.
 
 ## Controlling the vehicle
 

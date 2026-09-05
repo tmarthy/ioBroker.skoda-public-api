@@ -2,7 +2,7 @@
  * PollScheduler - bestimmt, wann welches Fahrzeug abgefragt wird.
  *
  * Er ist die Stelle, an der aus 20 Requests pro Stunde ein brauchbarer Adapter wird.
- * Vier Regeln bestimmen die Kadenz (siehe docs/implementation-plan.md, Phase 6):
+ * Vier Regeln bestimmen die Kadenz (siehe docs/implementation-plan.md, Abschnitt 3):
  *
  * | Zustand | Intervall |
  * |---|---|
@@ -90,7 +90,7 @@ export interface PollSchedulerOptions {
 	quota: VehicleQuota;
 	/** Die konfigurierten Fahrgestellnummern. Jede VIN hat ein eigenes Budget. */
 	vins: readonly string[];
-	/** Wohin die Antwort geht - in Phase 6 der StateWriter. */
+	/** Wohin die Antwort geht: in der Adapterverdrahtung der StateWriter. */
 	onVehicleData: (vin: string, response: VehicleResponse) => Promise<void> | void;
 	/** Wohin die Meldungen gehen. */
 	log: SchedulerLog;
@@ -273,7 +273,7 @@ export class PollScheduler {
 	 *
 	 * Die API antwortet auf Befehle mit `202` und kennt keinen Status-Endpunkt - ob
 	 * das Fahrzeug den Befehl ausgefuehrt hat, zeigt erst der naechste Poll. Die
-	 * CommandQueue aus Phase 7 ruft das hier.
+	 * Die CommandQueue ruft das nach einem angenommenen Befehl auf.
 	 *
 	 * @param vin Fahrgestellnummer.
 	 */

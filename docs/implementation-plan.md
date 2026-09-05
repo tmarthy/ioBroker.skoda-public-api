@@ -1,735 +1,187 @@
-# Implementierungsplan — ioBroker.skoda-public-api
+# Technische Arbeitsgrundlage und offene Umsetzung
 
-Stand: 2026-09-01. Grundlage: `docs/design-decisions.md` (E1–E16) und
-`spec/skoda-openapi.json`.
+Dieses Dokument beschreibt die aktuelle Implementierung und die noch geplanten
+Erweiterungen. Dauerhafte Produkt- und Architekturentscheidungen stehen in
+[`design-decisions.md`](design-decisions.md); der operative Projektstatus steht in
+[`../HANDOFF.md`](../HANDOFF.md).
 
-Ziel: Ein ioBroker-Adapter für die offizielle MyŠkoda Public API, der einen
-Škoda Enyaq ausliest und steuert, unter der harten Randbedingung von
-**20 API-Requests pro Stunde**.
+## 1. Systemgrenzen
 
----
+Der Adapter bindet die offizielle MyŠkoda Public API an ioBroker an. Die API bestimmt
+folgende Grenzen:
 
-## 1. Zielarchitektur
+- statischer, an ausgewählte VINs gebundener API-Key
+- 20 Requests pro Stunde und VIN
+- ein Lese-Endpunkt und keine Fahrzeugliste
+- keine Push-Nachrichten oder Webhooks
+- Befehlsannahme mit `202 Accepted`, aber kein Operationsstatus
+- keine automatische Schlüsselerneuerung
+- OpenAPI-Version `v0` mit möglichen Vertragsänderungen
 
-Vier Schichten, strikt getrennt, jede einzeln testbar. Der Datenfluss geht nur
-in eine Richtung; die Schichten kennen jeweils nur die darunterliegende.
+Diese Grenzen machen Quota-Verwaltung, persistente Zeitfenster, adaptive Poll-Kadenz
+und einen vollständigen lokalen Mock zu Bestandteilen des Produktverhaltens.
 
-```
-         ioBroker (States, Admin-UI, Skripte des Nutzers)
-                        |            ^
-             Befehle    v            |   States
-         +--------------------------------------------+
-         |  main.ts   Lifecycle, Verdrahtung           |
-         +--------------------------------------------+
-         |  CommandQueue        |     StateWriter      |   Schicht 4
-         |  (Soll, Coalescing)  |     (JSON -> States) |
-         +--------------------------------------------+
-         |  PollScheduler       |                      |   Schicht 3
-         |  (Kadenz, Backoff)   |                      |
-         +--------------------------------------------+
-         |  QuotaManager  (ein Bucket pro VIN)         |   Schicht 2
-         +--------------------------------------------+
-         |  SkodaApiClient  (fetch, Header, sanitize)  |   Schicht 1
-         +--------------------------------------------+
-                        |
-              Škoda Public API  /  Mock-Server
-```
+## 2. Aktuelle Architektur
 
-**Regel:** Kein Request verlässt den Adapter, ohne den QuotaManager passiert zu
-haben. Weder Scheduler noch CommandQueue rufen den Client direkt auf.
-
-## 2. Dateibaum (Ziel)
-
-```
-ioBroker.skoda-public-api/
-├── src/
-│   ├── main.ts                          Adapter-Klasse, Lifecycle, Verdrahtung
-│   └── lib/
-│       ├── api/
-│       │   ├── client.ts                SkodaApiClient
-│       │   ├── errors.ts                ProblemDetail -> typisierte Fehler-Union
-│       │   ├── sanitize.ts              VIN/Key-Maskierung (E14)
-│       │   └── types.generated.ts       aus spec/ generiert, nicht editieren
-│       ├── quota/
-│       │   └── QuotaManager.ts          Bucket, Reserve, Persistenz (E9)
-│       ├── scheduler/
-│       │   └── PollScheduler.ts         Kadenz + Frische-Backoff (E12/E7)
-│       ├── commands/
-│       │   ├── CommandQueue.ts          Soll-Zustand, Coalescing, TTL (E5)
-│       │   └── commandMap.ts            State-ID -> Endpunkt + Body-Builder
-│       ├── states/
-│       │   ├── objectDefs.generated.ts  Pfad -> common (aus Spec)
-│       │   ├── objectOverlay.ts         Rollen/Einheiten/Labels, handgepflegt
-│       │   └── StateWriter.ts           lazy anlegen, setStateChanged, Quality
-│       └── notifications/
-│           └── keyExpiry.ts             Schwellen 14/7/2 (E10)
-├── admin/
-│   └── jsonConfig.json
-├── spec/
-│   └── skoda-openapi.json               eingecheckt, Referenz für Codegen + Diff
-├── tools/
-│   ├── generate-types.ts                openapi-typescript + tings-Workaround
-│   ├── generate-objectdefs.ts           Spec -> objectDefs.generated.ts
-│   └── check-spec.ts                    Diff gegen Live-Spec (CI, wöchentlich)
-├── test/
-│   ├── fixtures/                        echte, anonymisierte Antworten
-│   ├── mock/server.ts                   Entwicklungs- und Testserver (E12)
-│   ├── unit/
-│   └── integration/
-├── examples/
-│   └── pv-surplus-charging.js           Vorlage für die Regellogik (E4)
-└── docs/
-    ├── design-decisions.md
-    └── implementation-plan.md
-```
-
----
-
-## 3. Phasen
-
-Aufwand als grobe Größenordnung: **S** = ein Abend, **M** = ein Wochenende,
-**L** = mehrere Wochenenden.
-
-### Phase 0 — Projektgerüst · S
-
-`npx @iobroker/create-adapter` im Projektordner mit diesen Antworten:
-
-| Frage | Antwort |
+| Baustein | Verantwortung |
 |---|---|
-| Adaptername | `skoda-public-api` |
-| Titel | `Škoda Public API` (ohne "ioBroker"/"Adapter") |
-| Sprache | TypeScript |
-| Adapter-Typ | `vehicle` |
-| Startmodus | `daemon` |
-| Admin-UI | JSON Config |
-| Tests | Ja (`@iobroker/testing`) |
-| Node-Version | 22 (Minimum; Node 20 ist EOL) |
-| Lizenz | MIT |
+| `src/main.ts` | ioBroker-Lebenszyklus, Initialisierung und Verdrahtung |
+| `src/lib/config.ts` | Validierung, Defaults und Umrechnung der Instanzkonfiguration |
+| `src/lib/i18n.ts` | Deutsch/Englisch für Backend-Texte |
+| `src/lib/api/client.ts` | HTTP-Aufrufe, Header-Metadaten und typisierte Ergebnisse |
+| `src/lib/api/errors.ts` | Zuordnung der API-Fehler gemäß Abschnitt 5 |
+| `src/lib/api/sanitize.ts` | Maskierung sensibler Daten vor Log-Ausgaben |
+| `src/lib/quota/*` | ein persistenter Stunden-Bucket pro VIN |
+| `src/lib/scheduler/PollScheduler.ts` | Poll-Reihenfolge, Frische-Backoff und Verifikations-Polls |
+| `src/lib/commands/CommandQueue.ts` | TTL, Coalescing, Reserve und Retries |
+| `src/lib/states/StateWriter.ts` | Objektanlage, Werte, Quality-Flags und Migrationen |
+| `src/lib/states/objectOverlay.ts` | Rollen, Einheiten, Enum-Labels und Anzeigeumrechnungen |
+| `src/lib/states/objectNames.ts` | deutsche und englische Objektnamen |
+| `src/lib/notifications/keyExpiry.ts` | Ablaufüberwachung und ioBroker-Notifications |
+| `test/mock/*` | steuerbarer Ersatz für die quota-begrenzte Live-API |
 
-Sentry wird von `create-adapter` nicht mehr abgefragt und ist für den ersten Release
-nicht vorgesehen. Eine spätere Einführung wäre eine eigene Datenschutzentscheidung
-(E14), kein notwendiger Veröffentlichungsschritt.
+Die Startreihenfolge ist verbindlich: Zuerst werden Konfiguration und Sprache geladen,
+danach die persistenten Quota-Buckets. Erst dann starten CommandQueue und PollScheduler.
+So erzeugt eine Neustartschleife kein scheinbar frisches Request-Budget.
 
-Danach: `npx @iobroker/dev-server setup`, erster Commit.
-Die beiden `docs/`-Dateien und `spec/skoda-openapi.json` wandern mit ins Repo.
+## 3. Verhalten und Invarianten
 
-**Fertig, wenn:** `npm run test:package` grün, `dev-server watch` startet die
-Instanz, Admin unter `http://localhost:8081` erreichbar.
+### Polling und Quota
 
-### Phase 1 — Spec, Codegen, Spec-Wächter · M · **erledigt**
+- Jede VIN besitzt einen eigenen `QuotaManager`.
+- Antwortheader sind die Quelle der Wahrheit für Limit, Restbudget und Reset-Zeit.
+- Polling verwendet die Befehlsreserve nicht.
+- Ein unveränderter `carCapturedTimestamp` verdoppelt die Poll-Kadenz bis zur
+  konfigurierten Obergrenze.
+- Aktivität oder ein gesendeter Befehl setzt die Kadenz zurück.
+- Poll-Durchläufe sind serialisiert; ein angeforderter Verifikations-Poll geht während
+  eines laufenden Durchlaufs nicht verloren.
+- Quota-Daten liegen unter `<vin>.rateLimit.*` und überleben Neustarts.
 
-> **Abweichungen von der ursprünglichen Planung:**
-> - Die Werkzeuge sind `.mjs` statt `.ts`. `openapi-typescript` v7 ist ESM-only, und
->   ein TS-Runner für Skripte, die nie ausgeliefert werden, wäre eine Abhängigkeit
->   ohne Gegenwert.
-> - Overlay und Generat werden **zur Laufzeit** in `resolveCommon()` zusammengeführt,
->   nicht beim Generieren. So kann der Codegen jederzeit neu laufen, ohne
->   handgepflegte Werte zu überschreiben — und die Zusammenführung ist testbar.
-> - Der Prosa-Parser für Aufzählungswerte deckt vier Formate ab statt einem
->   (Aufzählungspunkte, Klammerliste, Backticks, Kommaliste). Damit entstehen
->   27 von 27 Aufzählungen automatisch; keine muss von Hand gepflegt werden.
-> - `tsconfig.json` brauchte `"types": ["node", "mocha"]`. `@tsconfig/node22` setzt
->   `"types": ["node"]` und blendet damit die Mocha-Typen aus — `npm run check` war
->   schon aus dem Generator heraus rot.
-> - Generierte Dateien sind von ESLint und Prettier ausgenommen.
+### Befehle
 
+- `enabled` bildet den Sollzustand ab; `start` und `stop` erzwingen einen Aufruf.
+- Gleiche Sollwerte werden bei bekannt passendem Ist oder während einer offenen
+  Bestätigung zusammengeführt.
+- Die Bestätigungsfrist entspricht der Command-TTL. Ein neuerer Fahrzeugzeitstempel mit
+  passendem Ist beendet sie vorzeitig.
+- Befehle ohne verfügbares Budget warten bis zu ihrer TTL in der Queue.
+- Nach `202 Accepted` wird nach 60 Sekunden ein Verifikations-Poll angefordert.
+- `ack=true` bestätigt die Übergabe an die API, nicht die Ausführung im Fahrzeug.
 
-1. `tools/generate-types.ts`: lädt `spec/skoda-openapi.json`, **entfernt vorher die
-   Eigenschaft `tings` aus `Charging` und `ChargingProfile`** (Fehler in Škodas
-   Spec, siehe Restrisiko 5 — ohne das entsteht eine unendliche Typrekursion),
-   ruft `openapi-typescript` auf, schreibt `src/lib/api/types.generated.ts`.
-2. `tools/generate-objectdefs.ts`: läuft denselben Schemabaum ab und erzeugt eine
-   Map `Pfad -> ioBroker.StateCommon` mit `type` und, wo die Spec ein Enum kennt,
-   `states`. Rollen, Einheiten und deutsche Enum-Labels kommen aus
-   `objectOverlay.ts` (handgepflegt) und überschreiben das Generat.
-3. `tools/check-spec.ts` plus GitHub-Action (wöchentlich, `workflow_dispatch`):
-   holt `/v3/api-docs`, vergleicht mit der eingecheckten Kopie, öffnet bei
-   Abweichung ein Issue mit dem Diff.
+### Objektbaum
 
-**Overlay-Startwerte** (`objectOverlay.ts`):
+- Objekte entstehen nur für tatsächlich gelieferte Fahrzeugteile.
+- Der Adapter löscht keine Objekte automatisch.
+- Fehlende oder fehlerhafte Teile behalten den letzten Wert mit schlechtem
+  Quality-Flag; zurückkehrende Werte erhalten wieder gute Qualität.
+- Ladeprofile werden nach Profil-ID abgebildet.
+- Benutzerdefinierte Objektnamen und Rollen bleiben bei Metadatenänderungen erhalten.
+  Nur bekannte frühere Standardnamen und nachweislich fehlerhafte Adapter-Rollen werden
+  migriert.
+- Anzeigeumrechnungen betreffen nur State-Werte und Metadaten:
+  Restreichweite wird in km, Lüftungs- und Standheizungsdauer in Minuten dargestellt.
+  API-Antworten, Fixtures und Befehlsdaten bleiben unverändert.
 
-| Pfad-Endung | role | unit |
-|---|---|---|
-| `stateOfChargeInPercent`, `currentSoCInPercent` | `value.battery` | `%` |
-| `chargePowerInKw` | `value.power` | `kW` |
-| `mileageInKm`, `remainingRangeInKm`, `totalRangeInKm` | `value.distance` | `km` |
-| `remainingCruisingRangeInMeters` | `value.distance` | `m` |
-| `*InMinutes`, `durationInSeconds` | `value` | `min` / `s` |
-| `targetTemperature.value` | `value.temperature` | `°C` |
-| `carCapturedTimestamp`, `fullyChargedAt`, `estimatedReach*` | `date` | — |
-| `latitude` / `longitude` | `value.gps.latitude` / `.longitude` | `°` |
-| `doorsLocked`, `locked` | `sensor.lock` | — |
-| `doors`, `windows`, `sunroof`, `trunk`, `bonnet` | `sensor.door`/`.window` | — |
-| `lights` | `sensor.light` | — |
+### Datenschutz und Sprache
 
-**Fertig, wenn:** `npm run codegen` erzeugt beide Dateien, `npm run build`
-kompiliert fehlerfrei, der Spec-Wächter läuft manuell durch.
+- API-Key und S-PIN sind `encryptedNative` und `protectedNative`.
+- VIN, Schlüssel, S-PIN, Adresse und Positionsdaten dürfen keine Modulgrenze in rohen
+  Fehlermeldungen verlassen.
+- Admin-UI, Objektbezeichnungen, Logs, Notifications und Verbindungstest sind auf
+  Deutsch und Englisch verfügbar.
+- Die Instanzsprache ist `system`, `de` oder `en`; andere Systemsprachen fallen
+  für Backend-Texte auf Englisch zurück.
 
-### Phase 2 — Fixtures und Mock-Server · M · **erledigt**
+## 4. Entwicklung, Tests und Release
 
-> **Stand:** vollstaendig. Mock-Server, Aufnahmewerkzeug und alle vier echten
-> Aufnahmen liegen vor; 66 Tests decken Quota-Buchhaltung, alle Fehlerfamilien,
-> `include`-Filterung, Befehlswirkung und den Abgleich der Aufnahmen gegen das
-> Generat ab. Was die echten Daten ueber die API verraten, steht in HANDOFF.md,
-> Abschnitt 4.
->
-> **Aufnahme am Fahrzeug** (jede Aufnahme kostet einen Request aus dem Stundenbudget):
->
-> ```
-> export SKODA_API_KEY='...'      # aus der MyŠkoda-App
-> export SKODA_VIN='...'
-> node tools/capture-fixtures.mjs idle              "Geparkt, Kabel ab"
-> node tools/capture-fixtures.mjs plugged           "Kabel dran, laedt nicht"
-> node tools/capture-fixtures.mjs charging          "Laedt gerade"
-> node tools/capture-fixtures.mjs climatising       "Klimatisierung laeuft"
-> ```
->
-> Das Werkzeug anonymisiert VIN, Kennzeichen, Fahrzeugname, Adresse und Koordinaten
-> und bricht ab, falls danach noch eine Spur der echten VIN oder des Schluessels in
-> der Datei steht. Schluessel und VIN werden nie protokolliert.
->
-> Danach `test/fixtures/vehicle-synth-idle.json` durch `vehicle-idle.json` ersetzen
-> (im Mock via `fixture: 'idle'`) und das synthetische Fixture behalten, solange es
-> Faelle abdeckt, die am eigenen Fahrzeug nicht auftreten.
+Lokale Mindestprüfung:
 
-**Abweichung von der Planung:** Der Mock kennt 13 Szenarien statt der geplanten elf —
-`bad-request` entsteht bereits aus einem unbekannten `include`-Wert und braucht keinen
-Schalter, dafuer sind `not-found`, `gateway-timeout` und `partial-data` eigenstaendig
-schaltbar. Die Zuordnung Antwortteil ↔ Fehlertyp (`CHARGING_UNAVAILABLE` usw.) liegt in
-`src/lib/api/parts.ts`, nicht im Mock: Der StateWriter braucht sie in Phase 5 ebenfalls,
-und ein Test haelt sie gegen die Spec-Beschreibung.
-
-
-Vorgezogen, weil alle folgenden Phasen ihn brauchen (E12).
-
-1. **Aufnahme am echten Auto** — kostet ~5 Requests, muss *dein* Enyaq sein:
-   ein Poll im Ruhezustand, einer am Kabel ohne Laden, einer während des Ladens,
-   einer mit laufender Klimatisierung, einer nach einem Befehl.
-   VIN durch `TMBJB9NY5RF999999` ersetzen, `formattedAddress` und Koordinaten
-   durch Beispielwerte.
-2. **Von Hand ergänzte Fixtures:** Antwort mit nicht-leerem `errors[]`, Antwort
-   ohne `charging`-Block, Antwort eines Verbrenners (aus der Spec konstruiert).
-3. **`test/mock/server.ts`:** `node:http`, Routen wie die echte API, dazu
-   - vollständige `RateLimit-Limit` / `-Remaining` / `-Reset`-Buchhaltung
-   - `X-API-Key-Expires-At`
-   - ein Szenario-Schalter (Query oder Env), der auf Kommando `401 api-key-expired`,
-     `403 api-key-not-authorized`, `422 operation-not-supported`,
-     `422 operation-disabled`, `429 rate-limit-exceeded`,
-     `429 vehicle-not-accepting-requests`, `500`, `503` liefert
-   - `202` auf alle POSTs, mit optionaler verzögerter Zustandsänderung im
-     nachfolgenden GET (damit der Verifikations-Poll etwas zu sehen bekommt)
-
-Adapter-Basis-URL über `SKODA_API_BASE_URL` umschaltbar, sonst der Live-Wert (E12).
-
-**Fertig, wenn:** Alle elf Fehlerfälle aus der Tabelle in Abschnitt 5 lassen sich
-per Schalter reproduzieren, und die `RateLimit-*`-Header verhalten sich über
-mehrere Requests plausibel.
-
-### Phase 3 — HTTP-Schicht · M · **erledigt**
-
-> **Abweichungen von der ursprünglichen Planung:**
-> - Die Union hat eine zwölfte Fehlerart `unexpected` als Auffangfall. Ohne sie landet
->   eine Antwort, die in keine Zeile der Tabelle passt — ein `401` mit `about:blank`,
->   ein `418`, ein `200` ohne `vehicle` — nirgends. Sie wird nie wiederholt, und ihr
->   Quota-Verbrauch folgt der allgemeinen Regel (alles außer 401, 403, 429).
-> - Jeder Fehler trägt neben `retryable` auch **`maxRetries`**, direkt aus der dritten
->   Spalte der Fehlertabelle. Sonst müssten die Phasen 6 und 7 dieselbe Tabelle noch
->   einmal führen. `rate-limit-exceeded` bekommt `Infinity`: Dort begrenzt die TTL des
->   Befehls, kein Zähler.
-> - `retryAfterMs` kommt **ausschließlich** aus `Retry-After`. Kein Rückfall auf
->   `RateLimit-Reset` — der steht ohnehin in `meta.rateLimit` und die Entscheidung, wie
->   lange gewartet wird, gehört nicht in den Client.
-> - `vehicleErrors(response)` ist die einzige Stelle, die `errors ?? []` umsetzt
->   (Fallstrick 10). Der Client normalisiert die Antwort **nicht** — der optionale Typ
->   ist der Wächter, der `.errors.map(...)` verhindert.
-> - Der Netzwerkfehler wird mit `consumesQuota: true` gemeldet. Die Tabelle sagt
->   „unbekannt"; `true` ist die konservative Lesart, die sie vorschreibt.
-> - Die Basis-URL wird beim Konstruktor geprüft. Eine unbrauchbare
->   `SKODA_API_BASE_URL` soll beim Start auffallen, nicht beim ersten Request.
-
-- **`sanitize.ts`** — ersetzt VIN (`[A-HJ-NPR-Z0-9]{17}`) und den API-Key in jedem
-  String durch `<VIN>` bzw. `<KEY>`. Wird von `client.ts` auf **jede** erzeugte
-  Meldung angewandt. Nie eine Fehlermeldung aus einer rohen URL bauen.
-- **`errors.ts`** — parst `application/problem+json` nach einer diskriminierten
-  Union: `ApiKeyExpired`, `ApiKeyNotAuthorized`, `OperationNotAuthorized`,
-  `OperationNotSupported`, `OperationDisabled`, `RateLimitExceeded`,
-  `VehicleNotAcceptingRequests`, `BadRequest`, `NotFound`, `ServerError`,
-  `NetworkError`. Jeder Fall trägt `retryable`, `consumesQuota` und `retryAfterMs`.
-- **`client.ts`** — `getVehicle(vin, include?)` und
-  `sendCommand(vin, domain, action, body?)`. Liest `RateLimit-*` und
-  `X-API-Key-Expires-At` aus jeder Antwort und gibt sie mit zurück.
-  Timeout via `AbortSignal.timeout()`.
-
-**Fertig, wenn:** Unit-Tests decken jede Zeile der Fehlertabelle ab, und ein Test
-prüft explizit, dass in keiner erzeugten Meldung VIN oder Key auftauchen.
-Beides liegt vor: `errors.test.ts` prüft die Tabelle Zeile für Zeile,
-`client.test.ts` dieselben Zeilen noch einmal gegen echte HTTP-Antworten des Mocks.
-
-### Phase 4 — QuotaManager · M · **erledigt**
-
-> **Abweichungen von der ursprünglichen Planung:**
-> - `recordResponse(meta)` statt `recordResponse(headers, consumedQuota)`. Der Client
->   wertet die `RateLimit-*`-Header bereits aus; ein zweiter Parser wäre eine zweite
->   Stelle, die bei einer Änderung nachgezogen werden muss. Der Manager kennt damit
->   Schicht 1, wie es der Datenfluss vorsieht.
-> - `tryAcquire()` liefert bei einer Ablehnung neben `waitMs` auch einen `reason`
->   (`reserve`, `exhausted`, `startup-guard`). Sonst müsste Phase 6 für die Logzeile
->   „warum kein Poll?" dieselbe Bedingung noch einmal auswerten.
-> - **Das „minimale Intervall" ist eine Sperrfrist nach dem Start, kein dauerhafter
->   Mindestabstand.** Als dauerhafter Abstand (Fenster ÷ Limit = 3 min) würde er den
->   Verifikations-Poll 60 s nach einem Befehl blockieren, den die Tabelle in Phase 6
->   ausdrücklich vorsieht. Er gilt deshalb nur für den ersten Request eines frischen
->   Prozesses — genau dort, wo die Neustartschleife entsteht — und für Polls wie
->   Befehle gleichermaßen.
-> - **Gespeichert wird beim Absetzen des Requests, nicht erst bei der Antwort**, und
->   zwar der um die laufenden Requests verminderte Stand. Ein Absturz zwischen Request
->   und Antwort ist der Fall, gegen den die Persistenz gebaut ist; würde erst die
->   Antwort speichern, bliebe er unsichtbar.
-> - Laufende Requests werden mitgezählt (`inFlight`), damit zwei gleichzeitig
->   abgesetzte Requests nicht beide denselben Reststand sehen.
-> - Die Persistenz hängt an einer Schnittstelle `QuotaStore`, nicht an einer
->   Adapter-Instanz: Der Manager kennt kein ioBroker, und die Tests brauchen keins.
->   **Offen bleibt die Anbindung an `<vin>.rateLimit.*` — sie kommt in Phase 6 mit der
->   Verdrahtung in `main.ts`.**
-
-Zustand: `limit`, `remaining`, `resetAt`, `lastRequestAt`.
-Quelle der Wahrheit sind **immer die Response-Header**, nie die eigene Zählung —
-die dient nur als Schätzung bis zur ersten Antwort.
-
-Schnittstelle:
-```
-tryAcquire(priority: 'poll' | 'command'): 'ok' | { waitMs: number }
-recordResponse(headers, consumedQuota: boolean): void
-snapshot(): { limit, remaining, resetAt, reserveFree }
+```bash
+npm run check
+npm run lint
+npm test
+npm run build
 ```
 
-- `poll` wird abgelehnt, sobald `remaining <= commandReserve` (Default 6).
-- `command` darf bis `remaining === 0` gehen.
-- **Persistenz gegen Crash-Loops:** `remaining`, `resetAt` und `lastRequestAt`
-  werden in `<vin>.rateLimit.*` geschrieben und beim Start gelesen. Liegt der
-  letzte Request weniger als das minimale Intervall zurück, wartet der Adapter.
-  Ohne das verbrennt eine Instanz in Neustartschleife 20 Requests in 90 Sekunden.
+Für Änderungen an Scheduling, Quota, Befehlen, Persistenz, Objektmigration oder
+Adapter-Lebenszyklus ist zusätzlich `npm run test:integration` erforderlich. Änderungen
+am API-Vertrag benötigen `npm run check:spec`, anschließend bei Bedarf
+`npm run codegen` und die Prüfung der generierten Diffs.
 
-**Fertig, wenn:** Unit-Tests für: Reserve wird nie von Polls unterschritten;
-`429` reduziert `remaining` nicht; `401`/`403` reduzieren `remaining` nicht;
-`503` reduziert `remaining`; Zustand übersteht einen simulierten Neustart.
-Alle fünf liegen vor, dazu die Neustartschleife selbst als Test (30 Starts in 90
-Sekunden setzen genau einen Request ab) und das Zusammenspiel mit Client und Mock:
-Der Poll hält von selbst an, bevor die API mit `429` antworten muss.
+Der Mock ist das Entwicklungssystem für API-Verhalten:
 
-### Phase 5 — StateWriter · M · **erledigt**
-
-> **Abweichungen von der ursprünglichen Planung:**
-> - Der Writer schreibt gegen eine schmale Schnittstelle `StateApi` (vier Methoden plus
->   Logger) statt gegen eine Adapter-Instanz. Ein Test beweist zur Übersetzungszeit,
->   dass eine echte `ioBroker.Adapter` sie erfüllt — sonst fiele das erst bei der
->   Verdrahtung in Phase 6 auf.
-> - Zusätzlich zu den in E16 genannten Profil-States entsteht ein `settingsJson`.
->   Sonst wäre `settings.maxChargingCurrent` nirgends sichtbar — ausgerechnet der Wert,
->   an dem die Wirksamkeit des Überschussladens hängt (E3). Ein Objektbaum entsteht
->   dadurch nicht; das entspricht der Überschrift von E16, „JSON darunter".
-> - **Das Quality-Flag wird nur für Teile gesetzt, die die API in `errors[]` gemeldet
->   hat.** Ein Teil, das per `include` gar nicht angefordert wurde, fehlt nicht — es
->   wurde nur nicht aufgefrischt. Sonst würde jeder Poll mit gelernter `include`-Liste
->   abgeschaltete Teile (z. B. die Parkposition, E14) dauerhaft als gestört markieren.
-> - Beim Zurückkommen eines Teils wird die Qualität mit einem unbedingten `setState`
->   wieder auf „gut" gesetzt. `setStateChanged` allein schreibt bei unverändertem Wert
->   nicht — das Flag bliebe stehen, obwohl der Wert wieder frisch ist.
-> - `info.dataAge` bezieht sich auf den **jüngsten** `carCapturedTimestamp` der
->   Antwort: Er beantwortet „wann hat das Auto zuletzt etwas gemeldet".
-> - Zustände, die der Adapter selbst bildet (`info.*`, `parkingPosition.position`, die
->   Profilebene), laufen über einen eigenen Weg und lösen deshalb **keine** Warnung
->   über eine geänderte Spec aus.
-> - Die Zuordnung Domäne ↔ Antwortblock steht in `src/lib/states/commandDefs.ts`, weil
->   Phase 7 sie ebenfalls braucht (Endpunktpfad und Soll/Ist-Vergleich).
-
-- Läuft den JSON-Baum ab, legt Objekte **nur für vorhandene Pfade** an (E13),
-  einmal pro Pfad gemerkt, danach nur noch `setStateChanged` (E16).
-- `common` kommt aus `objectDefs.generated.ts`, überschrieben von `objectOverlay.ts`.
-  Unbekannte Pfade: Typ aus `typeof`, `role: 'state'`, Warnung ins Log (Hinweis
-  auf eine Spec-Änderung).
-- Fehlende Teile: Werte stehenlassen, Quality-Flag auf "nicht gut" (E8).
-- Sonderfälle:
-  - `parkingPosition.position` = `` `${lat};${lon}` ``, `role: value.gps`
-  - `<vin>.info.dataAge` = Sekunden seit `carCapturedTimestamp`
-  - `chargingProfiles.profiles.<id>.*` ID-basiert; `timersJson` und
-    `preferredChargingTimesJson` als JSON-String (E16)
-  - `errors[]` -> `info.lastErrors` als JSON
-  - Device-Objekt `<vin>` bekommt `common.name` aus `vehicle.name` bzw.
-    `licensePlate`
-- Legt die Befehls-States **aus derselben Fähigkeitserkennung** an: kein
-  `auxiliaryHeating`-Block in der Antwort -> keine zugehörigen Buttons (E15).
-
-**Fertig, wenn:** Für jedes Fixture aus Phase 2 erzeugt der Writer den erwarteten
-Objektbaum (Snapshot-Test), und ein zweiter Durchlauf mit identischen Daten
-schreibt keinen einzigen State.
-Beides liegt vor: Der Baum der echten Aufnahme steht als ausgeschriebene Liste von
-76 Objekten im Test, alle fünf Aufnahmen werden zusätzlich Feld für Feld gegen die
-erzeugten Zustände gehalten, und der zweite Durchlauf schreibt nachweislich nichts.
-
-### Phase 6 — PollScheduler · M · **Meilenstein 1: lesender Adapter** · **erledigt**
-
-> **Abweichungen von der ursprünglichen Planung:**
-> - **Der Scheduler schreibt keine States.** Er reicht die Antwort über `onVehicleData`
->   nach oben; `main.ts` hängt dort den StateWriter ein. Sonst würde Schicht 3 die
->   Schicht 4 aufrufen und das Architekturbild wäre nur noch ein Bild.
-> - `tick()` ist öffentlich: Es führt alle fälligen Polls aus und liefert die Zeit bis
->   zum nächsten. Damit führen die Tests die Uhr selbst, ohne echte Zeitgeber. `start()`
->   hängt die Schleife an die Zeitgeber der Adapter-Instanz, die ioBroker beim Entladen
->   ohnehin aufräumt.
-> - **Während des Befehlsfensters greift der Frische-Backoff nicht.** Dass ein Fahrzeug
->   60 Sekunden nach einem Befehl noch nichts gemeldet hat, ist der Normalfall — und
->   genau deshalb wird ja nachgesehen. Ohne diese Ausnahme verdoppelt der
->   Verifikations-Poll das Intervall, statt den Erfolg zu prüfen.
-> - **Ist die Parkposition abgeschaltet, geht schon der erste Poll mit `include`
->   hinaus** (E14: gar nicht erst anfordern). Die Fähigkeitserkennung läuft dann über
->   die `*_UNSUPPORTED`-Einträge in `errors[]` statt über die schlichte Abwesenheit.
-> - `*_UNSUPPORTED` streicht ein Teil **dauerhaft** aus der `include`-Liste;
->   `*_DISABLED` und `*_UNAVAILABLE` nicht — beides kann morgen wieder gehen.
-> - `404` setzt die betroffene VIN dauerhaft aus, `401`/`403` drosseln auf einmal pro
->   Stunde und setzen `info.connection` auf false (E10). Bei `429` bleibt die Verbindung
->   ausdrücklich bestehen.
-> - Die Instanzkonfiguration wird in `src/lib/config.ts` geprüft und umgerechnet — ohne
->   Adapter-Instanz testbar. Eine falsche VIN wird mit ihrer **Zeilennummer** gemeldet,
->   nicht mit ihrem Wert: Sie ist meist die echte mit einem Tippfehler (E14).
-> - **Aus Phase 8 vorgezogen:** `native`-Vorgaben in `io-package.json`,
->   `encryptedNative`/`protectedNative` und ein `admin/jsonConfig.json` mit genau den
->   Feldern, die der lesende Adapter braucht. Ohne das hätte die alte Demo-UI beim
->   ersten Speichern die Konfiguration überschrieben. Offen bleibt für Phase 8: der
->   „Verbindung testen"-Button und die Übersetzungen außer Deutsch.
-> - Das Zusammenspiel **in einer echten ioBroker-Instanz** weist erst Phase 10 nach; in
->   Phase 6 sind es der Startup-Test und die simulierte Stunde gegen den Mock.
-
-| Zustand | Intervall |
-|---|---|
-| Basis | 15 min (konfigurierbar, Untergrenze 5) |
-| Aktiv (`CHARGING` oder Klima ≠ `OFF`) | 5 min (Untergrenze 3) |
-| Nach Befehl | ein Verifikations-Poll nach 60 s, danach 10 min aktive Kadenz |
-| Frische-Backoff | Verdoppelung bei unverändertem `carCapturedTimestamp`, Deckel 60 min |
-
-Der Frische-Backoff ist der größte Einzelhebel: Ein schlafendes Auto liefert bei
-jedem Poll denselben Zeitstempel — schneller zu pollen bringt null Information
-und kostet volles Budget. Ändert sich der Zeitstempel, sofort zurück auf Basis.
-
-Erster Poll ohne `include` (Fähigkeitserkennung), danach mit der gelernten Liste
-— abzüglich `parkingPosition`, falls abgeschaltet (E14).
-
-Bei mehreren VINs: reihum, aber mit einem getrennten Bucket je VIN.
-
-**Fertig, wenn:** Der Adapter läuft gegen den Mock über eine simulierte Stunde,
-bleibt unter 20 Requests, füllt den Objektbaum und drosselt sich beim schlafenden
-Auto messbar herunter.
-Liegt vor, und zwar als A/B: Das schlafende Auto kostet bei fünf Minuten Grundkadenz
-weniger als zwölf Requests und landet im Deckel von 60 Minuten, das wache bleibt in
-der Kadenz — und in beiden Fällen steht die Befehlsreserve am Ende noch.
-
-### Phase 7 — CommandQueue · M · **Meilenstein 2: steuernder Adapter** · **erledigt**
-
-> **Abweichungen von der ursprünglichen Planung:**
-> - **Ein sechstes Ergebnis: `FAILED`.** E5 nennt `SENT`, `QUEUED`, `COALESCED`,
->   `EXPIRED` und `REJECTED_BY_VEHICLE`. Ein `400`, ein `500` oder ein Netzwerkfehler
->   ist aber weder eine Ablehnung durch das Fahrzeug noch ein Verfall — wer das als
->   `EXPIRED` meldet, schickt jeden auswertenden Skript-Autor an die falsche Stelle.
-> - **Die Queue schreibt keine States.** Sie meldet über `onReport`; `main.ts` hängt
->   dort den StateWriter ein. Dieselbe Trennung wie beim Scheduler.
-> - Ein Knopf löst **nur bei `true`** aus. Das Zurückstellen auf `false` ist die
->   Quittung des Adapters und darf nicht sofort den nächsten Befehl auslösen.
-> - Die Idempotenz greift nur über den Soll-Schalter. Solange noch nichts gepollt
->   wurde, wird **gesendet statt geraten** — und der Knopf umgeht sie immer, denn er
->   ist der Ausweg, wenn die zuletzt gepollten Daten nicht mehr stimmen.
-> - **„State deaktivieren" bei `operation-not-supported`** ist als „dauerhaft merken
->   und sofort ablehnen" umgesetzt, ohne das Objekt anzufassen. E13 verbietet das
->   Löschen, und ein nachträgliches `write: false` würde den Schalter still unbrauchbar
->   machen, ohne dass jemand sähe warum. Der Grund steht stattdessen in
->   `info.lastCommand.result`.
-> - **Die TTL-Regel gilt auch für Wartezeiten aus dem Budget**, nicht nur für
->   `Retry-After`: Öffnet sich das Fenster erst nach Ablauf der Lebensdauer, verfällt
->   der Befehl sofort statt in zehn Minuten.
-> - `main.ts` abonniert drei Muster (`*.enabled`, `*.start`, `*.stop`) statt des
->   ganzen Baums.
-
-- Nimmt Schreibvorgänge auf `<vin>.<domain>.enabled` (Soll) und
-  `<vin>.<domain>.start|stop` (erzwungen) entgegen.
-- **Idempotenz:** Soll gleich Ist -> kein Request, Ergebnis `COALESCED`.
-- **Coalescing:** Ein neuer Soll-Wert ersetzt den wartenden Eintrag derselben
-  Domäne. Entspricht der neue Soll dem Ist, verfällt der Eintrag ersatzlos.
-- **TTL 10 min.** Ist `Retry-After` länger als die Rest-TTL: sofort `EXPIRED` (E15).
-- `air-conditioning/start` baut den Body aus den gepufferten States
-  `targetTemperature` und `airConditioningWithoutExternalPower`.
-  `auxiliary-heating/start` nimmt den S-PIN aus der Instanzkonfiguration —
-  **niemals aus einem State** (E6/E14).
-- Ergebnis nach `info.lastCommand.{name,timestamp,result,problemType}`,
-  `ack=true` bei erfolgreicher Übergabe an die API.
-- Danach Verifikations-Poll anstoßen.
-
-**Fertig, wenn:** Integrationstest: `enabled=true`, dann innerhalb der TTL
-`enabled=false` -> null Requests, Ergebnis `COALESCED`. Und: `enabled=true` bei
-leerem Budget -> `QUEUED`, Ausführung nach Reset.
-Beides liegt vor, gegen den Mock gefahren — samt der drei Fälle, die daneben teuer
-werden könnten: `Retry-After` länger als die Lebensdauer, dreimal abgelehnt vom
-Fahrzeug, und ein fehlender S-PIN, der gar keinen Request kostet.
-
-### Phase 8 — Admin-UI · S · **erledigt**
-
-> Felder, `native`-Vorgaben und `encryptedNative` kamen in Phase 6 vorgezogen dazu;
-> Phase 8 hat den „Verbindung testen"-Button, die Gruppierung und die Übersetzungen
-> nachgeliefert.
->
-> **Abweichungen und Funde:**
-> - **`common.messagebox: true` fehlte.** Ohne diese Kennzeichnung stellt js-controller
->   `sendTo`-Nachrichten gar nicht erst zu: Der Knopf dreht sich bis zum Timeout, ohne
->   Fehler, ohne Logzeile. Gefunden hat das erst der Versuch in einer echten Instanz —
->   kein Unit-Test hätte es je gezeigt.
-> - Der Test fordert **nur `include=info`** an. Das kostet dieselbe Quota, liefert aber
->   Name und Kennzeichen zum Wiedererkennen — und eben nicht die Parkposition, die in
->   einem Verbindungstest nichts zu suchen hat (E14).
-> - Er prüft das **erste** Fahrzeug und meldet eine unbrauchbare erste Zeile, statt
->   still die zweite zu nehmen: Sonst meldet er Erfolg für ein Fahrzeug, das niemand
->   gemeint hat.
-> - Geprüft werden die Werte **aus dem Formular**, nicht die gespeicherten. Wer gerade
->   einen neuen Schlüssel eingetippt hat, will genau den prüfen.
-> - Der Request wird im QuotaManager gebucht, aber **nicht** von ihm blockiert: Ein
->   `429` ist selbst eine brauchbare Antwort („der Schlüssel ist in Ordnung, das Budget
->   ist alle") und kostet nichts.
-> - Die Ergebnistexte sind deutsch **mit Umlauten** — sie stehen in der Oberfläche.
->   Der übrige Code bleibt bei der ASCII-Umschrift.
-> - Übersetzungen: Deutsch von Hand, neun weitere Sprachen maschinell über
->   `translate-adapter` (Legacy-Google-Route, ohne Zugangsdaten). Englisch ist die
->   Quellsprache und steht als Identität in `admin/i18n/en.json`.
-
-`admin/jsonConfig.json`:
-
-| Feld | Typ | Default | Anmerkung |
-|---|---|---|---|
-| `apiKey` | text, `encryptedNative` + `protectedNative` | — | Pflicht |
-| `vins` | Tabelle (`vin`, optional `label`) | — | Pflicht, 17 Zeichen validiert |
-| `spin` | text, verschlüsselt | leer | nur für Standheizung |
-| `pollIntervalIdle` | number [min] | 15 | min. 5 |
-| `pollIntervalActive` | number [min] | 5 | min. 3 |
-| `pollBackoffMax` | number [min] | 60 | |
-| `commandReserve` | number | 6 | 0–15 |
-| `commandTtl` | number [min] | 10 | |
-| `readParkingPosition` | checkbox | an | E14 |
-
-Dazu ein **"Verbindung testen"-Button** (`sendTo`), der genau einen `GET` absetzt
-und Fahrzeugname, Ablaufdatum und Restquota zurückmeldet. Ohne ihn äußert sich ein
-Tippfehler in der VIN als `403 api-key-not-authorized` — eine Meldung, aus der
-niemand die Ursache errät. Der Test kostet einen Request; das gehört in den
-Hinweistext.
-
-**Keine** Basis-URL in der UI (E12).
-
-**Fertig, wenn:** Der Knopf beantwortet in einer laufenden Instanz die vier Fälle, die
-man sonst nicht auseinanderhält — Schlüssel abgelaufen, Schlüssel gilt nicht für diese
-VIN, VIN unbekannt, Budget erschöpft. Nachgewiesen: unit gegen den Mock, und einmal von
-Hand im Admin des dev-servers (siehe HANDOFF.md, Abschnitt 3).
-
-### Phase 9 — Key-Ablauf und Notifications · S · **erledigt**
-
-> **Abweichungen und Funde:**
-> - Der Ablauf hängt an **einem** neuen Rückkanal: `onResponse(meta, error)` an
->   PollScheduler und CommandQueue. Er wird nach **jeder** Antwort gerufen, auch nach
->   einer fehlerhaften — `X-API-Key-Expires-At` steht ja in jeder. Ein zweiter Kanal
->   nur für den abgelehnten Schlüssel wäre Ballast gewesen.
-> - Der Block `notifications` steht in `io-package.json` auf der **obersten Ebene**,
->   nicht unter `common`: Der Notification-Handler des js-controllers liest
->   `instanceObject.notifications`. Nachgesehen im Quelltext und in einer laufenden
->   Instanz bestätigt.
-> - **`401 api-key-expired` schlägt jede Rechnerei mit Tagen.** Sagt die API, der
->   Schlüssel sei abgelaufen, wird das gemeldet, auch wenn der zuletzt gesehene Header
->   noch Restlaufzeit behauptet.
-> - Eine gescheiterte Notification wird **abgefangen und geloggt**, statt den Adapter
->   mitzureißen: Sie ist die Zugabe, die Logzeile ist die eigentliche Meldung.
-> - Meldungen dieser Stufe sind deutsch **mit Umlauten** — sie erscheinen als
->   Notification in der Oberfläche, nicht nur im Log.
-> - `info.apiKey.expiresAt` ist die ISO-Zeichenkette aus dem Header (`role: date`), wie
->   alle Zeitstempel dieser API im Baum; `<vin>.rateLimit.resetAt` bleibt eine Zahl, weil
->   der Adapter ihn selbst ausrechnet.
-
-- `X-API-Key-Expires-At` aus jeder Antwort nach `info.apiKey.expiresAt`,
-  daraus `info.apiKey.daysRemaining`.
-- Log-Eskalation 14 (`info`) / 7 (`warn`) / 2 (`error`) Tage, jeweils höchstens
-  einmal pro Tag.
-- `notifications`-Scope in `io-package.json`, `registerNotification()` ab 7 Tagen.
-- Bei `401 api-key-expired`: `info.connection = false`, Polling auf 1×/h,
-  Notification.
-- `info.connection` bleibt bei `429` **true** (E10).
-
-**Fertig, wenn:** Die drei Stufen und der abgelaufene Schlüssel melden sich je einmal am
-Tag, und ein erneuerter Schlüssel setzt die Eskalation zurück. Nachgewiesen: 16 Tests
-gegen die Logik, und einmal in einer echten Instanz — `api-key-expired` im Mock
-erzeugte die Logzeile, `info.connection = false`, die Drosselung auf 1×/h und den
-Eintrag `{"apiKeyExpired":{"count":1}}` im Notification-Zustand des Hosts.
-
-### Phase 10 — Tests und CI vervollständigen · M · **erledigt**
-
-> **Abweichungen und Funde:**
-> - **Die Unit-Tests liefen nie in der CI.** Der Job `adapter-tests` ruft
->   `npm run test:unit` — *wenn es das Skript gibt*. Das gab es hier nicht, also wurde
->   der Schritt stillschweigend übersprungen: Geprüft wurden in der CI nur die
->   Paket-Tests und der Startup-Test. Das Skript existiert jetzt; `test:ts` bleibt als
->   Alias, damit die Dokumentation stimmt.
-> - **Ein Testaufbau lässt sich genau einmal starten** („This test harness has already
->   been used"). Ein Neustart im laufenden Test ist damit nicht zu haben. Stattdessen
->   bekommt jeder Lebenslauf eine eigene `suite`, und der Neustart wird nachgestellt,
->   indem der Zustand des Vorgängers **vor** dem Start in `<vin>.rateLimit.*` liegt —
->   das prüft genau den Mechanismus, um den es geht.
-> - **`common.messagebox` landet im Testaufbau nicht im Instanzobjekt.**
->   `iobroker add` nimmt die Kennzeichnung nicht mit, `iobroker upload` bei einer
->   echten Installation schon (im dev-server nachgesehen). Der Test setzt sie deshalb
->   ausdrücklich, sonst liefe der Verbindungstest ins Leere.
-> - **`info.connection` steht, bevor der Objektbaum geschrieben ist.** Die Verbindung
->   meldet die Antwort der API, der StateWriter läuft danach.
->   `startAdapterAndWait(true)` taugt deshalb nicht als Synchronisationspunkt für
->   Zustände; der Test wartet auf den Zustand selbst.
-> - Der Schlüssel wird im Test so verschlüsselt, wie js-controller es täte
->   (AES-192-CBC mit dem Systemschlüssel, ältere Installationen XOR).
-
-- Unit: `QuotaManager`, `CommandQueue`, `StateWriter`, `errors`, `sanitize`.
-- Integration: Adapter gegen den Mock über eine simulierte Stunde, inklusive
-  Neustart mitten im Fenster. **Hinweis:** Der API-Schlüssel steht seit Phase 6 unter
-  `encryptedNative`. Ein Test, der die Instanz selbst konfiguriert, muss ihn deshalb
-  mit dem Systemschlüssel aus `system.config` verschlüsseln — ein Klartextwert wird
-  beim Start entschlüsselt und ergibt Unsinn.
-  Der Durchlauf **von Hand** ist erledigt (Phase 8, siehe HANDOFF.md, Abschnitt 3):
-  Objektbaum, `<vin>.rateLimit.*`, Sperrfrist nach dem Neustart, Befehl mit
-  Verifikations-Poll und der Verbindungstest liefen in einer echten Instanz gegen den
-  Mock. Was fehlt, ist die Automatisierung davon.
-- `@iobroker/testing`: Paket- und Startup-Tests.
-- GitHub Actions: Lint, Build, Test auf Node 22 und 24; Spec-Wächter wöchentlich.
-
-### Phase 11 — Beispielskript und Dokumentation · S · **erledigt**
-
-> **Abweichungen und offene Punkte:**
-> - **Die README ist englisch**, Oberfläche und Logmeldungen sind deutsch. Der Kopf der
->   README war es von Anfang an, und für ein ioBroker-Repository ist Englisch die
->   Erwartung. Nutzertexte werden vor der Einreichung auf konsistente Sprache geprüft;
->   technische Logmeldungen dürfen weiterhin deutsch bleiben.
-> - Der „Developer manual"-Teil aus der Generator-Vorlage ist entfallen; er sagte selbst,
->   dass er gelöscht werden kann, und stand zwischen Nutzer und Anleitung.
-> - Ein **Disclaimer zu Marke und Logo** ist dazugekommen, wie die Vorlage es verlangt:
->   Škoda ist eine Marke der Škoda Auto a.s., der Adapter ist unabhängig.
-> - Das Beispielskript bekommt eine eigene ESLint-Ausnahme: Es läuft in der Sandbox des
->   JavaScript-Adapters, die `on`, `getState`, `setState` und `log` als Globale
->   bereitstellt.
-> - Das Skript schaltet **nur bei steckendem Kabel** und liest den Ist-Zustand aus
->   `charging.status.state` statt aus dem eigenen Wunsch — `ack: true` heißt „an die API
->   übergeben", nicht „das Auto lädt".
-
-
-`examples/pv-surplus-charging.js` — kommentierte Bang-Bang-Regelung:
-Einschaltschwelle, Ausschaltschwelle mit Verzögerung, Mindest-Ein- und
-Ausschaltdauer, Obergrenze für Schaltvorgänge pro Stunde, Auswertung von
-`info.lastCommand.result`.
-
-README mit: Erstellung des API-Keys in der MyŠkoda-App, dem Rate-Limit und seinen
-Folgen (ausdrücklich: **kein sekundengenaues Monitoring, keine sofortige
-Benachrichtigung bei Ladeende**), Hinweis auf `REDUCED` für Überschussladen,
-Beschreibung von `info.*`, und der Aussage, dass `ack=true` nur die Übergabe an
-die API bedeutet.
-
-### Phase 12 — Release-Vorbereitung · S · **in Arbeit**
-
-> **Wie geprüft wurde:** Das Repository ist öffentlich und der Adapter-Checker
-> (`@iobroker/repochecker`) wird gegen GitHub sowie mit den lokalen Änderungen
-> ausgeführt. Fehler, die vor npm-Veröffentlichung und Release-Tag lokal behebbar sind,
-> werden vor dem Release beseitigt. `io-package.json` und `admin/jsonConfig.json` sind
-> zusätzlich gegen die offiziellen JSON-Schemata validiert.
->
-> **Gefunden und behoben:**
-> - `notifications[].categories[].limit` fehlte — vom io-package-Schema verlangt.
->   Jetzt 3 je Kategorie; gemeldet wird ohnehin höchstens einmal am Tag.
-> - **`common.compact` steht jetzt auf `false`.** Der Adapter liest
->   `SKODA_API_BASE_URL` aus der Umgebung (E12), und im Compact-Modus teilen sich
->   mehrere Instanzen einen Prozess — der Checker meldet das sonst als Fehler
->   (`E5049`). Compact-Modus war für diesen Adapter ohnehin nie ein Ziel.
-> - `iob_npm.done` fehlte in `.gitignore` (`E9003`).
-> - `adapter-tests` hat jetzt `needs: check-and-lint` (`S3014`). Das spart nebenbei
->   Actions-Minuten: Scheitert die Prüfung, starten die teuren Testläufe gar nicht.
->
-> Die statisch deklarierte vollständige Workflow-Matrix läuft für Node 22 und 24 auf
-> Ubuntu, Windows und macOS bei Versionstags und manuellen Aufrufen. Pushes und Pull
-> Requests führen in einem getrennten Job nur die Mindestprüfung mit Ubuntu und Node 22
-> aus. Dadurch bleibt `E3027` behoben, ohne jeden Commit durch sechs Kombinationen zu
-> verzögern. Der Deploy-Job ist für npm Trusted Publishing definiert.
-> Er ist zusätzlich über die Repository-Variable `NPM_TRUSTED_PUBLISHING` gesichert,
-> damit die einmalige manuelle Erstveröffentlichung und der erste Tag keinen
-> unkonfigurierten oder doppelten npm-Publish auslösen.
->
-> **Repochecker 5.20.14 am 2026-09-05 nach Veröffentlichung:** `FINAL status 'OK'`.
-> npm-Paket, Release-Tag und GitHub-Release werden erkannt. Version `0.0.2` wurde über
-> npm Trusted Publishing mit SLSA-Provenance veröffentlicht und beseitigt `E2008`.
-> Offen bleiben `W4001` bis zur Aufnahme in `latest` und `E2001` bis `bluefox` die
-> bereits versandte npm-Einladung annimmt. Die Warnung zu `process.env` betrifft
-> ausschließlich `SKODA_API_BASE_URL` für Mock- und Integrationstests; deshalb bleibt
-> `common.compact` ausdrücklich `false`.
-
-
-`@alcalzone/release-script`, Übersetzungen mit `@iobroker/adapter-dev translate`
-(DE/EN von Hand, Rest maschinell), Adapter-Checker durchlaufen lassen, erstes Paket
-auf npm veröffentlichen und die Aufnahme in das offizielle Repository `latest`
-beantragen (E1). npm und GitHub-Release `0.0.2` sind veröffentlicht; der `latest`-Antrag
-läuft als `ioBroker/ioBroker.repositories#6592`. `stable` folgt erst nach öffentlichem
-Test und Rückmeldungen.
-
----
-
-## 4. Abhängigkeiten zwischen den Phasen
-
-```
-0 ──> 1 ──> 2 ──> 3 ──> 4 ──> 6 ──────> M1 (lesend)
-                   │      └──> 5 ──┘
-                   │
-                   └──> 7 ──> M2 (steuernd)   [braucht 4, 5, 6]
-                        │
-        8, 9 ───────────┘
-        10 laufend ab Phase 3
-        11, 12 zum Schluss
+```bash
+npm run mock
+SKODA_API_BASE_URL=http://127.0.0.1:8099 npx iobroker-dev-server run default
 ```
 
-Phase 2 blockiert alles Weitere — ohne Mock ist Entwicklung praktisch unmöglich.
-Die Aufnahme der Fixtures braucht das echte Auto und sollte deshalb früh
-eingeplant werden.
+Normale Pushes und Pull Requests führen TypeScript, ESLint und einen Ubuntu-Test mit
+Node 22 aus. Tags und manuelle Workflow-Läufe prüfen Ubuntu, Windows und macOS mit
+Node 22 und 24. Ein Versions-Tag veröffentlicht über npm Trusted Publishing und erzeugt
+den GitHub-Release.
 
----
+Vor einem Release:
 
-## 5. Fehlerbehandlung (verbindliche Tabelle)
+1. offene Changelog-Einträge prüfen
+2. vollständige lokale Prüfung einschließlich Integrationstest ausführen
+3. vollständigen GitHub-Workflow manuell ausführen
+4. `npm pack --dry-run` prüfen; `build/main.js` und `i18n/de.json` müssen enthalten sein
+5. Version mit `npm run release` vorbereiten
+6. Release-Commit und Tag pushen
+7. npm-Paket und GitHub-Release kontrollieren
+
+## 5. Fehlerbehandlung
 
 | Antwort | Quota | Retry | Reaktion |
 |---|---|---|---|
 | `202 Accepted` | ja | — | Verifikations-Poll nach 60 s |
-| `400 Bad Request` | ja | nein | Fehler im Adapter, loggen, Befehl verwerfen |
-| `401 api-key-expired` | **nein** | nein | `connection=false`, Notification, Polling 1×/h |
-| `403 api-key-not-authorized` | **nein** | nein | `connection=false`, Konfigurationshinweis |
-| `403 operation-not-authorized` | ja | nein | Befehl verwerfen, loggen |
+| `400 Bad Request` | ja | nein | Adapterfehler loggen, Befehl verwerfen |
+| `401 api-key-expired` | nein | nein | `connection=false`, Notification, Polling einmal pro Stunde |
+| `403 api-key-not-authorized` | nein | nein | `connection=false`, Konfigurationshinweis |
+| `403 operation-not-authorized` | ja | nein | Befehl verwerfen und loggen |
 | `404 Not Found` | ja | nein | VIN prüfen, Polling für diese VIN aussetzen |
 | `422 operation-not-supported` | ja | nein | Fähigkeit dauerhaft merken, State deaktivieren |
-| `422 operation-disabled` | ja | nein | verwerfen, nicht dauerhaft merken |
-| `429 rate-limit-exceeded` | **nein** | ja | `Retry-After` abwarten, Befehl bleibt in Queue |
-| `429 vehicle-not-accepting-requests` | **nein** | ja, begrenzt | `Retry-After` + Backoff, max. 3 Versuche |
-| `500` / `503` / `504` | ja | **max. 1** | Jitter, nur oberhalb der Befehlsreserve |
-| Netzwerkfehler / Timeout | unbekannt | max. 1 | konservativ als verbraucht zählen |
+| `422 operation-disabled` | ja | nein | Befehl verwerfen, Fähigkeit nicht dauerhaft ändern |
+| `429 rate-limit-exceeded` | nein | bis TTL | `Retry-After` abwarten, Befehl in Queue lassen |
+| `429 vehicle-not-accepting-requests` | nein | max. 3 | `Retry-After` und Backoff |
+| `500`, `503`, `504` | ja | max. 1 | Jitter; nur oberhalb der Befehlsreserve |
+| Netzwerkfehler oder Timeout | unbekannt | max. 1 | konservativ als verbraucht zählen |
 
-Die dritte Spalte ist der Grund für die Zurückhaltung bei `5xx`: Drei Retries auf
-einen wackeligen Server sind vier Requests — ein Fünftel der Stunde, verbrannt an
-einer Störung, die man nicht beeinflussen kann.
+Die `RateLimit-*`-Header korrigieren lokale Schätzungen. Insbesondere wird
+`403 operation-not-authorized` konservativ als quotaverbrauchend behandelt, obwohl
+die allgemeine API-Regel 403-Antworten ausnimmt. Ein Netzwerkfehler kann nach
+serverseitiger Buchung entstehen und zählt deshalb ebenfalls konservativ als verbraucht.
 
-**Diese Tabelle hat Vorrang vor der pauschalen Regel** „Quota-Verbrauch: alle Antworten
-außer 401, 403, 429" aus `design-decisions.md`. Die beiden widersprechen sich an genau
-einer Stelle: `403 operation-not-authorized` steht hier als quotaverbrauchend. Die
-feinere Angabe ist umgesetzt (Phase 3) und der Mock verhält sich so — nachgemessen ist
-sie nicht, denn dafür müsste man am echten Fahrzeug einen Befehl auslösen, den der
-Nutzer nicht ausführen darf. Praktische Folge ist gering: Ab Phase 4 sind die
-`RateLimit-*`-Header die Quelle der Wahrheit, die Angabe im Fehler ist nur die
-Schätzung bis zur nächsten Antwort.
+## 6. Offene Umsetzung
 
----
+### Version 0.1.0 und ioBroker Latest
 
-## 6. Sofort nächste Schritte
+- lokale Übersetzungs- und Rollenkorrekturen pushen
+- neue Objektstruktur aus einer laufenden Instanz exportieren und an
+  [`ioBroker.repositories#6592`](https://github.com/ioBroker/ioBroker.repositories/pull/6592)
+  anhängen
+- Checker erneut starten und verbleibende Befunde bearbeiten
+- `bluefox` als npm-Owner hinzufügen
+- Version `0.1.0` über den Tag-Workflow veröffentlichen
+- manuellen ioBroker-Review bis zur Aufnahme in `latest` begleiten
 
-1. Phase 0 ausführen (`create-adapter`, `dev-server setup`, erster Commit).
-2. API-Key in der MyŠkoda-App erzeugen, für den Enyaq freigeben,
-   Ablaufdatum notieren.
-3. Fixtures aufnehmen (Phase 2, Schritt 1) — braucht das Auto in verschiedenen
-   Zuständen, also über ein, zwei Tage verteilt.
-4. Parallel dazu Phase 1 (Codegen) — hängt nicht am Auto.
+### Zusätzliche Schreiboperationen
+
+Ladelimit, Lademodus und Ladeprofile benötigen vor der Umsetzung ein eigenes
+State-Modell. Dabei sind mindestens zu klären:
+
+- Soll-States und Validierungsregeln
+- Fähigkeitserkennung über `vehicle.operations`
+- Quota-Kosten und Coalescing je Operation
+- sichere Behandlung vollständiger Ladeprofil-Payloads
+- Rückmeldung und Verifikation ohne Operationsstatus
+- Migration und Dokumentation der neuen Objekte
+
+### Laufende Wartung
+
+- Änderungen der OpenAPI-`v0`-Spec prüfen und Codegen anpassen
+- Abhängigkeiten und GitHub Actions über Dependabot aktuell halten
+- Verhalten weiterer Fahrzeugtypen mit anonymisierten Fixtures absichern
+- Compact Mode erst nach Bewertung von Lebenszyklus, Timern und Speicherzustand
+  aktivieren

@@ -17,7 +17,7 @@ const INFO_FIELDS = ['name', 'licensePlate', 'renderUrl'] as const;
  * Geparst wird nach Millisekunden und nicht als Zeichenkette verglichen: An den
  * Zeitstempeln dieser API haengen 0, 2, 3 oder 9 Nachkommastellen, je nach Block.
  * Ein Vergleich der Zeichenketten waere damit unzuverlaessig - und genau dieser
- * Vergleich traegt den Frische-Backoff in Phase 6.
+ * Vergleich steuert den Frische-Backoff des PollSchedulers.
  *
  * @param node Ein Teilbaum der Antwort.
  * @returns Der juengste Zeitpunkt in Millisekunden, oder undefined.

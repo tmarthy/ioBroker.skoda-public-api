@@ -656,7 +656,7 @@ export class StateWriter {
 	 *
 	 * Der Schalter traegt den Soll-Zustand, die beiden Knoepfe erzwingen einen Aufruf
 	 * (E6). Geschrieben wird hier nur der Ist-Zustand des Schalters mit `ack: true`;
-	 * was ein Nutzer hineinschreibt, wertet die CommandQueue in Phase 7 aus.
+	 * was ein Nutzer hineinschreibt, wertet die CommandQueue aus.
 	 *
 	 * @param vin Fahrgestellnummer.
 	 * @param vehicle Die Fahrzeugdaten.

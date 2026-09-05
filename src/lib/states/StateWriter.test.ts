@@ -8,7 +8,7 @@ import { generatedStateDefs } from './objectDefs.generated';
 
 /**
  * Beweist zur Uebersetzungszeit, dass eine echte Adapter-Instanz die schmale
- * Schnittstelle erfuellt - sonst faellt das erst in Phase 6 bei der Verdrahtung auf.
+ * Schnittstelle erfuellt - sonst faellt das erst bei der Adapterverdrahtung auf.
  */
 type AdapterErfuelltStateApi = ioBroker.Adapter extends StateApi ? true : false;
 
@@ -16,7 +16,7 @@ const FIXTURE_DIR = path.join(__dirname, '..', '..', '..', 'test', 'fixtures');
 const VIN = 'TMBJB9NY5RF999999';
 
 /**
- * Laedt eine Aufnahme aus Phase 2.
+ * Laedt eine anonymisierte Fahrzeugaufnahme.
  *
  * @param name Dateiname ohne `vehicle-` und ohne Endung.
  * @returns Der Antwortkoerper.
@@ -97,7 +97,7 @@ describe('states/StateWriter => Antwort in den Objektbaum', () => {
 		}
 
 		it('erzeugt fuer die echte Aufnahme genau diesen Baum', async () => {
-			// Der Snapshot aus dem Abnahmekriterium der Phase. Er steht bewusst
+			// Der Snapshot des erwarteten Objektbaums. Er steht bewusst
 			// ausgeschrieben da: Wer den Writer aendert, sieht in der Abweichung
 			// sofort, welche Objekte dazukommen oder verschwinden - und dass
 			// Objekte verschwinden, ist bei einem Adapter, der nie loescht, immer

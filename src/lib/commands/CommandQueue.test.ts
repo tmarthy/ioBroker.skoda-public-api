@@ -275,7 +275,7 @@ describe('commands/CommandQueue => Soll-Zustand, Coalescing, TTL', () => {
 		});
 
 		it('laesst den wartenden Befehl ersatzlos verfallen, wenn der Soll zum Ist wird', async () => {
-			// Das Abnahmekriterium der Phase: enabled=true, dann innerhalb der TTL
+			// Relevanter Ablauf: enabled=true, dann innerhalb der TTL
 			// enabled=false - null Requests, Ergebnis COALESCED.
 			await feedPoll();
 			exhaustQuota();

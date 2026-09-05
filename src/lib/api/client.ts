@@ -5,8 +5,8 @@
  * Der Client ist bewusst dumm. Er setzt genau einen Request ab, liest aus **jeder**
  * Antwort die Quota- und Ablauf-Header und gibt sie zusammen mit dem Ergebnis zurueck.
  * Er entscheidet nichts: keine Reserve, keine Warteschlange, keine Wiederholung ueber
- * die Zeit. Das Budget verwaltet der QuotaManager (Phase 4), die Kadenz der
- * PollScheduler (Phase 6) - beide brauchen dafuer die Zahlen, die hier hochgereicht
+ * die Zeit. Das Budget verwaltet der QuotaManager, die Kadenz der PollScheduler;
+ * beide brauchen dafuer die Zahlen, die hier hochgereicht
  * werden, und keine vorweggenommene Entscheidung.
  *
  * Jede Meldung, die hier entsteht, ist maskiert (E14): Die VIN steht im URL-Pfad und
