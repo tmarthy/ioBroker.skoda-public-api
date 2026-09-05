@@ -20,6 +20,7 @@
 import type { ApiError } from '../api/errors';
 import type { ApiMeta, ApiResult, CommandBody } from '../api/client';
 import type { CommandAction, CommandDomain, VehicleResponse } from '../api/types';
+import { newestCapturedAt } from '../api/vehicleData';
 import type { QuotaManager } from '../quota/QuotaManager';
 import { COMMAND_DEFS, type CommandDomainDef, type CommandReport, type CommandResult } from '../states/commandDefs';
 import { buildCommandBody, parseCommandState, type ParsedCommand } from './commandMap';
@@ -96,6 +97,8 @@ interface QueueEntry {
 	attempts: number;
 	/** Ob dem Nutzer schon gemeldet wurde, dass gewartet wird. */
 	queuedReported: boolean;
+	/** Kostenpflichtige Wiederholungen duerfen die Befehlsreserve nicht aufbrauchen. */
+	protectReserve: boolean;
 }
 
 /**
@@ -128,7 +131,7 @@ export class CommandQueue {
 	/** Sollwerte der Requests, die gerade unterwegs sind. */
 	private readonly inFlight = new Map<string, boolean>();
 	/** Akzeptierte Sollwerte, die noch kein Poll bestaetigt hat. */
-	private readonly awaitingState = new Map<string, boolean>();
+	private readonly awaitingState = new Map<string, { desired: boolean; sentAt: number; expiresAt: number }>();
 
 	/** Serialisiert die Durchlaeufe: Zwei gleichzeitige Sendungen waeren ein Leck. */
 	private chain: Promise<void> = Promise.resolve();
@@ -190,7 +193,13 @@ export class CommandQueue {
 				blocks.set(def.part, typedBlock);
 				const key = this.keyOf({ vin, def });
 				const expected = this.awaitingState.get(key);
-				if (expected !== undefined && this.activeFromBlock(def, typedBlock) === expected) {
+				const captured = newestCapturedAt(typedBlock);
+				if (
+					expected &&
+					captured !== undefined &&
+					captured > expected.sentAt &&
+					this.activeFromBlock(def, typedBlock) === expected.desired
+				) {
 					this.awaitingState.delete(key);
 				}
 			}
@@ -224,7 +233,16 @@ export class CommandQueue {
 		// Vom Beginn des Requests bis zu einem bestaetigenden Poll ist der gepufferte
 		// Ist-Zustand zu alt fuer die Idempotenz. In diesem Fenster gilt der zuletzt
 		// gesendete Sollwert: derselbe Wunsch ist redundant, ein Gegenwunsch muss warten.
-		const unsettledDesired = this.inFlight.get(key) ?? this.awaitingState.get(key);
+		const waiting = this.awaitingState.get(key);
+		if (waiting && this.now() >= waiting.expiresAt) {
+			this.awaitingState.delete(key);
+			const block = this.blocks.get(command.vin)?.get(command.def.part);
+			// Ohne neuere Daten ist der Ist unbekannt, nicht wieder der Wert vor dem POST.
+			if (!block || (newestCapturedAt(block) ?? -Infinity) <= waiting.sentAt) {
+				this.blocks.get(command.vin)?.delete(command.def.part);
+			}
+		}
+		const unsettledDesired = this.inFlight.get(key) ?? this.awaitingState.get(key)?.desired;
 		const alreadyDesired =
 			unsettledDesired !== undefined
 				? unsettledDesired === command.desired
@@ -247,6 +265,7 @@ export class CommandQueue {
 			notBefore: now,
 			attempts: 0,
 			queuedReported: false,
+			protectReserve: false,
 		});
 
 		await this.pump();
@@ -357,7 +376,7 @@ export class CommandQueue {
 			return;
 		}
 
-		const permission = this.quota.tryAcquire('command');
+		const permission = this.quota.tryAcquire(entry.protectReserve ? 'poll' : 'command');
 		if ('reason' in permission) {
 			const now = this.now();
 			if (now + permission.waitMs >= entry.expiresAt) {
@@ -398,7 +417,11 @@ export class CommandQueue {
 		this.onResponse?.(result.meta, result.ok ? undefined : result.error);
 
 		if (result.ok) {
-			this.awaitingState.set(key, command.desired);
+			this.awaitingState.set(key, {
+				desired: command.desired,
+				sentAt: this.now(),
+				expiresAt: this.now() + this.ttlMs,
+			});
 			this.log.info(`${command.name}: an die API uebergeben.`);
 			// Die Verifikation gehoert zum Request-Lebenslauf und darf nicht davon
 			// abhaengen, ob das anschliessende Schreiben des Reports gelingt.
@@ -469,6 +492,7 @@ export class CommandQueue {
 				return;
 			}
 			entry.attempts += 1;
+			entry.protectReserve = error.consumesQuota;
 			entry.notBefore = now + waitMs;
 			this.entries.set(key, entry);
 			this.log.warn(

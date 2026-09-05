@@ -2,6 +2,7 @@ import { expect } from 'chai';
 import { DEFAULT_API_KEY, DEFAULT_VIN, MockSkodaApi } from '../../../test/mock/server';
 import { SkodaApiClient, type ApiResult } from '../api/client';
 import type { CommandAction, CommandDomain } from '../api/types';
+import { httpApiError } from '../api/errors';
 import { QuotaManager } from '../quota/QuotaManager';
 import type { CommandReport } from '../states/commandDefs';
 import { CommandQueue, type CommandLog, type CommandSender } from './CommandQueue';
@@ -133,6 +134,96 @@ describe('commands/CommandQueue => Soll-Zustand, Coalescing, TTL', () => {
 	});
 
 	describe('Idempotenz', () => {
+		it('laesst einen unbestaetigten Wunsch nach der TTL erneut senden', async () => {
+			await queue.submit(`${DEFAULT_VIN}.charging.enabled`, true);
+			clock += 11 * MINUTE;
+			queue.updateFromResponse(DEFAULT_VIN, {
+				vehicle: {
+					charging: {
+						isVehicleInSavedLocation: false,
+						carCapturedTimestamp: new Date(clock).toISOString(),
+						status: { state: 'READY_FOR_CHARGING' },
+					},
+				},
+			});
+			await queue.submit(`${DEFAULT_VIN}.charging.enabled`, true);
+			expect(results()).to.deep.equal(['SENT', 'SENT']);
+		});
+
+		it('verwendet nach Ablauf ohne neue Daten nicht den Ist vor dem POST', async () => {
+			await feedPoll();
+			await queue.submit(`${DEFAULT_VIN}.charging.enabled`, true);
+			clock += 11 * MINUTE;
+			await queue.submit(`${DEFAULT_VIN}.charging.enabled`, false);
+			expect(results()).to.deep.equal(['SENT', 'SENT']);
+		});
+
+		it('unterdrueckt doppelte Wuensche nur waehrend der Bestaetigungsfrist', async () => {
+			await queue.submit(`${DEFAULT_VIN}.charging.enabled`, true);
+			clock += MINUTE;
+			queue.updateFromResponse(DEFAULT_VIN, {
+				vehicle: {
+					charging: {
+						isVehicleInSavedLocation: false,
+						carCapturedTimestamp: new Date(clock).toISOString(),
+						status: { state: 'READY_FOR_CHARGING' },
+					},
+				},
+			});
+			await queue.submit(`${DEFAULT_VIN}.charging.enabled`, true);
+			expect(results()).to.deep.equal(['SENT', 'COALESCED']);
+		});
+
+		it('loest einen bestaetigten Wunsch auf und beachtet spaetere Ist-Aenderungen', async () => {
+			await queue.submit(`${DEFAULT_VIN}.charging.enabled`, true);
+			clock += MINUTE;
+			queue.updateFromResponse(DEFAULT_VIN, {
+				vehicle: {
+					charging: {
+						isVehicleInSavedLocation: false,
+						carCapturedTimestamp: new Date(clock).toISOString(),
+						status: { state: 'CHARGING' },
+					},
+				},
+			});
+			clock += MINUTE;
+			queue.updateFromResponse(DEFAULT_VIN, {
+				vehicle: {
+					charging: {
+						isVehicleInSavedLocation: false,
+						carCapturedTimestamp: new Date(clock).toISOString(),
+						status: { state: 'READY_FOR_CHARGING' },
+					},
+				},
+			});
+			await queue.submit(`${DEFAULT_VIN}.charging.enabled`, true);
+			expect(results()).to.deep.equal(['SENT', 'SENT']);
+		});
+
+		it('akzeptiert keine veralteten Daten als Bestaetigung', async () => {
+			await queue.submit(`${DEFAULT_VIN}.charging.enabled`, true);
+			queue.updateFromResponse(DEFAULT_VIN, {
+				vehicle: {
+					charging: {
+						isVehicleInSavedLocation: false,
+						carCapturedTimestamp: new Date(clock - MINUTE).toISOString(),
+						status: { state: 'CHARGING' },
+					},
+				},
+			});
+			clock += MINUTE;
+			queue.updateFromResponse(DEFAULT_VIN, {
+				vehicle: {
+					charging: {
+						isVehicleInSavedLocation: false,
+						carCapturedTimestamp: new Date(clock).toISOString(),
+						status: { state: 'READY_FOR_CHARGING' },
+					},
+				},
+			});
+			await queue.submit(`${DEFAULT_VIN}.charging.enabled`, true);
+			expect(results()).to.deep.equal(['SENT', 'COALESCED']);
+		});
 		it('sendet nichts, wenn der Soll dem Ist entspricht', async () => {
 			await feedPoll();
 			// Das Fixture steht auf CONNECT_CABLE, laedt also nicht.
@@ -370,6 +461,64 @@ describe('commands/CommandQueue => Soll-Zustand, Coalescing, TTL', () => {
 	});
 
 	describe('Fehler, die nicht vom Fahrzeug kommen', () => {
+		for (const remaining of [7, 8]) {
+			it(`schuetzt die Reserve beim 503-Retry mit ${remaining} freien Requests`, async () => {
+				let calls = 0;
+				quota.recordResponse({
+					consumedQuota: false,
+					rateLimit: { limit: 20, remaining, resetInSeconds: 3600 },
+				});
+				queue = buildQueue({
+					client: {
+						sendCommand: () => {
+							calls++;
+							return Promise.resolve({
+								ok: false as const,
+								error: httpApiError({ status: 503 }),
+								meta: { consumedQuota: true },
+							});
+						},
+					},
+				});
+				await queue.submit(`${DEFAULT_VIN}.charging.start`, true);
+				clock += 15_000;
+				await queue.tick();
+				expect(calls).to.equal(remaining === 7 ? 1 : 2);
+				expect(quota.snapshot().remaining).to.equal(6);
+			});
+		}
+
+		it('erlaubt einen kostenlosen 429-Retry auch innerhalb der Reserve', async () => {
+			let calls = 0;
+			quota.recordResponse({
+				consumedQuota: false,
+				rateLimit: { limit: 20, remaining: 3, resetInSeconds: 3600 },
+			});
+			queue = buildQueue({
+				client: {
+					sendCommand: () => {
+						calls++;
+						return Promise.resolve(
+							calls === 1
+								? {
+										ok: false,
+										error: httpApiError({
+											status: 429,
+											body: JSON.stringify({ type: 'vehicle-not-accepting-requests' }),
+										}),
+										meta: { consumedQuota: false },
+									}
+								: { ok: true as const, data: undefined, meta: { consumedQuota: true } },
+						);
+					},
+				},
+			});
+			await queue.submit(`${DEFAULT_VIN}.charging.start`, true);
+			clock += 15_000;
+			await queue.tick();
+			expect(calls).to.equal(2);
+			expect(results()).to.deep.equal(['QUEUED', 'SENT']);
+		});
 		it('meldet einen abgelaufenen Schluessel als FAILED und die Verbindung als gestoert', async () => {
 			mock.scenario = 'api-key-expired';
 			const verbindung: boolean[] = [];

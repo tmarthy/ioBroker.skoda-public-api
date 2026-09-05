@@ -303,6 +303,62 @@ describe('scheduler/PollScheduler => Kadenz unter 20 Requests pro Stunde', () =>
 	});
 
 	describe('Verifikations-Poll nach einem Befehl', () => {
+		it('behaelt bei laufendem Poll genau eine Schleife und den Verifikationstermin', async () => {
+			const timers = new Map<number, { handler: () => void; ms: number }>();
+			let nextId = 0;
+			let calls = 0;
+			let release: ((value: ApiResult<VehicleResponse>) => void) | undefined;
+			const result: ApiResult<VehicleResponse> = {
+				ok: true,
+				data: { vehicle: { vin: DEFAULT_VIN } },
+				meta: { consumedQuota: true },
+			};
+			const scheduler = buildScheduler({
+				client: {
+					getVehicle: () => {
+						calls++;
+						return calls === 1
+							? new Promise(resolve => {
+									release = resolve;
+								})
+							: Promise.resolve(result);
+					},
+				},
+				onVehicleData: () => undefined,
+				setTimer: (handler, ms) => {
+					timers.set(++nextId, { handler, ms });
+					return nextId;
+				},
+				clearTimer: handle => {
+					timers.delete(handle as number);
+				},
+			});
+			scheduler.start();
+			const first = timers.get(1)!;
+			timers.delete(1);
+			first.handler();
+			const pending = scheduler.tick();
+			scheduler.requestVerificationPoll(DEFAULT_VIN);
+			expect(timers.size).to.equal(0);
+			expect(calls).to.equal(1);
+			clock += 5000;
+			release!(result);
+			await pending;
+			await new Promise<void>(resolve => setImmediate(resolve));
+			expect(timers.size).to.equal(1);
+			const [id, verification] = [...timers][0];
+			expect(verification.ms).to.equal(55_000);
+			clock += verification.ms;
+			timers.delete(id);
+			verification.handler();
+			await scheduler.tick();
+			await new Promise<void>(resolve => setImmediate(resolve));
+			expect(calls).to.equal(2);
+			expect(timers.size).to.equal(1);
+			expect([...timers.values()][0].ms).to.equal(5 * MINUTE);
+			scheduler.stop();
+			expect(timers.size).to.equal(0);
+		});
 		it('zieht den naechsten Poll auf 60 Sekunden vor', async () => {
 			const scheduler = buildScheduler();
 			await scheduler.tick();

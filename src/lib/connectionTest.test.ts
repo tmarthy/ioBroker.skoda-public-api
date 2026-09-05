@@ -2,6 +2,7 @@ import { expect } from 'chai';
 import { DEFAULT_API_KEY, DEFAULT_VIN, MockSkodaApi } from '../../test/mock/server';
 import { SkodaApiClient } from './api/client';
 import { normalizeVin, pickTestTarget, testConnection } from './connectionTest';
+import { QuotaManager } from './quota/QuotaManager';
 
 describe('connectionTest => ein Request, ein verstaendlicher Satz', () => {
 	let clock: number;
@@ -21,6 +22,50 @@ describe('connectionTest => ein Request, ein verstaendlicher Satz', () => {
 	});
 
 	describe('Erfolg', () => {
+		for (const testedKey of [DEFAULT_API_KEY, 'neuer-schluessel']) {
+			it(`bucht den Verbindungstest nur fuer den aktiven Schluessel (${testedKey === DEFAULT_API_KEY ? 'gleich' : 'anders'})`, async () => {
+				const quota = new QuotaManager({ now });
+				quota.recordResponse({
+					consumedQuota: false,
+					rateLimit: { limit: 20, remaining: 0, resetInSeconds: 600 },
+				});
+				let observed = 0;
+				let inFlight = -1;
+				const result = await testConnection(
+					{
+						getVehicle: () => {
+							inFlight = quota.snapshot().inFlight;
+							return Promise.resolve({
+								ok: true as const,
+								data: { vehicle: {} },
+								meta: {
+									consumedQuota: true,
+									rateLimit: { limit: 20, remaining: 19, resetInSeconds: 3600 },
+									apiKeyExpiresAt: new Date(clock + 30 * 86_400_000),
+								},
+							});
+						},
+					},
+					DEFAULT_VIN,
+					clock,
+					{
+						testedKey,
+						activeKey: DEFAULT_API_KEY,
+						quota,
+						onResponse: () => {
+							observed++;
+						},
+					},
+				);
+				const same = testedKey === DEFAULT_API_KEY;
+				expect(result.ok).to.equal(true);
+				expect(result.text).to.contain('19 von 20');
+				expect(quota.snapshot().remaining).to.equal(same ? 19 : 0);
+				expect(quota.snapshot().inFlight).to.equal(0);
+				expect(inFlight).to.equal(same ? 1 : 0);
+				expect(observed).to.equal(same ? 1 : 0);
+			});
+		}
 		it('nennt das Fahrzeug, den Ablauf und das Budget', async () => {
 			const result = await testConnection(client, DEFAULT_VIN, clock);
 			expect(result.ok).to.equal(true);

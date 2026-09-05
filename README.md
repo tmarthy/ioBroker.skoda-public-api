@@ -90,10 +90,13 @@ Two additions that are not in the API:
 | `<vin>.info.lastErrors` | The `errors[]` of the last response as JSON. |
 | `<vin>.info.lastCommand.*` | `name`, `result`, `timestamp`, `problemType` of the last command. |
 
-**Incomplete responses are normal.** When a part is missing, its states keep their last
-value and get a quality flag of "not good" instead of being set to `null`. Without that
-rule the VIS flickers on every partial response — and those are documented behaviour of
-this API, not an exception. `dataAge` tells you how old the data really is.
+**Incomplete responses are normal.** When the API reports a failed part, or a field
+disappears from a returned part, its states keep their last value with quality "not
+good". This also applies to states retained across a restart and removed charging
+profiles. Returning values regain good quality, even if their value has not changed.
+Parts intentionally excluded from the request are left alone. `dataAge` measures the
+age of the newest vehicle timestamp at the last successful poll; it is not a live clock
+or a freshness guarantee for every individual state.
 
 ## Controlling the vehicle
 
@@ -110,13 +113,19 @@ command with `202 Accepted` and offers no endpoint that reports the outcome; the
 schedules a verification poll 60 seconds later, and only that poll shows what actually
 happened. Anyone building automation on top of this needs to know that.
 
+While a command is awaiting confirmation, repeating the same switch value is also
+`COALESCED`; an opposite value can still send a command. A matching vehicle timestamp
+newer than the accepted command ends this waiting phase. Without confirmation it lasts
+at most the configured command lifetime (10 minutes by default), after which a new
+switch write can retry. Expiry does not automatically resend the command.
+
 `info.lastCommand.result` is one of:
 
 | Result | Meaning |
 |---|---|
 | `SENT` | Handed over to the API. |
 | `QUEUED` | Waiting for quota; it will go out on its own. |
-| `COALESCED` | Dropped, the target state was already reached. |
+| `COALESCED` | No request: the target matches the known state or a command still awaiting confirmation. |
 | `EXPIRED` | Dropped, could not be sent within its lifetime. |
 | `REJECTED_BY_VEHICLE` | The vehicle refused it (not supported, disabled, or busy). |
 | `FAILED` | Anything else — see the log. |

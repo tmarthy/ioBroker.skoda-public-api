@@ -1,6 +1,9 @@
 # Handoff — ioBroker.skoda-public-api
 
-**Stand: 2026-09-04, nach Phase 12.** Auf GitHub. Die CI kann derzeit keine Jobs starten (Abrechnung des GitHub-Kontos, siehe Abschnitt 2); der letzte vollständige Lauf liegt vor der Umstellung der Matrix. Der Adapter liest, steuert und meldet den Ablauf seines Schlüssels; die Admin-UI ist vollständig. Der Lebenslauf einer Instanz — Poll, Objektbaum, Befehl, Verbindungstest, Neustart mitten im Quota-Fenster, abgelaufener Schlüssel — läuft seit Phase 10 als Integrationstest gegen den Mock, in einer echten ioBroker-Instanz. Diese Datei ist der Einstieg für jeden, der die
+**Stand: 2026-09-05, nach Review und Fehlerkorrekturen** auf Basis von `a4cdb4d`.
+Der zuletzt dokumentierte CI-Stand ist weiterhin die Abrechnungssperre aus Abschnitt 2;
+er wurde beim Review nicht erneut auf GitHub geprüft.
+Der Adapter liest, steuert und meldet den Ablauf seines Schlüssels; die Admin-UI ist vollständig. Der Lebenslauf einer Instanz — Poll, Objektbaum, Befehl, Verbindungstest, Neustart mitten im Quota-Fenster, abgelaufener Schlüssel — läuft seit Phase 10 als Integrationstest gegen den Mock, in einer echten ioBroker-Instanz. Diese Datei ist der Einstieg für jeden, der die
 Arbeit übernimmt oder nach einer Pause wieder aufnimmt. Sie beschreibt, wo das Projekt
 steht, was als Nächstes ansteht und welche Fallstricke bereits bekannt sind.
 
@@ -44,6 +47,33 @@ Ziel-SoC setzen, Ladeprofile ändern, Schlüssel automatisch erneuern.
 
 ## 2. Wo das Projekt steht
 
+### Review-Korrekturen vom 2026-09-05
+
+Fünf Befunde sind behoben:
+
+1. Ein angenommener, aber nicht ausgeführter Befehl blockiert neue gleiche Sollwerte
+   höchstens für die konfigurierte TTL. Bestätigung nur mit neuerem Fahrzeugzeitstempel;
+   nach Fristablauf gelten Daten vor dem POST nicht wieder als verlässlicher Ist.
+2. Poll-Durchläufe sind serialisiert. Verifikationstermine gehen während laufender
+   Requests oder Datenschreibvorgänge nicht verloren; es bleibt bei einem Timer.
+3. Der StateWriter berücksichtigt gespeicherte Werte nach Neustarts. Fehlende Felder
+   innerhalb gelieferter Teile und entfernte Profile behalten ihren Wert mit `q=0x01`.
+   Frische Werte heben alte Qualitätsflags auch nach einem Neustart auf.
+4. Ein Verbindungstest mit einem anderen, noch ungespeicherten API-Schlüssel verändert
+   weder Quota noch Ablaufüberwachung des aktiven Schlüssels.
+5. Kostenpflichtige Befehls-Retries halten die Reserve frei; Erstversuche und kostenlose
+   Wiederholungen nach `429` dürfen sie weiterhin verwenden.
+
+Die Unit-Tests decken diese Fälle ab. Der Integrationstest prüft zusätzlich gespeicherte
+Qualitätsflags und den tatsächlichen Verifikations-Poll nach einem Befehl.
+
+**Lokal geprüft am 2026-09-05 (Node 26.7.0):** `npm run check`, `npm run lint`,
+`npm run build`, **342 Unit-Tests**, **57 Pakettests** und **9 Integrationstests**
+erfolgreich. Der Integrationslauf benötigte mit vorhandener Testumgebung rund zwei
+Minuten. Kein Test gegen das echte Fahrzeug und keine Installation auf der Produktiv-VM.
+
+### Abgeschlossene Implementierungsphasen
+
 | Phase | Inhalt | Stand |
 |---|---|---|
 | 0 | Projektgerüst, dev-server | **fertig** |
@@ -60,7 +90,7 @@ Ziel-SoC setzen, Ladeprofile ändern, Schlüssel automatisch erneuern.
 | 11 | Beispielskript und Dokumentation | **fertig** |
 | 12 | Release-Vorbereitung | **fertig** — Entscheidung aus E1: bleibt privat |
 
-Letzter vollständig grüner Lauf (2026-09-04):
+Historischer vollständig grüner Lauf vor den Review-Korrekturen (2026-09-04):
 
 ```
 npm run check            tsc --noEmit, fehlerfrei

@@ -54,6 +54,8 @@ export interface StateApi {
 	setStateChangedAsync(id: string, state: ioBroker.SettableState): ioBroker.SetStateChangedPromise;
 	/** Liest den aktuellen Wert - noetig, um die Qualitaet ohne Wertverlust zu senken. */
 	getStateAsync(id: string): ioBroker.GetStatePromise;
+	/** Liest bestehende Werte nach einem Neustart, inklusive ihrer Qualitaet. */
+	getStatesAsync(pattern: string): ioBroker.GetStatesPromise;
 	/** Der Adapter-Logger, auf zwei Stufen beschraenkt. */
 	log: {
 		debug(message: string): void;
@@ -94,6 +96,9 @@ export class StateWriter {
 	private readonly staleStates = new Set<string>();
 	/** Bereits gemeldete unbekannte Pfade - eine Warnung je Pfad genuegt. */
 	private readonly warnedPaths = new Set<string>();
+	private readonly restoredVins = new Set<string>();
+	/** Pro Fahrzeug die in der laufenden Antwort tatsaechlich geschriebenen Werte. */
+	private readonly observedStates = new Map<string, Set<string>>();
 
 	/**
 	 * @param options Adapter-Schnittstelle und Zeitquelle.
@@ -110,17 +115,66 @@ export class StateWriter {
 	 * @param response Die Antwort, wie der Client sie geliefert hat.
 	 */
 	public async write(vin: string, response: VehicleResponse): Promise<void> {
-		const vehicle = response.vehicle as Record<string, unknown>;
-		await this.ensureDevice(vin, vehicle);
+		await this.restoreStates(vin);
+		this.observedStates.set(vin, new Set());
+		try {
+			const vehicle = response.vehicle as Record<string, unknown>;
+			await this.ensureDevice(vin, vehicle);
 
-		for (const [key, value] of Object.entries(vehicle)) {
-			await this.writeNode(vin, key, value);
+			for (const [key, value] of Object.entries(vehicle)) {
+				await this.writeNode(vin, key, value);
+			}
+
+			await this.writeParkingPositionShortcut(vin, vehicle);
+			await this.writeCommandStates(vin, vehicle);
+			await this.writeInfo(vin, vehicle, response);
+			await this.markMissingParts(vin, response);
+		} finally {
+			this.observedStates.delete(vin);
 		}
+	}
 
-		await this.writeParkingPositionShortcut(vin, vehicle);
-		await this.writeCommandStates(vin, vehicle);
-		await this.writeInfo(vin, vehicle, response);
-		await this.markMissingParts(vin, response);
+	/**
+	 * Uebernimmt vorhandene Daten-States, ohne Objekte zu veraendern.
+	 *
+	 * @param vin Fahrgestellnummer.
+	 */
+	private async restoreStates(vin: string): Promise<void> {
+		if (this.restoredVins.has(vin)) {
+			return;
+		}
+		const states = await this.api.getStatesAsync(`${vin}.*`);
+		for (const [fullId, state] of Object.entries(states)) {
+			// ioBroker liefert volle IDs, das Adapter-Doppel relative IDs.
+			const start = fullId.indexOf(`${vin}.`);
+			if (start < 0 || !state) {
+				continue;
+			}
+			const id = fullId.slice(start);
+			if (!this.isDataState(vin, id)) {
+				continue;
+			}
+			this.createdStates.add(id);
+			if ((state.q ?? QUALITY_GOOD) !== QUALITY_GOOD) {
+				this.staleStates.add(id);
+			}
+		}
+		this.restoredVins.add(vin);
+	}
+
+	/**
+	 * Adapterberichte und Befehlsknoepfe sind keine Fahrzeugmesswerte.
+	 *
+	 * @param vin Fahrgestellnummer.
+	 * @param id Relative Zustands-ID mit VIN.
+	 * @returns Ob die Qualitaet von einer Fahrzeugantwort abhaengt.
+	 */
+	private isDataState(vin: string, id: string): boolean {
+		const path = id.slice(vin.length + 1);
+		return (
+			!path.startsWith('info.') &&
+			!COMMAND_DEFS.some(def => path === `${def.part}.start` || path === `${def.part}.stop`)
+		);
 	}
 
 	/**
@@ -461,6 +515,7 @@ export class StateWriter {
 	 * @param val Der Wert.
 	 */
 	private async writeValue(id: string, val: ioBroker.StateValue): Promise<void> {
+		this.observedStates.get(id.split('.')[0])?.add(id);
 		if (this.staleStates.has(id)) {
 			await this.api.setStateAsync(id, { val, ack: true, q: QUALITY_GOOD });
 			this.staleStates.delete(id);
@@ -590,7 +645,8 @@ export class StateWriter {
 	 * Markiert die Zustaende der Teile, die in dieser Antwort gefehlt haben.
 	 *
 	 * Der Wert bleibt stehen, nur die Qualitaet wird schlecht (E8). Betroffen sind
-	 * ausschliesslich Teile, die die API selbst in `errors[]` gemeldet hat - ein Teil,
+	 * Teile, die die API selbst in `errors[]` gemeldet hat, und fehlende Felder
+	 * innerhalb gelieferter Teile. Ein Teil,
 	 * das per `include` gar nicht angefordert wurde, fehlt nicht, es wurde nur nicht
 	 * aufgefrischt. Wie alt die Daten sind, sagt `info.dataAge`.
 	 *
@@ -598,16 +654,21 @@ export class StateWriter {
 	 * @param response Die vollstaendige Antwort.
 	 */
 	private async markMissingParts(vin: string, response: VehicleResponse): Promise<void> {
+		const failedParts = new Set<string>();
 		for (const error of vehicleErrors(response)) {
 			const part = partFromErrorType(error.type);
-			if (!part) {
+			if (part) {
+				failedParts.add(part);
+			}
+		}
+		const vehicle = response.vehicle as Record<string, unknown>;
+		for (const id of this.createdStates) {
+			if (!id.startsWith(`${vin}.`) || !this.isDataState(vin, id)) {
 				continue;
 			}
-			const prefix = `${vin}.${part}.`;
-			for (const id of this.createdStates) {
-				if (id.startsWith(prefix)) {
-					await this.markStale(id);
-				}
+			const part = id.slice(vin.length + 1).split('.')[0];
+			if (failedParts.has(part) || (Object.hasOwn(vehicle, part) && !this.observedStates.get(vin)?.has(id))) {
+				await this.markStale(id);
 			}
 		}
 	}
@@ -625,11 +686,12 @@ export class StateWriter {
 		if (!current) {
 			return;
 		}
-		this.staleStates.add(id);
 		if ((current.q ?? QUALITY_GOOD) === QUALITY_NOT_GOOD) {
+			this.staleStates.add(id);
 			return;
 		}
 		await this.api.setStateAsync(id, { val: current.val, ack: true, q: QUALITY_NOT_GOOD });
+		this.staleStates.add(id);
 	}
 }
 

@@ -314,6 +314,46 @@ describe('states/StateWriter => Antwort in den Objektbaum', () => {
 	});
 
 	describe('Unvollstaendige Antworten', () => {
+		it('markiert vorhandene States auch bei einem Fehler im ersten Poll nach Neustart', async () => {
+			await writer.write(VIN, fixture('charging'));
+			writer = new StateWriter({ api: adapter });
+			await writer.write(VIN, { vehicle: {}, errors: [{ type: 'CHARGING_UNAVAILABLE' }] });
+			expect(adapter.states.get(`${VIN}.charging.status.state`)).to.include({
+				val: 'CHARGING',
+				q: QUALITY_NOT_GOOD,
+			});
+		});
+
+		it('hebt gespeicherte schlechte Qualitaet nach Neustart auch bei gleichem Wert auf', async () => {
+			await writer.write(VIN, fixture('charging'));
+			await writer.write(VIN, { vehicle: {}, errors: [{ type: 'CHARGING_UNAVAILABLE' }] });
+			writer = new StateWriter({ api: adapter });
+			await writer.write(VIN, fixture('charging'));
+			expect(adapter.quality(`${VIN}.charging.status.state`)).to.equal(0);
+		});
+
+		it('markiert verschwundene Einzelwerte und geloeschte Profile, ohne sie zu loeschen', async () => {
+			await writer.write(VIN, fixture('charging'));
+			const next = fixture('charging');
+			delete next.vehicle.charging!.status!.chargePowerInKw;
+			next.vehicle.chargingProfiles!.profiles = [];
+			await writer.write(VIN, next);
+			expect(adapter.states.get(`${VIN}.charging.status.chargePowerInKw`)).to.include({
+				val: 5,
+				q: QUALITY_NOT_GOOD,
+			});
+			expect(adapter.quality(`${VIN}.chargingProfiles.profiles.1.name`)).to.equal(QUALITY_NOT_GOOD);
+			expect(adapter.quality(`${VIN}.charging.status.state`)).to.equal(0);
+			await writer.write(VIN, fixture('charging'));
+			expect(adapter.quality(`${VIN}.charging.status.chargePowerInKw`)).to.equal(0);
+		});
+
+		it('markiert absichtlich nicht gelieferte Teile ohne Fehler nicht als ausgefallen', async () => {
+			await writer.write(VIN, fixture('idle'));
+			writer = new StateWriter({ api: adapter });
+			await writer.write(VIN, { vehicle: { name: 'Enyaq' } });
+			expect(adapter.quality(`${VIN}.parkingPosition.position`)).to.equal(0);
+		});
 		it('laesst den letzten Wert stehen und markiert ihn als nicht gut', async () => {
 			await writer.write(VIN, fixture('idle'));
 			const id = `${VIN}.charging.status.battery.stateOfChargeInPercent`;

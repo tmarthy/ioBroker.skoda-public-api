@@ -79,6 +79,12 @@ Befehl kommt in eine Queue, wird ausgeführt sobald Budget da ist, verfällt nac
 **Begründung:** Bang-Bang-Regelung produziert Schaltnervosität (Wolke zieht durch).
 Coalescing dämpft sie an der einzigen Stelle, die das Budget kennt.
 
+**Präzisiert am 2026-09-05:** Auch ein mit `202` angenommener Sollwert darf gleiche
+Schreibvorgänge nur begrenzt unterdrücken. Die Bestätigungsfrist ab Annahme entspricht
+der konfigurierten TTL. Ein passender Ist-Zustand mit neuerem Fahrzeugzeitstempel hebt
+sie vorzeitig auf. Nach Ablauf werden neue Schreibvorgänge wieder gegen frische Daten
+geprüft; ohne neuere Daten gilt der Ist als unbekannt. Kein automatisches Nachsenden.
+
 ### E6 — Befehls-Interface: Schalter primär, Buttons sekundär
 `<vin>.charging.enabled` (`role: switch`) trägt den **Soll-Zustand**;
 `<vin>.charging.start` / `.stop` (`role: button`) erzwingen einen Aufruf.
@@ -106,6 +112,13 @@ Quality-Flag wird auf "nicht gut" gesetzt, `errors[]` landet als JSON in
 `carCapturedTimestamp`.
 **Begründung:** `200` ist laut Doku regelmäßig unvollständig. Ohne diese Regel
 flackert die VIS; ohne `dataAge` hält man tagealte Werte für aktuelle.
+
+**Präzisiert am 2026-09-05:** Der Writer übernimmt vorhandene States und Qualitätsflags
+beim ersten Poll nach dem Start. Neben Teilfehlern in `errors[]` markiert er auch
+verschwundene Felder innerhalb gelieferter Teile und entfernte Profile. Absichtlich
+nicht angeforderte Teile bleiben unverändert. `dataAge` ist eine Momentaufnahme zum
+letzten erfolgreichen Poll und bezieht sich auf den jüngsten Zeitstempel, nicht auf
+die Aktualität sämtlicher Einzelwerte.
 
 ### E9 — Instanzmodell: eine Instanz = ein API-Key, n VINs
 Ein Quota-Bucket pro Instanz, die konfigurierten VINs teilen ihn sich reihum.

@@ -14,6 +14,19 @@
 import type { ApiMeta, ApiResult } from './api/client';
 import type { ApiError } from './api/errors';
 import type { VehiclePart, VehicleResponse } from './api/types';
+import type { QuotaManager } from './quota/QuotaManager';
+
+/** Nur Antworten fuer den aktiven Schluessel duerfen dessen Betriebszustand aendern. */
+export interface ConnectionTestTracking {
+	/** Schluessel aus dem noch ungespeicherten Formular. */
+	testedKey: string;
+	/** Schluessel, mit dem die laufende Instanz arbeitet. */
+	activeKey: string;
+	/** Budget ausschliesslich dieses aktiven Schluessels. */
+	quota?: Pick<QuotaManager, 'trackRequest' | 'recordResponse'>;
+	/** Beobachter fuer das Ablaufdatum des aktiven Schluessels. */
+	onResponse?: (meta: ApiMeta) => Promise<void> | void;
+}
 
 /** Der Ausschnitt des Clients, den der Test braucht. */
 export interface ConnectionTestClient {
@@ -40,14 +53,20 @@ const VIN_PATTERN = /^[A-HJ-NPR-Z0-9]{17}$/;
  * @param client Die HTTP-Schicht, bereits mit dem zu pruefenden Schluessel gebaut.
  * @param vin Die zu pruefende Fahrgestellnummer.
  * @param now Jetzt-Zeitpunkt in Millisekunden, ersetzbar fuer Tests.
+ * @param tracking Optionaler Betriebszustand der laufenden Instanz.
  * @returns Ergebnis samt Text fuer die Admin-UI.
  */
 export async function testConnection(
 	client: ConnectionTestClient,
 	vin: string,
 	now: number = Date.now(),
+	tracking?: ConnectionTestTracking,
 ): Promise<ConnectionTestResult> {
+	const active = tracking?.testedKey === tracking?.activeKey ? tracking : undefined;
+	const permit = active?.quota?.trackRequest();
 	const result = await client.getVehicle(vin, ['info']);
+	active?.quota?.recordResponse(result.meta, permit);
+	await active?.onResponse?.(result.meta);
 	if (!result.ok) {
 		return { ok: false, text: explainError(result.error, result.meta, now), meta: result.meta };
 	}

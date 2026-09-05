@@ -97,10 +97,14 @@ async function waitFor(what, check, timeoutMs = 30000) {
  */
 async function readState(harness, id, timeoutMs = 30000) {
 	let state = null;
-	await waitFor(`den Zustand ${id}`, async () => {
-		state = await getState(harness, id);
-		return state !== null && state !== undefined;
-	}, timeoutMs);
+	await waitFor(
+		`den Zustand ${id}`,
+		async () => {
+			state = await getState(harness, id);
+			return state !== null && state !== undefined;
+		},
+		timeoutMs,
+	);
 	return state;
 }
 
@@ -144,7 +148,7 @@ async function configure(harness) {
  * @returns {Promise<void>} Nichts.
  */
 function delay(ms) {
-	return new Promise((resolve) => setTimeout(resolve, ms));
+	return new Promise(resolve => setTimeout(resolve, ms));
 }
 
 tests.integration(path.join(__dirname, '..'), {
@@ -153,7 +157,7 @@ tests.integration(path.join(__dirname, '..'), {
 		// einmal starten ("This test harness has already been used"). Ein Neustart im
 		// laufenden Test ist damit nicht zu haben; deshalb ist jeder Lebenslauf eine
 		// eigene suite.
-		suite('Lesen, Steuern und Nachfragen gegen den Mock', (getHarness) => {
+		suite('Lesen, Steuern und Nachfragen gegen den Mock', getHarness => {
 			let harness;
 			let mock;
 			let baseUrl;
@@ -164,6 +168,26 @@ tests.integration(path.join(__dirname, '..'), {
 				mock = new MockSkodaApi();
 				baseUrl = await mock.start();
 				await configure(harness);
+
+				// Werte eines Vorgaengerprozesses: ein inzwischen fehlendes Feld und
+				// ein unveraenderter Wert, dessen alte Fehlerqualitaet verschwinden muss.
+				for (const [path, val, q] of [
+					['charging.status.chargeType', 'AC', 0],
+					['odometer.mileageInKm', 30069, 1],
+				]) {
+					const id = `${VEHICLE}.${path}`;
+					const obj = {
+						type: 'state',
+						common: { name: path, type: typeof val, role: 'state', read: true, write: false },
+						native: {},
+					};
+					if (harness.objects.setObjectAsync) {
+						await harness.objects.setObjectAsync(id, obj);
+					} else {
+						await harness.objects.setObject(id, obj);
+					}
+					await setState(harness, id, { val, q, ack: true });
+				}
 			});
 
 			after(async () => {
@@ -201,9 +225,18 @@ tests.integration(path.join(__dirname, '..'), {
 				expect(days.val).to.be.greaterThan(80);
 			});
 
+			it('korrigiert gespeicherte Qualitaet und markiert verschwundene Felder', async function () {
+				this.timeout(60000);
+				await waitFor('die Qualitaetsmarkierung nach dem Start', async () => {
+					const missing = await getState(harness, `${VEHICLE}.charging.status.chargeType`);
+					const current = await getState(harness, `${VEHICLE}.odometer.mileageInKm`);
+					return missing && missing.val === 'AC' && missing.q === 1 && current && current.q === 0;
+				});
+			});
+
 			it('beantwortet den Verbindungstest der Admin-UI', async function () {
 				this.timeout(60000);
-				const answer = await new Promise((resolve) => harness.sendTo(INSTANCE, 'testConnection', {}, resolve));
+				const answer = await new Promise(resolve => harness.sendTo(INSTANCE, 'testConnection', {}, resolve));
 				expect(answer.error, `Fehler statt Ergebnis: ${answer.error}`).to.equal(undefined);
 				expect(answer.result).to.contain('Verbindung steht');
 				expect(answer.result).to.contain('Enyaq');
@@ -226,9 +259,22 @@ tests.integration(path.join(__dirname, '..'), {
 				expect(enabled.ack).to.equal(true);
 				expect(mock.vehicleState.charging.status.state).to.equal('CHARGING');
 			});
+
+			it('liest den Ist-Zustand mit dem Verifikations-Poll nach', async function () {
+				this.timeout(90000);
+				await waitFor(
+					'den Verifikations-Poll',
+					async () => {
+						const state = await getState(harness, `${VEHICLE}.charging.status.state`);
+						return state && state.val === 'CHARGING' && state.q === 0;
+					},
+					85000,
+				);
+				expect(mock.requests.filter(request => request.method === 'GET')).to.have.length(3);
+			});
 		});
 
-		suite('Neustart mitten im Quota-Fenster', (getHarness) => {
+		suite('Neustart mitten im Quota-Fenster', getHarness => {
 			let harness;
 			let mock;
 			let baseUrl;
@@ -276,7 +322,7 @@ tests.integration(path.join(__dirname, '..'), {
 			});
 		});
 
-		suite('Abgelaufener Schluessel', (getHarness) => {
+		suite('Abgelaufener Schluessel', getHarness => {
 			let harness;
 			let mock;
 			let baseUrl;

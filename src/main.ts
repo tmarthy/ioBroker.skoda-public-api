@@ -191,14 +191,13 @@ class SkodaPublicApi extends utils.Adapter {
 		// Der Verbindungstest darf auch bei ausgeschoepftem Adapter-Budget bewusst auf
 		// Nutzerwunsch laufen. Eine freie Sequenzbuchung sorgt trotzdem dafuer, dass
 		// seine spaete Antwort keinen neueren Quota-Stand ueberschreibt.
-		const quotaPermit = this.quota?.trackRequest();
-		const result = await testConnection(client, vin);
-		if (result.meta) {
-			// Der Test kostet einen Request aus demselben Budget wie das Polling - und
-			// bringt nebenbei das Ablaufdatum des Schluessels mit.
-			this.quota?.recordResponse(result.meta, quotaPermit);
-			await this.keyExpiry?.observe(result.meta);
-		}
+		const watcher = this.keyExpiry;
+		const result = await testConnection(client, vin, Date.now(), {
+			testedKey: apiKey,
+			activeKey: (this.config.apiKey ?? '').trim(),
+			quota: this.quota,
+			onResponse: meta => watcher?.observe(meta),
+		});
 		// Absichtlich ohne den Text: Er nennt Fahrzeugname und Kennzeichen, und die
 		// muessen nicht ins Log, das im Forum landet (E14).
 		this.log.info(result.ok ? 'Verbindungstest erfolgreich.' : `Verbindungstest fehlgeschlagen: ${result.text}`);

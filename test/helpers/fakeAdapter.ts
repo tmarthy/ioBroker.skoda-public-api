@@ -56,6 +56,17 @@ export class FakeAdapter implements StateApi {
 		return Promise.resolve(found ? ({ ...found } as unknown as ioBroker.State) : null);
 	}
 
+	public getStatesAsync(pattern: string): ioBroker.GetStatesPromise {
+		const prefix = pattern.replace(/\*$/, '');
+		return Promise.resolve(
+			Object.fromEntries(
+				[...this.states]
+					.filter(([id]) => id.startsWith(prefix))
+					.map(([id, state]) => [id, { ...state } as unknown as ioBroker.State]),
+			),
+		);
+	}
+
 	/** Nur die Zustaende, ohne die Kanaele - das, was der Nutzer als Werte sieht. */
 	public get stateIds(): string[] {
 		return [...this.objects.entries()].filter(([, obj]) => obj.type === 'state').map(([id]) => id);

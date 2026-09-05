@@ -131,6 +131,8 @@ interface VehicleState {
 	active: boolean;
 	/** Bis wann nach einem Befehl die aktive Kadenz gilt. */
 	commandModeUntil?: number;
+	/** Noch ausstehende Verifikation; bleibt auch waehrend eines laufenden Polls erhalten. */
+	verificationDueAt?: number;
 	/** Wiederholungen des laufenden Fehlers. */
 	attempts: number;
 	/** Erfolgreich gelesene, aber noch nicht vollstaendig geschriebene Antwort. */
@@ -180,6 +182,7 @@ export class PollScheduler {
 	private readonly states = new Map<string, VehicleState>();
 	private running = false;
 	private timer?: TimerHandle;
+	private tickTask?: Promise<number>;
 	private connected?: boolean;
 
 	/**
@@ -242,7 +245,15 @@ export class PollScheduler {
 	 *
 	 * @returns Millisekunden bis zum naechsten faelligen Poll.
 	 */
-	public async tick(): Promise<number> {
+	public tick(): Promise<number> {
+		this.tickTask ??= this.runTick().finally(() => {
+			this.tickTask = undefined;
+		});
+		return this.tickTask;
+	}
+
+	/** Fuehrt hoechstens einen Durchlauf gleichzeitig aus, auch bei vorgezogenen Polls. */
+	private async runTick(): Promise<number> {
 		for (const state of this.states.values()) {
 			if (state.suspended || state.nextDueAt > this.now()) {
 				continue;
@@ -271,6 +282,7 @@ export class PollScheduler {
 		// Ein Befehl aendert den Zustand des Fahrzeugs: Der Backoff eines schlafenden
 		// Autos gilt ab jetzt nicht mehr.
 		state.backoff = 1;
+		state.verificationDueAt = Math.min(state.verificationDueAt ?? Infinity, now + this.intervals.verificationMs);
 		state.nextDueAt = Math.min(state.nextDueAt, now + this.intervals.verificationMs);
 		this.wake();
 	}
@@ -316,6 +328,9 @@ export class PollScheduler {
 			return;
 		}
 
+		if (state.verificationDueAt !== undefined && this.now() >= state.verificationDueAt) {
+			state.verificationDueAt = undefined;
+		}
 		const result = await this.client.getVehicle(state.vin, this.includeFor(state));
 		this.quota.recordResponse(result.meta, permission);
 		this.onResponse?.(result.meta, result.ok ? undefined : result.error);
@@ -385,7 +400,7 @@ export class PollScheduler {
 
 		state.pendingWrite = undefined;
 		const interval = this.intervalFor(state);
-		state.nextDueAt = this.now() + interval;
+		state.nextDueAt = Math.min(this.now() + interval, state.verificationDueAt ?? Infinity);
 		this.log.debug(
 			`Poll fuer ${maskVin(state.vin)}: ${state.active ? 'aktiv' : 'ruhend'}` +
 				`${unchanged ? `, unveraendert (Backoff ${state.backoff})` : ''}, ` +
@@ -590,7 +605,7 @@ export class PollScheduler {
 
 	/** Setzt den Zeitgeber neu, wenn sich die naechste Faelligkeit vorgezogen hat. */
 	private wake(): void {
-		if (!this.running) {
+		if (!this.running || this.tickTask) {
 			return;
 		}
 		if (this.timer !== undefined) {
@@ -606,6 +621,9 @@ export class PollScheduler {
 	 * @param delayMs Wartezeit in Millisekunden.
 	 */
 	private arm(delayMs: number): void {
+		if (this.timer !== undefined) {
+			this.clearTimer(this.timer);
+		}
 		this.timer = this.setTimer(
 			() => {
 				void this.loop();
@@ -621,9 +639,9 @@ export class PollScheduler {
 			return;
 		}
 		try {
-			const delay = await this.tick();
+			await this.tick();
 			if (this.running) {
-				this.arm(delay);
+				this.arm(this.msUntilNextDue());
 			}
 		} catch (error: unknown) {
 			// Ein Fehler hier darf die Schleife nicht anhalten - sonst steht der
