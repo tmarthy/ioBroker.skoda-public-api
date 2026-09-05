@@ -78,7 +78,7 @@ describe('api/sanitize => Maskierung von VIN und Schluessel', () => {
 			const cause = new Error(`connect ECONNREFUSED bei ${VIN}`);
 			const masked = sanitize(new TypeError('fetch failed', { cause }));
 			expect(masked).to.contain('TypeError: fetch failed');
-			expect(masked).to.contain('Ursache:');
+			expect(masked).to.contain('cause:');
 			expect(masked).to.contain(VIN_PLACEHOLDER);
 			expect(masked).to.not.contain(VIN);
 		});
@@ -94,7 +94,7 @@ describe('api/sanitize => Maskierung von VIN und Schluessel', () => {
 			const circular: Record<string, unknown> = {};
 			circular.self = circular;
 			expect(() => sanitize(circular)).to.not.throw();
-			expect(sanitize(circular)).to.equal('[nicht darstellbar]');
+			expect(sanitize(circular)).to.equal('[not printable]');
 		});
 	});
 

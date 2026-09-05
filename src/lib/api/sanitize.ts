@@ -66,7 +66,7 @@ function stringify(value: unknown, depth = 0): string {
 	if (value instanceof Error) {
 		const head = value.message ? `${value.name}: ${value.message}` : value.name;
 		if (value.cause !== undefined && depth < MAX_CAUSE_DEPTH) {
-			return `${head} (Ursache: ${stringify(value.cause, depth + 1)})`;
+			return `${head} (cause: ${stringify(value.cause, depth + 1)})`;
 		}
 		return head;
 	}
@@ -74,9 +74,9 @@ function stringify(value: unknown, depth = 0): string {
 		return String(value);
 	}
 	try {
-		return JSON.stringify(value) ?? '[nicht darstellbar]';
+		return JSON.stringify(value) ?? '[not printable]';
 	} catch {
-		return '[nicht darstellbar]';
+		return '[not printable]';
 	}
 }
 

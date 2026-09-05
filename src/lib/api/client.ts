@@ -261,7 +261,7 @@ export class SkodaApiClient {
 				ok: false,
 				error: unexpectedResponseError(
 					raw.data.status,
-					'Antwort ohne Fahrzeugdaten - kein JSON-Objekt mit "vehicle"',
+					'Response without vehicle data - no JSON object with "vehicle"',
 					this.sanitizer,
 				),
 				meta: raw.meta,

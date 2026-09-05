@@ -236,7 +236,7 @@ describe('api/errors => problem+json als diskriminierte Union', () => {
 		});
 
 		it('meldet eine unbrauchbare Erfolgsantwort als unexpected', () => {
-			const error = unexpectedResponseError(200, 'Antwort ohne Fahrzeugdaten');
+			const error = unexpectedResponseError(200, 'Response without vehicle data');
 			expect(error.kind).to.equal('unexpected');
 			expect(error.status).to.equal(200);
 			expect(error.consumesQuota).to.equal(true);
