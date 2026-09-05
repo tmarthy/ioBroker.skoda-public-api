@@ -155,15 +155,13 @@ serverseitiger Buchung entstehen und zählt deshalb ebenfalls konservativ als ve
 
 ## 6. Offene Umsetzung
 
-### Version 0.1.0 und ioBroker Latest
+### ioBroker Latest
 
-- lokale Übersetzungs- und Rollenkorrekturen pushen
 - neue Objektstruktur aus einer laufenden Instanz exportieren und an
   [`ioBroker.repositories#6592`](https://github.com/ioBroker/ioBroker.repositories/pull/6592)
   anhängen
 - Checker erneut starten und verbleibende Befunde bearbeiten
 - `bluefox` als npm-Owner hinzufügen
-- vorbereiteten Versionsstand `0.1.0` über den Tag-Workflow veröffentlichen
 - manuellen ioBroker-Review bis zur Aufnahme in `latest` begleiten
 
 ### Zusätzliche Schreiboperationen

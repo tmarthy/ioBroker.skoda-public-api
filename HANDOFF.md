@@ -10,12 +10,10 @@ technische Arbeitsgrundlage in
 
 - Das öffentliche Repository ist
   [`tmarthy/ioBroker.skoda-public-api`](https://github.com/tmarthy/ioBroker.skoda-public-api).
-- Auf npm und als GitHub-Release ist Version `0.0.2` veröffentlicht.
-- Der vorbereitete Arbeitsstand trägt Version `0.1.0`. Er umfasst deutsch- und englischsprachige
+- Auf npm und als GitHub-Release ist Version `0.1.0` veröffentlicht. Sie umfasst
+  deutsch- und englischsprachige
   Backend-Texte, Benachrichtigungen, Verbindungstests und Objektnamen sowie korrigierte
   ioBroker-Rollen für String-States.
-- Die Änderungen für `0.1.0` sind implementiert, aber noch nicht vollständig auf
-  `origin/main` veröffentlicht.
 - Der Antrag auf Aufnahme in ioBroker `latest` ist als
   [`ioBroker.repositories#6592`](https://github.com/ioBroker/ioBroker.repositories/pull/6592)
   offen.
@@ -24,20 +22,16 @@ technische Arbeitsgrundlage in
 
 ## Offene Themen in empfohlener Reihenfolge
 
-1. **Lokale Commits pushen.** Danach den schnellen CI-Lauf auf `main` abwarten.
-2. **Neuen Objekt-Export erzeugen und an PR #6592 anhängen.** Der vorhandene Export
+1. **Neuen Objekt-Export erzeugen und an PR #6592 anhängen.** Der vorhandene Export
    enthält elf inzwischen korrigierte Rollenfehler. Anschließend im PR `RE-CHECK!`
    kommentieren.
-3. **`bluefox` als npm-Owner hinzufügen.** `npm owner ls
+2. **`bluefox` als npm-Owner hinzufügen.** `npm owner ls
    iobroker.skoda-public-api` nennt aktuell nur `tmarthy`; dadurch bleibt Checker-Fehler
    `E2001` offen.
-4. **Version `0.1.0` veröffentlichen.** Vor dem Tag die vollständige Testmatrix manuell
-   ausführen, den Release-Commit erstellen und den Tag `v0.1.0` pushen. Der Tag startet
-   Matrix, npm-Publish und GitHub-Release.
-5. **Review von PR #6592 bearbeiten.** `W4001` verschwindet erst mit der Aufnahme in
+3. **Review von PR #6592 bearbeiten.** `W4001` verschwindet erst mit der Aufnahme in
    `latest`. Die Hinweise zu `process.env`, altem Changelog und Compact Mode sind zu
    bewerten, sofern sie im erneuten Check noch erscheinen.
-6. **Schreibzugriffe für Ladelimit, Lademodus und Ladeprofile entwerfen.** Die API und
+4. **Schreibzugriffe für Ladelimit, Lademodus und Ladeprofile entwerfen.** Die API und
    die generierten Typen enthalten diese Operationen bereits; der Adapter spiegelt
    derzeit nur `vehicle.operations` und bietet dafür noch keine schreibbaren States.
 
