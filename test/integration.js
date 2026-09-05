@@ -136,6 +136,7 @@ async function configure(harness) {
 			commandReserve: 6,
 			commandTtl: 10,
 			readParkingPosition: true,
+			backendLanguage: 'de',
 		},
 	});
 	await harness.enableSendTo();
@@ -241,7 +242,8 @@ tests.integration(path.join(__dirname, '..'), {
 					? await harness.objects.getObjectAsync(id)
 					: await harness.objects.getObject(id);
 				expect(obj.common.unit).to.equal('km');
-				expect(obj.common.name).to.contain('kilometers');
+				expect(obj.common.name.en).to.equal('Remaining electric range');
+				expect(obj.common.name.de).to.equal('Verbleibende elektrische Reichweite');
 			});
 
 			it('korrigiert gespeicherte Qualitaet und markiert verschwundene Felder', async function () {

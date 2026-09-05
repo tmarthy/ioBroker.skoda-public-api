@@ -1,8 +1,21 @@
 {
   "common": {
     "name": "skoda-public-api",
-    "version": "0.0.2",
+    "version": "0.1.0",
     "news": {
+      "0.1.0": {
+        "en": "Added German and English backend texts and object names, packaged backend translations, and corrected invalid ioBroker roles for string states",
+        "de": "Deutsche und englische Backend-Texte und Objektnamen ergänzt, Backend-Übersetzungen paketiert und ungültige ioBroker-Rollen für String-States korrigiert",
+        "ru": "Добавлены немецкие и английские тексты бэкенда и имена объектов, переводы включены в пакет, исправлены недопустимые роли ioBroker для строковых состояний",
+        "pt": "Adicionados textos de backend e nomes de objetos em alemão e inglês, traduções incluídas no pacote e funções ioBroker inválidas corrigidas para estados de texto",
+        "nl": "Duitse en Engelse backendteksten en objectnamen toegevoegd, vertalingen verpakt en ongeldige ioBroker-rollen voor tekststatussen gecorrigeerd",
+        "fr": "Ajout des textes du backend et des noms d’objets en allemand et en anglais, inclusion des traductions et correction des rôles ioBroker invalides pour les états texte",
+        "it": "Aggiunti testi backend e nomi degli oggetti in tedesco e inglese, incluse le traduzioni nel pacchetto e corretti i ruoli ioBroker non validi per gli stati di testo",
+        "es": "Añadidos textos del backend y nombres de objetos en alemán e inglés, incluidas las traducciones en el paquete y corregidos los roles de ioBroker no válidos para estados de texto",
+        "pl": "Dodano niemieckie i angielskie teksty backendu oraz nazwy obiektów, dołączono tłumaczenia do pakietu i poprawiono nieprawidłowe role ioBroker dla stanów tekstowych",
+        "uk": "Додано німецькі й англійські тексти бекенду та назви об’єктів, переклади включено до пакета й виправлено недійсні ролі ioBroker для текстових станів",
+        "zh-cn": "新增德语和英语后端文本及对象名称，将后端翻译包含在软件包中，并修正了字符串状态的无效 ioBroker 角色"
+      },
       "0.0.2": {
         "en": "Enabled npm Trusted Publishing for automated releases",
         "de": "npm Trusted Publishing für automatisierte Veröffentlichungen aktiviert",

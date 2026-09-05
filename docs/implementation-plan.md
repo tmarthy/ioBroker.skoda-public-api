@@ -163,7 +163,7 @@ serverseitiger Buchung entstehen und zählt deshalb ebenfalls konservativ als ve
   anhängen
 - Checker erneut starten und verbleibende Befunde bearbeiten
 - `bluefox` als npm-Owner hinzufügen
-- Version `0.1.0` über den Tag-Workflow veröffentlichen
+- vorbereiteten Versionsstand `0.1.0` über den Tag-Workflow veröffentlichen
 - manuellen ioBroker-Review bis zur Aufnahme in `latest` begleiten
 
 ### Zusätzliche Schreiboperationen

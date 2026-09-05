@@ -11,7 +11,7 @@ technische Arbeitsgrundlage in
 - Das öffentliche Repository ist
   [`tmarthy/ioBroker.skoda-public-api`](https://github.com/tmarthy/ioBroker.skoda-public-api).
 - Auf npm und als GitHub-Release ist Version `0.0.2` veröffentlicht.
-- Die nächste Version ist `0.1.0`. Sie umfasst deutsch- und englischsprachige
+- Der vorbereitete Arbeitsstand trägt Version `0.1.0`. Er umfasst deutsch- und englischsprachige
   Backend-Texte, Benachrichtigungen, Verbindungstests und Objektnamen sowie korrigierte
   ioBroker-Rollen für String-States.
 - Die Änderungen für `0.1.0` sind implementiert, aber noch nicht vollständig auf
@@ -32,8 +32,8 @@ technische Arbeitsgrundlage in
    iobroker.skoda-public-api` nennt aktuell nur `tmarthy`; dadurch bleibt Checker-Fehler
    `E2001` offen.
 4. **Version `0.1.0` veröffentlichen.** Vor dem Tag die vollständige Testmatrix manuell
-   ausführen, die Versionsdateien und den Changelog mit `npm run release` aktualisieren
-   und den erzeugten Tag pushen. Der Tag startet Matrix, npm-Publish und GitHub-Release.
+   ausführen, den Release-Commit erstellen und den Tag `v0.1.0` pushen. Der Tag startet
+   Matrix, npm-Publish und GitHub-Release.
 5. **Review von PR #6592 bearbeiten.** `W4001` verschwindet erst mit der Aufnahme in
    `latest`. Die Hinweise zu `process.env`, altem Changelog und Compact Mode sind zu
    bewerten, sofern sie im erneuten Check noch erscheinen.
