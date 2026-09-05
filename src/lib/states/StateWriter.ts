@@ -25,7 +25,7 @@ import { partFromErrorType } from '../api/parts';
 import type { VehicleResponse } from '../api/types';
 import { COMMAND_DEFS, COMMAND_RESULTS, type CommandReport } from './commandDefs';
 import { generatedChannels, generatedStateDefs } from './objectDefs.generated';
-import { displayConversions, resolveCommon } from './objectOverlay';
+import { displayConversions, legacyRoleMigration, resolveCommon } from './objectOverlay';
 import { localizedObjectName } from './objectNames';
 import { translateFallback, translated, type Translate } from '../i18n';
 
@@ -58,9 +58,9 @@ export interface StateApi {
 	getStateAsync(id: string): ioBroker.GetStatePromise;
 	/** Liest bestehende Werte nach einem Neustart, inklusive ihrer Qualitaet. */
 	getStatesAsync(pattern: string): ioBroker.GetStatesPromise;
-	/** Liest vorhandene Metadaten fuer die Migration einer Anzeigeeinheit. */
+	/** Liest vorhandene Metadaten fuer gezielte Objektmigrationen. */
 	getObjectAsync(id: string): ioBroker.GetObjectPromise;
-	/** Aktualisiert gezielt Einheit und Standardbeschreibung bestehender States. */
+	/** Aktualisiert gezielt Metadaten bestehender Objekte. */
 	extendObjectAsync(id: string, obj: ioBroker.PartialObject): ioBroker.SetObjectPromise;
 	/** Der Adapter-Logger, auf zwei Stufen beschraenkt. */
 	log: {
@@ -484,6 +484,7 @@ export class StateWriter {
 				common,
 				native: {},
 			});
+			await this.migrateLegacyRole(id, path, common);
 			await this.migrateStandardName(id, common.name, [generatedStateDefs[path]?.desc ?? path, path]);
 			if (conversion) {
 				const existing = await this.api.getObjectAsync(id);
@@ -503,6 +504,25 @@ export class StateWriter {
 		}
 		// Immer vom API-Wert ausgehen: Ein Neustart darf gespeicherte km/min nicht erneut teilen.
 		await this.writeValue(id, conversion && typeof value === 'number' ? value / conversion.divisor : value);
+	}
+
+	/**
+	 * Aktualisiert nur bekannte, vom Adapter frueher vergebene und zum Typ
+	 * inkompatible Rollen. Werte, native Daten und sonstige Metadaten bleiben erhalten.
+	 *
+	 * @param id Relative Objekt-ID inklusive VIN.
+	 * @param path Punktpfad relativ zur VIN.
+	 * @param common Aktuelle Soll-Metadaten.
+	 */
+	private async migrateLegacyRole(id: string, path: string, common: ioBroker.StateCommon): Promise<void> {
+		const existing = await this.api.getObjectAsync(id);
+		if (!existing || existing.type !== 'state') {
+			return;
+		}
+		const patch = legacyRoleMigration(path, existing.common, common);
+		if (patch) {
+			await this.api.extendObjectAsync(id, { common: patch });
+		}
 	}
 
 	/**

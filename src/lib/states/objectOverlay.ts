@@ -13,8 +13,10 @@ import { localizedObjectName } from './objectNames';
 
 /** Handgepflegte Zusatzangaben zu einem Zustand, die die OpenAPI-Spec nicht hergibt. */
 export interface OverlayEntry {
-	/** ioBroker-Rolle, z.B. `value.battery` oder `sensor.door`. */
+	/** ioBroker-Rolle, z.B. `value.battery` oder `text`. */
 	role?: string;
+	/** Fruehere Adapter-Rollen, die bei bestehenden Objekten ersetzt werden duerfen. */
+	legacyRoles?: readonly string[];
 	/** Anzeigeeinheit, z.B. `%`, `kW` oder `km`. */
 	unit?: string;
 	/** Untere Plausibilitaetsgrenze, von der Admin-UI und VIS ausgewertet. */
@@ -97,7 +99,8 @@ const exactOverlay: Readonly<Record<string, OverlayEntry>> = {
 	renderUrl: { role: 'url' },
 
 	'status.overall.doorsLocked': {
-		role: 'sensor.lock',
+		role: 'text',
+		legacyRoles: ['sensor.lock'],
 		labels: {
 			YES: 'Locked',
 			NO: 'Unlocked',
@@ -107,16 +110,17 @@ const exactOverlay: Readonly<Record<string, OverlayEntry>> = {
 		},
 	},
 	'status.overall.locked': {
-		role: 'sensor.lock',
+		role: 'text',
+		legacyRoles: ['sensor.lock'],
 		labels: { YES: 'Locked', NO: 'Unlocked', UNKNOWN: 'Unknown' },
 	},
-	'status.overall.reliableLockStatus': { role: 'sensor.lock' },
-	'status.overall.doors': { role: 'sensor.door' },
-	'status.overall.windows': { role: 'sensor.window' },
-	'status.overall.lights': { role: 'sensor.light' },
-	'status.detail.sunroof': { role: 'sensor.window' },
-	'status.detail.trunk': { role: 'sensor.door' },
-	'status.detail.bonnet': { role: 'sensor.door' },
+	'status.overall.reliableLockStatus': { role: 'text', legacyRoles: ['sensor.lock'] },
+	'status.overall.doors': { role: 'text', legacyRoles: ['sensor.door'] },
+	'status.overall.windows': { role: 'text', legacyRoles: ['sensor.window'] },
+	'status.overall.lights': { role: 'text', legacyRoles: ['sensor.light'] },
+	'status.detail.sunroof': { role: 'text', legacyRoles: ['sensor.window'] },
+	'status.detail.trunk': { role: 'text', legacyRoles: ['sensor.door'] },
+	'status.detail.bonnet': { role: 'text', legacyRoles: ['sensor.door'] },
 
 	'charging.status.state': {
 		role: 'text',
@@ -153,8 +157,8 @@ const exactOverlay: Readonly<Record<string, OverlayEntry>> = {
 	'airConditioning.airConditioningAtUnlock': { role: 'indicator' },
 	'airConditioning.airConditioningWithoutExternalPower': { role: 'indicator' },
 	'airConditioning.windowHeating.enabled': { role: 'indicator' },
-	'airConditioning.windowHeating.front': { role: 'sensor.heat' },
-	'airConditioning.windowHeating.rear': { role: 'sensor.heat' },
+	'airConditioning.windowHeating.front': { role: 'text', legacyRoles: ['sensor.heat'] },
+	'airConditioning.windowHeating.rear': { role: 'text', legacyRoles: ['sensor.heat'] },
 
 	'parkingPosition.state': {
 		role: 'text',
@@ -246,4 +250,32 @@ export function resolveCommon(path: string, def: GeneratedStateDef): ioBroker.St
 	}
 
 	return common;
+}
+
+/**
+ * Liefert die Metadaten, die fuer ein bestehendes Objekt mit einer frueheren,
+ * typinkompatiblen Adapter-Rolle aktualisiert werden muessen.
+ *
+ * Eigene Rollen der Benutzer und alle anderen `common`-Felder bleiben unberuehrt.
+ *
+ * @param path Punktpfad relativ zum Geraeteknoten.
+ * @param existing Vorhandene State-Metadaten.
+ * @param expected Aktuelle State-Metadaten aus Generat und Overlay.
+ * @returns Eng begrenzter Patch oder `undefined`, falls keine Migration noetig ist.
+ */
+export function legacyRoleMigration(
+	path: string,
+	existing: ioBroker.StateCommon,
+	expected: ioBroker.StateCommon,
+): Partial<ioBroker.StateCommon> | undefined {
+	const legacyRoles = lookupOverlay(path)?.legacyRoles;
+	if (!legacyRoles?.includes(existing.role)) {
+		return undefined;
+	}
+	return {
+		type: expected.type,
+		role: expected.role,
+		read: expected.read,
+		write: expected.write,
+	};
 }

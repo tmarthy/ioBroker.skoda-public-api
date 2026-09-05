@@ -1,6 +1,20 @@
 import { expect } from 'chai';
 import { generatedStateDefs } from './objectDefs.generated';
-import { exactOverlayPaths, resolveCommon } from './objectOverlay';
+import { exactOverlayPaths, legacyRoleMigration, resolveCommon } from './objectOverlay';
+
+const STRING_TEXT_PATHS = [
+	'airConditioning.windowHeating.front',
+	'airConditioning.windowHeating.rear',
+	'status.detail.bonnet',
+	'status.detail.sunroof',
+	'status.detail.trunk',
+	'status.overall.doors',
+	'status.overall.doorsLocked',
+	'status.overall.lights',
+	'status.overall.locked',
+	'status.overall.reliableLockStatus',
+	'status.overall.windows',
+] as const;
 
 describe('objectOverlay => resolveCommon', () => {
 	for (const [path, unit] of [
@@ -57,6 +71,33 @@ describe('objectOverlay => resolveCommon', () => {
 			expect(common.read, path).to.equal(true);
 			expect(common.write, path).to.equal(false);
 		}
+	});
+
+	it('definiert Status-Zeichenketten mit der kompatiblen Rolle text', () => {
+		for (const path of STRING_TEXT_PATHS) {
+			expect(resolveCommon(path, generatedStateDefs[path]), path).to.include({
+				type: 'string',
+				role: 'text',
+				read: true,
+				write: false,
+			});
+		}
+	});
+
+	it('migriert nur die bekannten frueheren Rollen', () => {
+		const expected = resolveCommon('status.detail.bonnet', generatedStateDefs['status.detail.bonnet']);
+		expect(
+			legacyRoleMigration('status.detail.bonnet', { ...expected, role: 'sensor.door' }, expected),
+		).to.deep.equal({
+			type: 'string',
+			role: 'text',
+			read: true,
+			write: false,
+		});
+		expect(legacyRoleMigration('status.detail.bonnet', { ...expected, role: 'custom.role' }, expected)).to.equal(
+			undefined,
+		);
+		expect(legacyRoleMigration('status.detail.bonnet', expected, expected)).to.equal(undefined);
 	});
 
 	it('liefert fuer jeden erzeugten Pfad eine vollstaendige Definition', () => {

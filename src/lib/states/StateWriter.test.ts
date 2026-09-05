@@ -319,6 +319,40 @@ describe('states/StateWriter => Antwort in den Objektbaum', () => {
 			});
 			expect(adapter.objects.get(id)?.common?.name).to.deep.equal({ en: 'State of charge', de: 'Ladestand' });
 		});
+
+		it('korrigiert die Rolle eines bestehenden String-States ohne Wertverlust', async () => {
+			const path = 'status.detail.bonnet';
+			const id = `${VIN}.${path}`;
+			await adapter.setObjectNotExistsAsync(id, {
+				type: 'state',
+				common: {
+					name: 'Bonnet',
+					type: 'string',
+					role: 'sensor.door',
+					read: true,
+					write: false,
+					states: { OPEN: 'Open', CLOSED: 'Closed', UNKNOWN: 'Unknown' },
+				},
+				native: { retained: true },
+			});
+			await adapter.setStateAsync(id, { val: 'CLOSED', ack: true });
+
+			await writer.write(VIN, fixture('idle'));
+
+			expect(adapter.objects.get(id)?.common).to.include({
+				type: 'string',
+				role: 'text',
+				read: true,
+				write: false,
+			});
+			expect(adapter.objects.get(id)?.native).to.deep.equal({ retained: true });
+			expect((adapter.objects.get(id)?.common as ioBroker.StateCommon).states).to.deep.equal({
+				OPEN: 'Open',
+				CLOSED: 'Closed',
+				UNKNOWN: 'Unknown',
+			});
+			expect(adapter.val(id)).to.equal('CLOSED');
+		});
 	});
 
 	describe('Ladeprofile', () => {

@@ -227,6 +227,7 @@ reproduce the official Škoda logo; it is distributed under this project's MIT l
 	### **WORK IN PROGRESS**
 -->
 ### **WORK IN PROGRESS**
+* (Thomas Marthy) fixed ioBroker state roles reported by object structure validation
 * (Thomas Marthy) added German and English backend messages, notifications, connection-test results and object names
 * (Thomas Marthy) ensured compiled code and backend translations are included in the npm package
 
