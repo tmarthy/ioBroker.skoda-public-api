@@ -14,10 +14,11 @@
 
 Read and control Škoda vehicles via the official MyŠkoda Public API.
 
-> **Work in progress — not published yet.** The adapter reads and controls a vehicle
-> and has been run against a real ioBroker instance, but it has not been released to
-> npm or the ioBroker repository. See [HANDOFF.md](HANDOFF.md) for the current state and
-> how to run it against the development mock. The design rationale lives in
+> **Preparing the first public release.** The adapter reads and controls a vehicle
+> and has been run against a real ioBroker instance. Publication to npm and the
+> ioBroker `latest` repository is the current goal and has not happened yet. See
+> [HANDOFF.md](HANDOFF.md) for the current state and how to run it against the
+> development mock. The design rationale lives in
 > [docs/design-decisions.md](docs/design-decisions.md), the roadmap in
 > [docs/implementation-plan.md](docs/implementation-plan.md).
 

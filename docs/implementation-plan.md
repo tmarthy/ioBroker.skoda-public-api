@@ -106,8 +106,9 @@ Aufwand als grobe Größenordnung: **S** = ein Abend, **M** = ein Wochenende,
 | Node-Version | 22 (Minimum; Node 20 ist EOL) |
 | Lizenz | MIT |
 
-Sentry wird von `create-adapter` nicht mehr abgefragt; `@iobroker/plugin-sentry` kommt
-bei Bedarf zur Veröffentlichung von Hand dazu (E14).
+Sentry wird von `create-adapter` nicht mehr abgefragt und ist für den ersten Release
+nicht vorgesehen. Eine spätere Einführung wäre eine eigene Datenschutzentscheidung
+(E14), kein notwendiger Veröffentlichungsschritt.
 
 Danach: `npx @iobroker/dev-server setup`, erster Commit.
 Die beiden `docs/`-Dateien und `spec/skoda-openapi.json` wandern mit ins Repo.
@@ -602,8 +603,8 @@ Eintrag `{"apiKeyExpired":{"count":1}}` im Notification-Zustand des Hosts.
 > **Abweichungen und offene Punkte:**
 > - **Die README ist englisch**, Oberfläche und Logmeldungen sind deutsch. Der Kopf der
 >   README war es von Anfang an, und für ein ioBroker-Repository ist Englisch die
->   Erwartung. Für eine Einreichung (E1) wäre das zu vereinheitlichen — die Entscheidung
->   gehört in Phase 12.
+>   Erwartung. Nutzertexte werden vor der Einreichung auf konsistente Sprache geprüft;
+>   technische Logmeldungen dürfen weiterhin deutsch bleiben.
 > - Der „Developer manual"-Teil aus der Generator-Vorlage ist entfallen; er sagte selbst,
 >   dass er gelöscht werden kann, und stand zwischen Nutzer und Anleitung.
 > - Ein **Disclaimer zu Marke und Logo** ist dazugekommen, wie die Vorlage es verlangt:
@@ -627,12 +628,13 @@ Benachrichtigung bei Ladeende**), Hinweis auf `REDUCED` für Überschussladen,
 Beschreibung von `info.*`, und der Aussage, dass `ack=true` nur die Übergabe an
 die API bedeutet.
 
-### Phase 12 — Release-Vorbereitung · S · **erledigt bis auf die Entscheidung**
+### Phase 12 — Release-Vorbereitung · S · **in Arbeit**
 
 > **Wie geprüft wurde:** Der Adapter-Checker (`@iobroker/repochecker`) arbeitet
-> ausschließlich über die GitHub-API und kommt an ein **privates** Repository nicht
-> heran. Stattdessen wurde sein Regelkatalog lokal ausgewertet und die relevanten
-> Regeln von Hand nachgefahren; `io-package.json` und `admin/jsonConfig.json` sind
+> ausschließlich über die GitHub-API und kommt an das derzeit noch **private**
+> Repository nicht heran. Sein Regelkatalog wurde vorläufig lokal ausgewertet. Nach
+> dem Umschalten auf öffentlich wird der Checker regulär ausgeführt und jeder Fehler
+> vor dem Release behoben; `io-package.json` und `admin/jsonConfig.json` sind bereits
 > zusätzlich gegen die offiziellen JSON-Schemata validiert.
 >
 > **Gefunden und behoben:**
@@ -646,15 +648,15 @@ die API bedeutet.
 > - `adapter-tests` hat jetzt `needs: check-and-lint` (`S3014`). Das spart nebenbei
 >   Actions-Minuten: Scheitert die Prüfung, starten die teuren Testläufe gar nicht.
 >
-> **Bewusst offen:** `W3027` — die OS-Matrix ist auf Ubuntu reduziert. Windows und
-> macOS laufen beim Release-Tag, also genau dann, wenn ein Plattformunterschied Folgen
-> hätte. Der Grund steht in Abschnitt „Stand der CI" der HANDOFF: mit der vollen
-> Matrix kostet ein Push 385 abgerechnete Minuten.
+> **Noch offen:** `W3027` — vor dem Release wird die vollständige OS-Matrix ausgeführt
+> und die Workflow-Matrix checker-konform gemacht, falls der aktuelle Checker die
+> dynamische Auswahl weiterhin beanstandet.
 
 
 `@alcalzone/release-script`, Übersetzungen mit `@iobroker/adapter-dev translate`
-(DE/EN von Hand, Rest maschinell), Adapter-Checker durchlaufen lassen,
-Entscheidung über die Einreichung ins offizielle Repo (E1).
+(DE/EN von Hand, Rest maschinell), Adapter-Checker durchlaufen lassen, erstes Paket
+auf npm veröffentlichen und die Aufnahme in das offizielle Repository `latest`
+beantragen (E1). `stable` folgt erst nach öffentlichem Test und Rückmeldungen.
 
 ---
 

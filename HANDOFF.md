@@ -126,7 +126,7 @@ Minuten. Kein Test gegen das echte Fahrzeug und keine Installation auf der Produ
 | 9 | Schlüsselablauf und Notifications | **fertig** |
 | 10 | Tests und CI vervollständigen | **fertig** |
 | 11 | Beispielskript und Dokumentation | **fertig** |
-| 12 | Release-Vorbereitung | **fertig** — Entscheidung aus E1: bleibt privat |
+| 12 | Release-Vorbereitung | **wieder geöffnet** — Veröffentlichung beschlossen |
 
 Historischer vollständig grüner Lauf vor den Review-Korrekturen (2026-09-04):
 
@@ -141,18 +141,17 @@ npm run check:spec       eingecheckte Spec deckungsgleich mit der Live-API
 npm run codegen          reproduzierbar (identische Prüfsummen bei erneutem Lauf)
 ```
 
-Elf Commits auf `main`, gepusht nach
-`https://github.com/tmarthy/ioBroker.skoda-public-api` (**privat**).
-Nichts ist auf npm veröffentlicht; der Deploy-Job im Release-Workflow ist
-auskommentiert, wie `create-adapter` ihn ausliefert.
+`main` ist nach `https://github.com/tmarthy/ioBroker.skoda-public-api` gepusht. Das
+Repository ist derzeit noch privat und das Paket noch nicht auf npm veröffentlicht;
+beides sind jetzt offene Veröffentlichungsschritte. Der Deploy-Job im
+Release-Workflow ist bis zur Einrichtung von npm Trusted Publishing auskommentiert.
 
 ### Stand der CI
 
-Vier Workflows. **Seit dem 2026-09-04 startet GitHub keine Jobs mehr**: „recent account
-payments have failed or your spending limit needs to be increased". Kein Job hat dabei
-auch nur einen Schritt ausgeführt — es ist kein Fehler am Code. Bis das geklärt ist,
-gilt der lokale Lauf als Nachweis (`npm run check`, `lint`, `test`, `test:integration`,
-`build`).
+Vier Workflows. Die frühere Abrechnungssperre ist behoben. Der zuletzt geprüfte Lauf
+für Commit `15550e7` war vollständig grün: Check und Lint sowie Adaptertests auf
+Ubuntu mit Node 22 und 24. Vor dem Release wird zusätzlich die vollständige
+Plattformmatrix ausgeführt.
 
 **Die Matrix ist gestaffelt, und zwar aus Kostengründen.** GitHub rechnet Linux
 einfach, Windows doppelt und **macOS zehnfach** ab. Mit der vollen Matrix kostete ein
@@ -176,7 +175,7 @@ Versehen.
 | `Test and Release` | Push auf `main`, Tags, PRs, `workflow_dispatch` | ✓ Ubuntu × Node 22/24; volle Matrix nur bei Tags oder auf Zuruf |
 | `Check Škoda API spec` | **nur** `schedule` (Mo 05:17 UTC) und `workflow_dispatch` | ✓ manuell geprüft, „Spec unveraendert" |
 | `Auto-Merge Dependabot PRs` | `pull_request_target` | noch nie gelaufen — wartet auf den ersten Dependabot-PR (monatlich am 21.) |
-| Deploy | Tag `v*` | auskommentiert, bis ein `NPM_TOKEN` hinterlegt ist |
+| Deploy | Tag `v*` | auskommentiert, bis npm Trusted Publishing eingerichtet ist |
 
 **Der Spec-Wächter läuft bei einem Push nicht mit.** Wer ihn nach einer Änderung
 prüfen will, muss ihn von Hand auslösen: Actions → *Check Škoda API spec* →
@@ -262,8 +261,8 @@ des QuotaManagers greift.
 
 ### Auf dem Produktivsystem installieren
 
-Das Repository ist **privat**, `iob url https://github.com/...` scheitert also an der
-Anmeldung. Und ein GitHub-*Tarball* (der ZIP-Download) enthält **kein `build/`**, weil
+Solange das Repository noch **privat** ist, scheitert `iob url https://github.com/...`
+an der Anmeldung. Ein GitHub-*Tarball* (der ZIP-Download) enthält außerdem **kein `build/`**, weil
 `prepare` dabei nicht läuft (Fallstrick 7). Was funktioniert, ist ein selbst gepacktes
 Paket: `npm pack` führt `prepare` aus, das Kompilat liegt also im Archiv — nachgemessen
 195 kB mit `build/main.js`, `io-package.json` und `admin/`.
@@ -583,14 +582,19 @@ zweites Mal hineinläuft oder eine Korrektur versehentlich zurückdreht.
 
 ## 7. Der nächste Schritt
 
-**Alle zwölf Phasen sind abgearbeitet, und die Entscheidung aus E1 ist gefallen: Der
-Adapter bleibt privat.** Keine Einreichung, keine npm-Veröffentlichung, kein Sentry.
-Was das im Einzelnen bedeutet, steht bei E1 in `docs/design-decisions.md`; die
-Entscheidung ist umkehrbar, und was dann zu tun wäre, steht ebendort.
+**Die Entscheidung aus E1 ist geändert: Der Adapter wird veröffentlicht.** Phase 12
+ist deshalb wieder geöffnet. Ziel ist zuerst npm und das offizielle ioBroker-Repository
+`latest`; `stable` folgt nach einer öffentlichen Testphase. Sentry ist für den ersten
+Release nicht vorgesehen.
 
-Damit ist der nächste Schritt kein Code mehr, sondern **Betrieb**: den Adapter auf der
-Debian-VM laufen lassen und ein paar Tage am echten Fahrzeug beobachten. Alles bisher
-Gemessene stammt vom Mock oder aus vier Aufnahmen.
+Der nächste konkrete Schritt ist, das GitHub-Repository öffentlich zu machen und seine
+Beschreibung, Topics, README-Verweise und Bildrechte releasefähig zu klären. Danach
+folgen der reguläre Adapter-Checker, dessen Befunde, die vollständige CI-Matrix, der
+erste npm-Publish samt `bluefox` als Owner und der Antrag für `latest`.
+
+Parallel bleibt der Betrieb auf der Debian-VM wichtig: Der Adapter sollte einige Tage
+am echten Fahrzeug beobachtet werden. Alles bisher systematisch Gemessene stammt vom
+Mock oder aus vier Aufnahmen.
 
 Worauf dabei zu achten ist — in dieser Reihenfolge, weil hier die Annahmen stecken:
 

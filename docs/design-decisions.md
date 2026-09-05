@@ -30,25 +30,21 @@ Schreib-States angeboten.
 
 ## Entscheidungen
 
-### E1 — Qualitätsniveau: repo-tauglich bauen, Veröffentlichung offen
+### E1 — Qualitätsniveau: Veröffentlichung über npm und ioBroker Latest
 Aufsetzen mit `@iobroker/create-adapter`, saubere `io-package.json`, JSON Config,
-Tests, CI. Die Entscheidung über die Einreichung ins offizielle Repo fällt später.
+Tests und CI. Ziel ist die Veröffentlichung auf npm und anschließend die Aufnahme in
+das offizielle ioBroker-Repository `latest`. `stable` folgt nach öffentlichem Test und
+Nutzerfeedback.
 **Begründung:** Die Kosten des Gerüsts fallen einmalig am Anfang an; Nachrüsten ist
 deutlich teurer.
 
-> **Entschieden am 2026-09-04 (nach Phase 12): Der Adapter bleibt privat.**
-> Keine Einreichung, keine npm-Veröffentlichung, kein Sentry. Was daraus folgt:
-> - Die gemischte Sprache bleibt: Logmeldungen, Notification-Texte und der
->   Verbindungstest sind deutsch, README und Admin-Labels englisch. Für den
->   Eigenbetrieb ist das stimmig.
-> - Der `deploy`-Job im Workflow bleibt auskommentiert.
-> - `W3027` des Adapter-Checkers (reduzierte OS-Matrix) bleibt bewusst stehen —
->   Windows und macOS laufen nur beim Release-Tag, weil ein Push mit voller Matrix
->   385 abgerechnete Actions-Minuten kostet.
->
-> Das Gerüst aus E1 war trotzdem richtig: Ohne Tests und CI wäre keine der zwölf
-> Phasen belastbar gewesen. Die Entscheidung ist umkehrbar — was für eine spätere
-> Einreichung zu tun wäre, steht in HANDOFF.md, Abschnitt 7.
+> **Neu entschieden am 2026-09-05: Der Adapter wird veröffentlicht.**
+> Die frühere Privatentscheidung vom 2026-09-04 ist aufgehoben. Vor dem ersten Release
+> werden Repository-Metadaten und Adapter-Checker bereinigt, die vollständige
+> Plattformmatrix ausgeführt und die npm-Veröffentlichung vorbereitet. Der erste
+> ioBroker-Schritt ist `latest`; `stable` wird nicht ohne öffentliche Testphase
+> beantragt. Sentry bleibt eine optionale, unabhängige Funktion und ist für den ersten
+> Release nicht vorgesehen.
 
 ### E2 — Name: `ioBroker.skoda-public-api`
 npm-Paket `iobroker.skoda-public-api`. Bindestrich statt Unterstrich (Konvention:
@@ -180,7 +176,8 @@ Meldung, bevor sie das Modul verlässt. Nie eine Fehlermeldung aus einer rohen U
 Zusammen mit `formattedAddress` ergäbe das die Heimatadresse im Klartext.
 Parkposition standardmäßig **an**; abschaltbar, und dann via `include` gar nicht
 erst angefordert.
-Sentry: vorbereitet, aber erst zur Veröffentlichung scharfgeschaltet.
+Sentry ist optional und für den ersten Release nicht vorgesehen. Datenschutzrelevante
+Fehlertelemetrie wird nicht allein wegen der Veröffentlichung aktiviert.
 
 ### E15 — Retries differenziert nach Fehlertyp
 Siehe Tabelle in `implementation-plan.md`, Abschnitt "Fehlerbehandlung".
