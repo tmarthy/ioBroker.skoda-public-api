@@ -652,6 +652,9 @@ die API bedeutet.
 > Requests führen in einem getrennten Job nur die Mindestprüfung mit Ubuntu und Node 22
 > aus. Dadurch bleibt `E3027` behoben, ohne jeden Commit durch sechs Kombinationen zu
 > verzögern. Der Deploy-Job ist für npm Trusted Publishing definiert.
+> Er ist zusätzlich über die Repository-Variable `NPM_TRUSTED_PUBLISHING` gesichert,
+> damit die einmalige manuelle Erstveröffentlichung und der erste Tag keinen
+> unkonfigurierten oder doppelten npm-Publish auslösen.
 >
 > **Repochecker 5.20.14 am 2026-09-05:** Alle lokal behebbaren Fehler sind beseitigt.
 > Offen bleiben erwartungsgemäß `E2000` (noch nicht auf npm), `E3032` (noch kein

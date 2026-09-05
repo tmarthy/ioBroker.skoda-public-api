@@ -171,7 +171,7 @@ von sechs Stunden und bindet unnötig einen Runner.
 | `Test and Release` | Push auf `main`, Tags, PRs, `workflow_dispatch` | schnell bei Push/PR; vollständige Matrix bei Tag oder manuellem Lauf |
 | `Check Škoda API spec` | **nur** `schedule` (Mo 05:17 UTC) und `workflow_dispatch` | ✓ manuell geprüft, „Spec unveraendert" |
 | `Auto-Merge Dependabot PRs` | `pull_request_target` | noch nie gelaufen — wartet auf den ersten Dependabot-PR; npm am 8., Actions am 22. jedes Monats |
-| Deploy | Tag `v*` | definiert; Veröffentlichung funktioniert nach Einrichtung von npm Trusted Publishing |
+| Deploy | Tag `v*` | definiert; läuft nach Einrichtung von npm Trusted Publishing und Freigabe über `NPM_TRUSTED_PUBLISHING=true` |
 
 **Der Spec-Wächter läuft bei einem Push nicht mit.** Wer ihn nach einer Änderung
 prüfen will, muss ihn von Hand auslösen: Actions → *Check Škoda API spec* →
