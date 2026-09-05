@@ -3,6 +3,7 @@ import { DEFAULT_API_KEY, DEFAULT_VIN, MockSkodaApi } from '../../test/mock/serv
 import { SkodaApiClient } from './api/client';
 import { normalizeVin, pickTestTarget, testConnection } from './connectionTest';
 import { QuotaManager } from './quota/QuotaManager';
+import { quotaForVehicle } from './quota/VehicleQuotaManager';
 
 describe('connectionTest => ein Request, ein verstaendlicher Satz', () => {
 	let clock: number;
@@ -51,7 +52,7 @@ describe('connectionTest => ein Request, ein verstaendlicher Satz', () => {
 					{
 						testedKey,
 						activeKey: DEFAULT_API_KEY,
-						quota,
+						quota: quotaForVehicle(DEFAULT_VIN, quota),
 						onResponse: () => {
 							observed++;
 						},

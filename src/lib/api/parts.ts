@@ -29,6 +29,7 @@ const PART_ERROR_PREFIX: Readonly<Record<Exclude<VehiclePart, 'info'>, string>> 
 	activeVentilation: 'ACTIVE_VENTILATION',
 	charging: 'CHARGING',
 	chargingProfiles: 'CHARGING_PROFILES',
+	operations: 'OPERATIONS',
 };
 
 /** Der Fehlertyp, den die API meldet, wenn das Render-Bild fehlt. */
@@ -42,6 +43,9 @@ export const RENDER_UNAVAILABLE = 'RENDER_UNAVAILABLE';
  * @returns Der Fehlertyp, z.B. `CHARGING_UNAVAILABLE`.
  */
 export function partErrorType(part: Exclude<VehiclePart, 'info'>, kind: PartErrorKind): string {
+	if (part === 'operations') {
+		return 'OPERATIONS_UNAVAILABLE';
+	}
 	return `${PART_ERROR_PREFIX[part]}_${kind}`;
 }
 
@@ -53,6 +57,9 @@ export function partErrorType(part: Exclude<VehiclePart, 'info'>, kind: PartErro
  */
 export function partFromErrorType(errorType: string): Exclude<VehiclePart, 'info'> | undefined {
 	for (const [part, prefix] of Object.entries(PART_ERROR_PREFIX)) {
+		if (part === 'operations' && errorType === 'OPERATIONS_UNAVAILABLE') {
+			return part;
+		}
 		for (const kind of ['UNSUPPORTED', 'DISABLED', 'UNAVAILABLE'] as const) {
 			if (errorType === `${prefix}_${kind}`) {
 				return part as Exclude<VehiclePart, 'info'>;

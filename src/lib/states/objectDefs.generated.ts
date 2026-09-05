@@ -420,6 +420,11 @@ export const generatedStateDefs: Record<string, GeneratedStateDef> = {
 		"format": "int64",
 		"desc": "Current mileage of the vehicle in kilometers."
 	},
+	"operations": {
+		"type": "string",
+		"arrayOf": "VehicleOperation",
+		"desc": "Remote operations the vehicle supports, derived from the vehicle's capabilities. An operation is listed when the vehicle supports it; it may still be temporaril"
+	},
 	"parkingPosition.formattedAddress": {
 		"type": "string",
 		"desc": "Formatted address of the vehicle parking position: Street, House Number, Zip Code, City, Country. Only present when `state` is `PARKED`, and omitted when the ad"

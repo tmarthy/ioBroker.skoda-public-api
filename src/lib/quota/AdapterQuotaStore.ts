@@ -1,5 +1,5 @@
 /**
- * Ablage des Quota-Zustands in `info.rateLimit.*`.
+ * Ablage des Quota-Zustands in `<VIN>.rateLimit.*`.
  *
  * Damit ueberlebt das Budget einen Neustart des Adapters. Ohne diese Ablage startet
  * jede Instanz mit der Annahme, sie habe 20 Requests frei - und eine Instanz in
@@ -21,8 +21,17 @@ export interface QuotaStateApi {
 	setStateChangedAsync(id: string, state: ioBroker.SettableState): ioBroker.SetStateChangedPromise;
 }
 
-/** Kanal, unter dem die vier Zustaende liegen. */
-export const QUOTA_CHANNEL = 'info.rateLimit';
+/**
+ * Kanal, unter dem die vier Zustaende eines Fahrzeugs liegen.
+ *
+ * @param vin Fahrzeug des Buckets.
+ */
+export function quotaChannel(vin: string): string {
+	return `${vin}.rateLimit`;
+}
+
+/** Alter instanzweiter Ablageort; nur als konservativer Upgrade-Fallback gelesen. */
+export const LEGACY_QUOTA_CHANNEL = 'info.rateLimit';
 
 /** Die vier Zustaende und ihr `common`. */
 const FIELDS: ReadonlyArray<readonly [keyof PersistedQuota, ioBroker.StateCommon]> = [
@@ -38,13 +47,16 @@ const FIELDS: ReadonlyArray<readonly [keyof PersistedQuota, ioBroker.StateCommon
 /** Legt die Ablage in den Zustandsbaum des Adapters. */
 export class AdapterQuotaStore implements QuotaStore {
 	private readonly api: QuotaStateApi;
+	private readonly channel: string;
 	private objectsReady = false;
 
 	/**
 	 * @param api Der Ausschnitt der Adapter-Schnittstelle, in den geschrieben wird.
+	 * @param vin Fahrzeug, dessen Bucket gespeichert wird.
 	 */
-	public constructor(api: QuotaStateApi) {
+	public constructor(api: QuotaStateApi, vin: string) {
 		this.api = api;
+		this.channel = quotaChannel(vin);
 	}
 
 	/**
@@ -57,9 +69,19 @@ export class AdapterQuotaStore implements QuotaStore {
 	 */
 	public async load(): Promise<PersistedQuota | undefined> {
 		await this.ensureObjects();
+		return (await this.read(this.channel)) ?? this.read(LEGACY_QUOTA_CHANNEL);
+	}
+
+	/**
+	 * Liest einen vollstaendigen Bucket von einem bestimmten Kanal.
+	 *
+	 * @param channel Relativer ioBroker-Kanal.
+	 * @returns Vollstaendiger Stand oder undefined.
+	 */
+	private async read(channel: string): Promise<PersistedQuota | undefined> {
 		const values: Partial<PersistedQuota> = {};
 		for (const [field] of FIELDS) {
-			const state = await this.api.getStateAsync(`${QUOTA_CHANNEL}.${field}`);
+			const state = await this.api.getStateAsync(`${channel}.${field}`);
 			if (typeof state?.val !== 'number' || !Number.isFinite(state.val)) {
 				return undefined;
 			}
@@ -76,7 +98,7 @@ export class AdapterQuotaStore implements QuotaStore {
 	public async save(state: PersistedQuota): Promise<void> {
 		await this.ensureObjects();
 		for (const [field] of FIELDS) {
-			await this.api.setStateChangedAsync(`${QUOTA_CHANNEL}.${field}`, { val: state[field], ack: true });
+			await this.api.setStateChangedAsync(`${this.channel}.${field}`, { val: state[field], ack: true });
 		}
 	}
 
@@ -86,13 +108,13 @@ export class AdapterQuotaStore implements QuotaStore {
 			return;
 		}
 		this.objectsReady = true;
-		await this.api.setObjectNotExistsAsync(QUOTA_CHANNEL, {
+		await this.api.setObjectNotExistsAsync(this.channel, {
 			type: 'channel',
-			common: { name: 'API rate limit' },
+			common: { name: 'API rate limit for this vehicle' },
 			native: {},
 		});
 		for (const [field, common] of FIELDS) {
-			await this.api.setObjectNotExistsAsync(`${QUOTA_CHANNEL}.${field}`, {
+			await this.api.setObjectNotExistsAsync(`${this.channel}.${field}`, {
 				type: 'state',
 				common,
 				native: {},

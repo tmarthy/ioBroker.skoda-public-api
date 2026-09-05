@@ -19,7 +19,7 @@
 	"Requests reserved for commands": "为命令保留的请求",
 	"S-PIN (auxiliary heating only)": "S-PIN（仅辅助加热）",
 	"Test connection": "测试连接",
-	"The API allows 20 requests per hour and key. A command costs two of them, because the result only shows up in the next poll.": "该 API 允许每小时和密钥 20 个请求。一个命令需要花费两个时间，因为结果只会在下一次轮询中显示。",
+	"The API allows 20 requests per hour and VIN. A command costs two of them, because the result only shows up in the next poll.": "该 API 允许每个 VIN 每小时 20 个请求。一个命令需要两个请求，因为结果只会在下一次轮询中显示。",
 	"The API offers no vehicle list - every VIN has to be entered by hand.": "API 不提供车辆列表 - 每个 VIN 都必须手动输入。",
 	"VIN": "车架号",
 	"Vehicles": "车辆",

@@ -7,7 +7,7 @@ import { CommandQueue } from './lib/commands/CommandQueue';
 import { readConfig } from './lib/config';
 import { pickTestTarget, testConnection } from './lib/connectionTest';
 import { AdapterQuotaStore } from './lib/quota/AdapterQuotaStore';
-import { QuotaManager } from './lib/quota/QuotaManager';
+import { VehicleQuotaManager } from './lib/quota/VehicleQuotaManager';
 import { KeyExpiryWatcher } from './lib/notifications/keyExpiry';
 import { PollScheduler } from './lib/scheduler/PollScheduler';
 import { StateWriter } from './lib/states/StateWriter';
@@ -17,13 +17,13 @@ import { StateWriter } from './lib/states/StateWriter';
  * vier Schichten zusammen und startet die Schleife.
  *
  * Die Reihenfolge ist keine Geschmacksfrage. Der QuotaManager muss seinen Zustand aus
- * `info.rateLimit.*` zurueckgeholt haben, **bevor** der erste Poll hinausgeht - sonst
+ * `<vin>.rateLimit.*` zurueckgeholt haben, **bevor** der erste Poll hinausgeht - sonst
  * glaubt eine Instanz in Neustartschleife jedes Mal, sie habe 20 Requests frei.
  */
 class SkodaPublicApi extends utils.Adapter {
 	private scheduler?: PollScheduler;
 	private queue?: CommandQueue;
-	private quota?: QuotaManager;
+	private quota?: VehicleQuotaManager;
 	private keyExpiry?: KeyExpiryWatcher;
 
 	public constructor(options: Partial<utils.AdapterOptions> = {}) {
@@ -57,9 +57,10 @@ class SkodaPublicApi extends utils.Adapter {
 			secrets: settings.spin ? [settings.spin] : [],
 		});
 
-		const quota = new QuotaManager({
+		const quota = new VehicleQuotaManager({
+			vins: settings.vins,
 			commandReserve: settings.commandReserve,
-			store: new AdapterQuotaStore(this),
+			storeForVin: vin => new AdapterQuotaStore(this, vin),
 			onStoreError: error => this.log.warn(`Quota-Stand konnte nicht gespeichert werden: ${String(error)}`),
 		});
 		await quota.start();
@@ -136,7 +137,7 @@ class SkodaPublicApi extends utils.Adapter {
 
 		this.log.info(
 			`${settings.vins.length} Fahrzeug(e), Kadenz ${settings.idleMs / 60_000}/${settings.activeMs / 60_000} min, ` +
-				`Befehlsreserve ${settings.commandReserve} von 20 Requests pro Stunde.`,
+				`Befehlsreserve ${settings.commandReserve} von 20 Requests pro Stunde und Fahrzeug.`,
 		);
 		if (!settings.readParkingPosition) {
 			this.log.info('Parkposition ist abgeschaltet - sie wird gar nicht erst angefordert.');

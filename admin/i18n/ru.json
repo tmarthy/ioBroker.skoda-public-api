@@ -19,7 +19,7 @@
 	"Requests reserved for commands": "Запросы, зарезервированные для команд",
 	"S-PIN (auxiliary heating only)": "S-PIN (только дополнительный нагрев)",
 	"Test connection": "Тестовое соединение",
-	"The API allows 20 requests per hour and key. A command costs two of them, because the result only shows up in the next poll.": "API допускает 20 запросов в час и ключ. Команда стоит два из них, потому что результат появляется только в следующем опросе.",
+	"The API allows 20 requests per hour and VIN. A command costs two of them, because the result only shows up in the next poll.": "API допускает 20 запросов в час для каждого VIN. Команда стоит два из них, потому что результат появляется только в следующем опросе.",
 	"The API offers no vehicle list - every VIN has to be entered by hand.": "API не предлагает списка транспортных средств — каждый VIN необходимо вводить вручную.",
 	"VIN": "ВИН",
 	"Vehicles": "Транспортные средства",

@@ -19,7 +19,7 @@
 	"Requests reserved for commands": "Solicitudes reservadas para comandos.",
 	"S-PIN (auxiliary heating only)": "S-PIN (solo calefacción auxiliar)",
 	"Test connection": "Conexión de prueba",
-	"The API allows 20 requests per hour and key. A command costs two of them, because the result only shows up in the next poll.": "La API permite 20 solicitudes por hora y clave. Un mando cuesta dos, porque el resultado sólo aparece en la siguiente encuesta.",
+	"The API allows 20 requests per hour and VIN. A command costs two of them, because the result only shows up in the next poll.": "La API permite 20 solicitudes por hora y VIN. Un mando cuesta dos, porque el resultado sólo aparece en la siguiente encuesta.",
 	"The API offers no vehicle list - every VIN has to be entered by hand.": "La API no ofrece una lista de vehículos: cada VIN debe ingresarse a mano.",
 	"VIN": "Número de bastidor",
 	"Vehicles": "Vehículos",

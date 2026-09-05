@@ -1,8 +1,8 @@
 # Handoff — ioBroker.skoda-public-api
 
-**Stand: 2026-09-05, Anzeigeeinheiten nach dem Review-Commit `6eb228a`.**
-Der zuletzt dokumentierte CI-Stand ist weiterhin die Abrechnungssperre aus Abschnitt 2;
-er wurde beim Review nicht erneut auf GitHub geprüft.
+**Stand: 2026-09-05, Live-Spec aktualisiert und Quota pro VIN umgesetzt.**
+Der letzte GitHub-Lauf für Commit `15550e7` war vollständig grün; die hier beschriebenen
+noch nicht eingecheckten Änderungen sind lokal geprüft.
 Der Adapter liest, steuert und meldet den Ablauf seines Schlüssels; die Admin-UI ist vollständig. Der Lebenslauf einer Instanz — Poll, Objektbaum, Befehl, Verbindungstest, Neustart mitten im Quota-Fenster, abgelaufener Schlüssel — läuft seit Phase 10 als Integrationstest gegen den Mock, in einer echten ioBroker-Instanz. Diese Datei ist der Einstieg für jeden, der die
 Arbeit übernimmt oder nach einer Pause wieder aufnimmt. Sie beschreibt, wo das Projekt
 steht, was als Nächstes ansteht und welche Fallstricke bereits bekannt sind.
@@ -23,7 +23,7 @@ Ein ioBroker-Adapter für die **offizielle MyŠkoda Public API**, der einen Ško
 ausliest und steuert. Nicht zu verwechseln mit `iobroker.vw-connect`, das dieselben
 Fahrzeuge über die reverse-engineerte App-Schnittstelle anspricht.
 
-**Die eine Zahl, die alles bestimmt: 20 Requests pro Stunde und API-Schlüssel.**
+**Die eine Zahl, die alles bestimmt: 20 Requests pro Stunde und VIN.**
 Wer das vergisst, entwirft am Problem vorbei. Ein Poll alle drei Minuten verbraucht das
 gesamte Budget; ein Befehl kostet realistisch zwei bis drei Requests, weil der POST mit
 `202 Accepted` antwortet und es keinen Endpunkt gibt, der den Ausgang meldet.
@@ -34,18 +34,35 @@ Weitere Randbedingungen, die man kennen muss, bevor man Code schreibt:
 |---|---|
 | Authentifizierung | statischer `X-API-Key` aus der MyŠkoda-App, mit Ablaufdatum |
 | Lese-Endpunkte | genau einer: `GET /api/v1/vehicles/{vin}` |
-| Schreib-Endpunkte | 8 POSTs (Laden, Klima, Standheizung, Lüftung — je start/stop) |
+| Schreib-Endpunkte | 8 POSTs (Laden, Klima, Standheizung, Lüftung — je start/stop) plus 3 PUTs für Ladelimit, Lademodus und Ladeprofile |
 | Quota-Verbrauch | alle Antworten **außer** 401, 403, 429 |
 | Fahrzeugliste | **existiert nicht** — die VIN wird konfiguriert, nicht entdeckt |
 | Push/Webhooks | keine |
 | Spec-Version | `v0`, laut Dokumentation ausdrücklich änderbar |
 
 Nicht möglich, weil die API es nicht anbietet: Ver-/Entriegeln, Hupe, Ladestrom setzen,
-Ziel-SoC setzen, Ladeprofile ändern, Schlüssel automatisch erneuern.
+Schlüssel automatisch erneuern. Ziel-SoC, Lademodus und Ladeprofile bietet die API
+inzwischen an; der Adapter exponiert diese drei neuen Schreiboperationen noch nicht.
 
 ---
 
 ## 2. Wo das Projekt steht
+
+### Live-Spec und Quota pro VIN vom 2026-09-05
+
+- Die eingecheckte OpenAPI-Spec entspricht wieder der Live-Spec. Neu sind
+  `vehicle.operations` sowie PUT-Endpunkte für Ladelimit, Lademodus und Ladeprofile.
+- `operations` wird als Antwortteil erkannt und als JSON-State gespiegelt. Die drei
+  neuen Schreiboperationen sind für eine spätere, eigene Bedienoberfläche typisiert,
+  aber noch nicht als schreibbare States exponiert.
+- Die API begrenzt 20 Requests pro Stunde **je VIN**. `VehicleQuotaManager` hält daher
+  einen vollständig getrennten `QuotaManager` pro Fahrzeug. Scheduler, CommandQueue
+  und Verbindungstest buchen immer im Bucket der angefragten VIN.
+- Persistenz liegt unter `<vin>.rateLimit.*`. Beim ersten Update wird ein vorhandener
+  alter Stand aus `info.rateLimit.*` als konservativer Fallback gelesen.
+
+**Lokal geprüft (Node 26.7.0):** Typprüfung, Lint, Build und Live-Spec-Abgleich
+erfolgreich; **354 Unit-Tests**, **57 Pakettests** und **10 Integrationstests** bestanden.
 
 ### Lesbare Anzeigeeinheiten vom 2026-09-05
 
@@ -64,7 +81,7 @@ Ziel-SoC setzen, Ladeprofile ändern, Schlüssel automatisch erneuern.
   umgerechnet. README und E7 beschreiben diese bewusste Ausnahme vom 1:1-Spiegel.
 
 **Lokal geprüft (Node 26.7.0):** Typprüfung, Lint und Build erfolgreich;
-**352 Unit-Tests**, **57 Pakettests** und **10 Integrationstests** bestanden.
+**354 Unit-Tests**, **57 Pakettests** und **10 Integrationstests** bestanden.
 Der Integrationstest enthält die Migration eines bestehenden Reichweiten-States
 von `352000 m` auf `352 km`. Noch keine Installation auf der Produktiv-VM.
 
@@ -237,7 +254,7 @@ npm install ../../iobroker.skoda-public-api-0.0.1.tgz
 ```
 
 Danach im Admin den Schlüssel eintragen, speichern, Instanz starten. Beobachtet wurden:
-`info.connection = true`, der volle Objektbaum unter der VIN, `info.rateLimit.*` mit
+`info.connection = true`, der volle Objektbaum unter der VIN, `<vin>.rateLimit.*` mit
 dem gebuchten Budget, ein Befehl über `charging.enabled` mit `info.lastCommand.result
 = SENT` und dem Verifikations-Poll 60 Sekunden später (`charging.status.state` springt
 auf `CHARGING`) — und nach einem Neustart **kein** sofortiger Poll, weil die Sperrfrist
@@ -422,7 +439,7 @@ Client direkt auf.
          +--------------------------------------------+
          |  PollScheduler       |                      |   Schicht 3
          +--------------------------------------------+
-         |  QuotaManager  (ein Bucket pro Instanz)     |   Schicht 2
+         |  QuotaManager  (ein Bucket pro VIN)         |   Schicht 2
          +--------------------------------------------+
          |  SkodaApiClient  (fetch, Header, sanitize)  |   Schicht 1
          +--------------------------------------------+
@@ -442,7 +459,7 @@ Client direkt auf.
 | `tools/capture-fixtures.mjs` | Aufnahme am Fahrzeug, anonymisiert | fertig |
 | `src/lib/api/types.ts` | lesbare Aliase, **einziger** Zugang zum Generat | fertig |
 | `src/lib/api/parts.ts` | Antwortteil ↔ Fehlertyp (`CHARGING_UNAVAILABLE` …) | fertig |
-| `src/lib/states/objectDefs.generated.ts` | 76 Zustände, 21 Kanäle, 27 Aufzählungen | fertig |
+| `src/lib/states/objectDefs.generated.ts` | 77 Zustände, 21 Kanäle, 27 Aufzählungen | fertig |
 | `src/lib/states/objectOverlay.ts` | Rollen, Einheiten, Labels; `resolveCommon()` | fertig |
 | `test/mock/server.ts` | Mock der API, 13 Szenarien | fertig |
 | `test/mock/cli.ts` | Standalone-Betrieb, `npm run mock` | fertig |
@@ -450,11 +467,12 @@ Client direkt auf.
 | `src/lib/api/errors.ts` | `problem+json` → typisierte Fehler-Union | fertig |
 | `src/lib/api/sanitize.ts` | VIN- und Schlüssel-Maskierung | fertig |
 | `src/lib/quota/QuotaManager.ts` | Budget, Reserve, `QuotaStore`-Port | fertig |
+| `src/lib/quota/VehicleQuotaManager.ts` | getrennte Zuordnung der Quota-Buckets je VIN | fertig |
 | `src/lib/states/StateWriter.ts` | JSON → States, `StateApi`-Port | fertig |
 | `src/lib/states/commandDefs.ts` | Domäne ↔ Antwortblock, Soll/Ist-Werte | fertig |
 | `src/lib/api/vehicleData.ts` | `newestCapturedAt()`, `detectParts()` | fertig |
 | `src/lib/config.ts` | Instanzkonfiguration prüfen und umrechnen | fertig |
-| `src/lib/quota/AdapterQuotaStore.ts` | Quota-Zustand in `info.rateLimit.*` | fertig |
+| `src/lib/quota/AdapterQuotaStore.ts` | Quota-Zustand in `<vin>.rateLimit.*` | fertig |
 | `src/lib/scheduler/PollScheduler.ts` | Kadenz, Frische-Backoff, `include` | fertig |
 | `test/helpers/fakeAdapter.ts` | Adapter-Doppel für die Tests | fertig |
 | `src/lib/commands/CommandQueue.ts` | Soll-Zustand, Coalescing, TTL (E5) | fertig |
@@ -555,7 +573,7 @@ zweites Mal hineinläuft oder eine Korrektur versehentlich zurückdreht.
 16. **Ein Integrations-Testaufbau lässt sich genau einmal starten** („This test harness
    has already been used"). Ein Neustart innerhalb eines Tests geht nicht; jeder
    Lebenslauf braucht eine eigene `suite`. Ein Neustart wird deshalb nachgestellt,
-   indem der Zustand des Vorgängers vor dem Start in `info.rateLimit.*` liegt.
+   indem der Zustand des Vorgängers vor dem Start in `<vin>.rateLimit.*` liegt.
    Zwei weitere Eigenheiten dort: `common.messagebox` kommt über `iobroker add`
    **nicht** ins Instanzobjekt (über `iobroker upload` schon, siehe Fallstrick 13), und
    `info.connection` steht bereits, **bevor** der Objektbaum geschrieben ist — als
@@ -653,7 +671,8 @@ Worauf dabei zu achten ist — in dieser Reihenfolge, weil hier die Annahmen ste
   (Fallstrick 10).
 - **Die beiden `429` unterscheiden sich nur am `type`.**
 - **Der QuotaManager glaubt den Headern, nicht seiner eigenen Rechnung.** Polls halten
-  bei der Reserve an, Befehle dürfen sie aufbrauchen.
+  bei der Reserve an, Befehle dürfen sie aufbrauchen. Jede VIN hat einen eigenen
+  Bucket; Antworten verschiedener Fahrzeuge werden nicht vermischt.
 - **Der StateWriter legt nur an, was in der Antwort steht, und löscht nie.** Fehlende
   Teile behalten ihren Wert und bekommen Quality `0x01`.
 

@@ -7,7 +7,7 @@ den Abschnitt "Begründung" lesen, bevor er eine davon umdreht.
 ## Randbedingungen der API (nicht verhandelbar)
 
 Quelle: <https://public.api.connect.skoda-auto.cz/docs>, Spec unter `spec/skoda-openapi.json`
-(`info.version: v0`, heruntergeladen 2026-09-01).
+(`info.version: v0`, zuletzt aktualisiert 2026-09-05).
 
 | Eigenschaft | Wert |
 |---|---|
@@ -16,16 +16,17 @@ Quelle: <https://public.api.connect.skoda-auto.cz/docs>, Spec unter `spec/skoda-
 | Key-Bindung | an die bei der Erstellung ausgewählten VINs |
 | Basis-URL | `https://public.api.connect.skoda-auto.cz/api/v1` |
 | Lese-Endpunkte | genau einer: `GET /vehicles/{vin}` (optional `?include=`) |
-| Schreib-Endpunkte | 8 POSTs: `charging`, `air-conditioning`, `auxiliary-heating`, `active-ventilation` — je `start`/`stop` |
-| Rate-Limit | **20 Requests/Stunde pro API-Key** (laut Doku "not final") |
+| Schreib-Endpunkte | 8 POSTs für Start/Stop plus 3 PUTs für Ladelimit, Lademodus und Ladeprofile |
+| Rate-Limit | **20 Requests/Stunde pro VIN** |
 | Quota-Verbrauch | alle Antworten **außer** 401, 403, 429 |
 | Rückmeldung auf Befehle | `202 Accepted`, **kein Operation-Status-Endpunkt** |
 | Fahrzeugliste | **existiert nicht** — VIN muss manuell konfiguriert werden |
 | Push/Webhooks | keine |
 
 Nicht in der API enthalten und daher unmöglich: Ver-/Entriegeln, Hupe/Lichthupe,
-Setzen des Ladestroms, Setzen des Ziel-SoC, Ändern von Ladeprofilen oder Timern,
-automatische Key-Rotation.
+Setzen des Ladestroms und automatische Key-Rotation. Ziel-SoC, Lademodus und
+Ladeprofile sind inzwischen API-Funktionen, werden vom Adapter aber noch nicht als
+Schreib-States angeboten.
 
 ## Entscheidungen
 
@@ -132,10 +133,12 @@ letzten erfolgreichen Poll und bezieht sich auf den jüngsten Zeitstempel, nicht
 die Aktualität sämtlicher Einzelwerte.
 
 ### E9 — Instanzmodell: eine Instanz = ein API-Key, n VINs
-Ein Quota-Bucket pro Instanz, die konfigurierten VINs teilen ihn sich reihum.
-Wer volles Budget pro Fahrzeug will, legt eine zweite Instanz mit eigenem Key an.
+Ein Quota-Bucket pro VIN. Die API begrenzt ihre 20 Requests pro Stunde je Fahrzeug;
+Antwortheader und Reset-Fenster verschiedener VINs duerfen sich daher nicht
+gegenseitig ueberschreiben. Jeder Bucket wird unter `<vin>.rateLimit.*` persistiert.
 **Bewusst nicht gebaut:** mehrere Keys pro Instanz zur Vervielfachung der Quota.
-Das umgeht ein Limit, das Škoda absichtlich pro Key zieht.
+Ein API-Key kann alle bei seiner Erstellung ausgewaehlten Fahrzeuge abdecken; die
+serverseitige Begrenzung pro VIN macht weitere Schluessel fuer die Quota unnoetig.
 
 ### E10 — Key-Ablauf: ioBroker-Notification-System plus States
 `info.apiKey.expiresAt`, `info.apiKey.daysRemaining`; Log-Eskalation bei 14 / 7 / 2

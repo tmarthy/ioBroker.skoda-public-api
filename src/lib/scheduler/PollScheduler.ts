@@ -25,7 +25,7 @@ import type { ApiError } from '../api/errors';
 import { partFromErrorType } from '../api/parts';
 import { VEHICLE_PARTS, type VehiclePart, type VehicleResponse } from '../api/types';
 import { detectParts, newestCapturedAt } from '../api/vehicleData';
-import type { QuotaManager } from '../quota/QuotaManager';
+import type { VehicleQuota } from '../quota/VehicleQuotaManager';
 import { COMMAND_DEFS } from '../states/commandDefs';
 
 /** Der Ausschnitt des Clients, den der Scheduler braucht. */
@@ -86,8 +86,8 @@ export interface PollSchedulerOptions {
 	/** Die HTTP-Schicht. */
 	client: VehicleReader;
 	/** Das Budget; ohne seine Zustimmung geht kein Request hinaus. */
-	quota: QuotaManager;
-	/** Die konfigurierten Fahrgestellnummern. Sie teilen sich ein Budget (E9). */
+	quota: VehicleQuota;
+	/** Die konfigurierten Fahrgestellnummern. Jede VIN hat ein eigenes Budget. */
 	vins: readonly string[];
 	/** Wohin die Antwort geht - in Phase 6 der StateWriter. */
 	onVehicleData: (vin: string, response: VehicleResponse) => Promise<void> | void;
@@ -167,7 +167,7 @@ const MIN_SLEEP_MS = 1_000;
  */
 export class PollScheduler {
 	private readonly client: VehicleReader;
-	private readonly quota: QuotaManager;
+	private readonly quota: VehicleQuota;
 	private readonly onVehicleData: PollSchedulerOptions['onVehicleData'];
 	private readonly onConnectionChange?: (connected: boolean) => void;
 	private readonly onResponse?: (meta: ApiMeta, error?: ApiError) => void;
@@ -316,7 +316,7 @@ export class PollScheduler {
 			return;
 		}
 
-		const permission = this.quota.tryAcquire('poll');
+		const permission = this.quota.tryAcquire(state.vin, 'poll');
 		if ('reason' in permission) {
 			// Kein Fehler, sondern Normalbetrieb: Das Budget gehoert ab hier den
 			// Befehlen (E15). Der Poll kommt wieder, wenn das Fenster sich oeffnet.
@@ -332,7 +332,7 @@ export class PollScheduler {
 			state.verificationDueAt = undefined;
 		}
 		const result = await this.client.getVehicle(state.vin, this.includeFor(state));
-		this.quota.recordResponse(result.meta, permission);
+		this.quota.recordResponse(state.vin, result.meta, permission);
 		this.onResponse?.(result.meta, result.ok ? undefined : result.error);
 
 		if (result.ok) {

@@ -19,7 +19,7 @@
 	"Requests reserved for commands": "Verzoeken gereserveerd voor opdrachten",
 	"S-PIN (auxiliary heating only)": "S-PIN (alleen hulpverwarming)",
 	"Test connection": "Verbinding testen",
-	"The API allows 20 requests per hour and key. A command costs two of them, because the result only shows up in the next poll.": "De API staat 20 verzoeken per uur en sleutel toe. Een opdracht kost er twee, omdat het resultaat pas in de volgende peiling verschijnt.",
+	"The API allows 20 requests per hour and VIN. A command costs two of them, because the result only shows up in the next poll.": "De API staat 20 verzoeken per uur en VIN toe. Een opdracht kost er twee, omdat het resultaat pas in de volgende peiling verschijnt.",
 	"The API offers no vehicle list - every VIN has to be entered by hand.": "De API biedt geen voertuiglijst; elk VIN moet met de hand worden ingevoerd.",
 	"VIN": "VIN",
 	"Vehicles": "Voertuigen",

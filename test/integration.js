@@ -225,9 +225,9 @@ tests.integration(path.join(__dirname, '..'), {
 
 			it('schreibt Budget und Schluesselablauf aus den Headern', async function () {
 				this.timeout(60000);
-				const remaining = await readState(harness, `${INSTANCE}.info.rateLimit.remaining`);
+				const remaining = await readState(harness, `${VEHICLE}.rateLimit.remaining`);
 				expect(remaining.val).to.equal(19);
-				const limit = await readState(harness, `${INSTANCE}.info.rateLimit.limit`);
+				const limit = await readState(harness, `${VEHICLE}.rateLimit.limit`);
 				expect(limit.val).to.equal(20);
 				const days = await readState(harness, `${INSTANCE}.info.apiKey.daysRemaining`);
 				expect(days.val).to.be.greaterThan(80);
@@ -306,15 +306,15 @@ tests.integration(path.join(__dirname, '..'), {
 				await configure(harness);
 
 				// So sieht ein Neustart von innen aus: Der Zustand des Vorgaengers
-				// steht in info.rateLimit.*, und der letzte Request liegt eine halbe
+				// steht in <VIN>.rateLimit.*, und der letzte Request liegt eine halbe
 				// Minute zurueck.
-				await setState(harness, `${INSTANCE}.info.rateLimit.limit`, { val: 20, ack: true });
-				await setState(harness, `${INSTANCE}.info.rateLimit.remaining`, { val: 8, ack: true });
-				await setState(harness, `${INSTANCE}.info.rateLimit.resetAt`, {
+				await setState(harness, `${VEHICLE}.rateLimit.limit`, { val: 20, ack: true });
+				await setState(harness, `${VEHICLE}.rateLimit.remaining`, { val: 8, ack: true });
+				await setState(harness, `${VEHICLE}.rateLimit.resetAt`, {
 					val: Date.now() + 1800000,
 					ack: true,
 				});
-				await setState(harness, `${INSTANCE}.info.rateLimit.lastRequestAt`, {
+				await setState(harness, `${VEHICLE}.rateLimit.lastRequestAt`, {
 					val: Date.now() - 30000,
 					ack: true,
 				});
@@ -336,7 +336,7 @@ tests.integration(path.join(__dirname, '..'), {
 				await delay(10000);
 				expect(mock.requests, 'Der Adapter hat trotz Sperrfrist gefragt').to.have.length(0);
 
-				const remaining = await readState(harness, `${INSTANCE}.info.rateLimit.remaining`);
+				const remaining = await readState(harness, `${VEHICLE}.rateLimit.remaining`);
 				expect(remaining.val, 'Der Budgetstand hat den Neustart nicht ueberlebt').to.equal(8);
 			});
 		});

@@ -38,6 +38,9 @@ export type ChargingProfile = Schemas['ChargingProfile'];
 export type ChargingProfileSettings = Schemas['ChargingProfileSettings'];
 export type ChargingTime = Schemas['ChargingTime'];
 export type Timer = Schemas['Timer'];
+export type VehicleOperation = Schemas['VehicleOperation'];
+export type ChargingLimit = Schemas['ChargingLimit'];
+export type ChargeMode = Schemas['ChargeMode'];
 
 export type StartAirConditioningConfiguration = Schemas['StartAirConditioningConfiguration'];
 export type StartAuxiliaryHeatingConfiguration = Schemas['StartAuxiliaryHeatingConfiguration'];
@@ -60,6 +63,7 @@ export const VEHICLE_PARTS = [
 	'activeVentilation',
 	'charging',
 	'chargingProfiles',
+	'operations',
 ] as const satisfies readonly VehiclePart[];
 
 /** Die vier steuerbaren Domänen (je ein start-/stop-Endpunkt). */

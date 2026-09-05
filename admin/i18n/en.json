@@ -10,7 +10,7 @@
 	"Test connection": "Test connection",
 	"Checks the key against the first vehicle and reports name, key expiry and remaining quota. Costs one of the 20 requests per hour; the instance has to be running.": "Checks the key against the first vehicle and reports name, key expiry and remaining quota. Costs one of the 20 requests per hour; the instance has to be running.",
 	"Polling and budget": "Polling and budget",
-	"The API allows 20 requests per hour and key. A command costs two of them, because the result only shows up in the next poll.": "The API allows 20 requests per hour and key. A command costs two of them, because the result only shows up in the next poll.",
+	"The API allows 20 requests per hour and VIN. A command costs two of them, because the result only shows up in the next poll.": "The API allows 20 requests per hour and VIN. A command costs two of them, because the result only shows up in the next poll.",
 	"Base interval (min)": "Base interval (min)",
 	"20 requests per hour is the hard limit. Below 5 minutes is not accepted.": "20 requests per hour is the hard limit. Below 5 minutes is not accepted.",
 	"Interval while charging or climatising (min)": "Interval while charging or climatising (min)",

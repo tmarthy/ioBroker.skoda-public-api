@@ -1,8 +1,8 @@
 /**
- * Der QuotaManager - ein Bucket pro Instanz, durch den jeder Request muss (E9).
+ * Der QuotaManager - ein einzelner Bucket, durch den jeder Request einer VIN muss.
  *
  * Die harte Randbedingung des Projekts sind **20 Requests pro Stunde und
- * API-Schluessel**. Weder der PollScheduler (Phase 6) noch die CommandQueue (Phase 7)
+ * VIN**. Weder der PollScheduler (Phase 6) noch die CommandQueue (Phase 7)
  * rufen den Client direkt auf; sie fragen hier, ob sie duerfen, und melden hier, was
  * die Antwort ueber das Budget verraten hat.
  *
@@ -18,7 +18,7 @@
  *    ist eine Klimatisierung, die nicht laeuft.
  * 3. **Ein Neustart darf nicht wie ein leerer Bucket aussehen.** Ohne Persistenz
  *    verbrennt eine Instanz in Neustartschleife 20 Requests in 90 Sekunden. Deshalb
- *    wandert der Zustand in einen Speicher (Phase 6 haengt ihn an `info.rateLimit.*`)
+ *    wandert der Zustand in einen Speicher (Phase 6 haengt ihn an `<vin>.rateLimit.*`)
  *    und nach dem Start gilt eine Sperrfrist.
  */
 import type { ApiMeta } from '../api/client';
@@ -61,7 +61,7 @@ export interface PersistedQuota {
  *
  * Bewusst als Schnittstelle und nicht als ioBroker-Zugriff: Der QuotaManager kennt
  * keine Adapter-Instanz, und die Tests brauchen keine. Phase 6 haengt hier eine
- * Umsetzung ein, die `info.rateLimit.*` liest und schreibt.
+ * Umsetzung ein, die `<vin>.rateLimit.*` liest und schreibt.
  */
 export interface QuotaStore {
 	/** Liest den zuletzt gespeicherten Zustand, oder undefined beim ersten Start. */
@@ -106,7 +106,7 @@ export interface QuotaManagerOptions {
 	onStoreError?: (error: unknown) => void;
 }
 
-/** 20 Requests pro Stunde, laut Doku "not final". */
+/** 20 Requests pro Stunde und VIN. */
 export const DEFAULT_LIMIT = 20;
 
 /** Das Fenster, auf das sich die 20 Requests beziehen. */
@@ -119,7 +119,7 @@ export const DEFAULT_COMMAND_RESERVE = 6;
 const RESET_WINDOW_TOLERANCE_MS = 5_000;
 
 /**
- * Verwaltet das Stundenbudget einer Instanz: Wer fragen darf, wer warten muss, und was
+ * Verwaltet das Stundenbudget eines Fahrzeugs: Wer fragen darf, wer warten muss, und was
  * die Antworten ueber den Reststand gesagt haben.
  */
 export class QuotaManager {

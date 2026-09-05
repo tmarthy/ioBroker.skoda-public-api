@@ -1,9 +1,11 @@
 import { expect } from 'chai';
 import { FakeAdapter } from '../../../test/helpers/fakeAdapter';
-import { AdapterQuotaStore, QUOTA_CHANNEL } from './AdapterQuotaStore';
+import { AdapterQuotaStore, LEGACY_QUOTA_CHANNEL, quotaChannel } from './AdapterQuotaStore';
 import { QuotaManager } from './QuotaManager';
 
 describe('quota/AdapterQuotaStore => Budget ueberlebt den Neustart', () => {
+	const VIN = 'TMBJB9NY5RF999999';
+	const QUOTA_CHANNEL = quotaChannel(VIN);
 	let adapter: FakeAdapter;
 	let store: AdapterQuotaStore;
 	let clock: number;
@@ -12,7 +14,7 @@ describe('quota/AdapterQuotaStore => Budget ueberlebt den Neustart', () => {
 	beforeEach(() => {
 		clock = Date.parse('2026-09-03T18:00:00Z');
 		adapter = new FakeAdapter();
-		store = new AdapterQuotaStore(adapter);
+		store = new AdapterQuotaStore(adapter, VIN);
 	});
 
 	it('meldet beim ersten Start, dass noch nichts da ist', async () => {
@@ -32,6 +34,14 @@ describe('quota/AdapterQuotaStore => Budget ueberlebt den Neustart', () => {
 	it('schreibt und liest denselben Zustand', async () => {
 		const state = { limit: 20, remaining: 7, resetAt: clock + 1_800_000, lastRequestAt: clock - 60_000 };
 		await store.save(state);
+		expect(await store.load()).to.deep.equal(state);
+	});
+
+	it('uebernimmt beim Upgrade den alten instanzweiten Stand konservativ', async () => {
+		const state = { limit: 20, remaining: 5, resetAt: clock + 1_800_000, lastRequestAt: clock - 60_000 };
+		for (const [field, value] of Object.entries(state)) {
+			await adapter.setStateAsync(`${LEGACY_QUOTA_CHANNEL}.${field}`, { val: value, ack: true });
+		}
 		expect(await store.load()).to.deep.equal(state);
 	});
 

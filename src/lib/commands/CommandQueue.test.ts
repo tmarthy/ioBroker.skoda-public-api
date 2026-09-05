@@ -4,6 +4,7 @@ import { SkodaApiClient, type ApiResult } from '../api/client';
 import type { CommandAction, CommandDomain } from '../api/types';
 import { httpApiError } from '../api/errors';
 import { QuotaManager } from '../quota/QuotaManager';
+import { quotaForVehicle } from '../quota/VehicleQuotaManager';
 import type { CommandReport } from '../states/commandDefs';
 import { CommandQueue, type CommandLog, type CommandSender } from './CommandQueue';
 import type { CommandBody } from './commandMap';
@@ -51,7 +52,7 @@ describe('commands/CommandQueue => Soll-Zustand, Coalescing, TTL', () => {
 	const buildQueue = (options: Partial<ConstructorParameters<typeof CommandQueue>[0]> = {}): CommandQueue =>
 		new CommandQueue({
 			client,
-			quota,
+			quota: quotaForVehicle(DEFAULT_VIN, quota),
 			vins: [DEFAULT_VIN],
 			onReport: (vin, report) => {
 				reports.push([vin, report]);

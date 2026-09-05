@@ -25,6 +25,7 @@ describe('api/parts => Zuordnung Antwortteil <-> Fehlertyp', () => {
 		expect(partFromErrorType('CHARGING_UNAVAILABLE')).to.equal('charging');
 		expect(partFromErrorType('VEHICLE_STATUS_DISABLED')).to.equal('status');
 		expect(partFromErrorType('CHARGING_PROFILES_UNSUPPORTED')).to.equal('chargingProfiles');
+		expect(partFromErrorType('OPERATIONS_UNAVAILABLE')).to.equal('operations');
 	});
 
 	it('meldet unbekannte Fehlertypen als unbekannt statt zu raten', () => {

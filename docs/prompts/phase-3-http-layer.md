@@ -22,7 +22,7 @@ echte Fahrzeugaufnahmen. **Deine Aufgabe ist Phase 3 — die HTTP-Schicht.**
 3. `docs/implementation-plan.md` — Abschnitt „Phase 3" und die verbindliche
    **Fehlertabelle** in Abschnitt 5. Die Tabelle ist die Spezifikation dieser Phase.
 
-Die harte Randbedingung des ganzen Projekts: **20 API-Requests pro Stunde und Schlüssel.**
+Die harte Randbedingung des ganzen Projekts: **20 API-Requests pro Stunde und VIN.**
 Gegen die echte API lässt sich nicht entwickeln. Alles läuft gegen den Mock.
 
 ## Auftrag

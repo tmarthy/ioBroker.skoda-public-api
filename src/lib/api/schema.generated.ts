@@ -14,7 +14,7 @@ export interface paths {
         };
         /**
          * Returns the vehicle and its current state.
-         * @description The endpoint delivers the vehicle together with its current state: status (doors, windows, lights), fuel status, odometer, air conditioning (including auxiliary heating and active ventilation), charging, charging profiles (saved charging locations) and parking position. The response can be limited to selected parts of the data using the `include` query parameter.
+         * @description The endpoint delivers the vehicle together with its current state: status (doors, windows, lights), fuel status, odometer, air conditioning (including auxiliary heating and active ventilation), charging, charging profiles (saved charging locations), parking position and the remote operations the vehicle supports. The response can be limited to selected parts of the data using the `include` query parameter.
          */
         get: operations["getVehicle"];
         put?: never;
@@ -121,6 +121,60 @@ export interface paths {
         put?: never;
         /** Stop auxiliary heating inside the desired vehicle. */
         post: operations["stopAuxiliaryHeating"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/vehicles/{vin}/charging-profiles/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Updates a charging profile of a given vehicle.
+         * @description The vehicle applies the submitted profile as a whole, so send the complete profile - e.g. as returned by `GET /api/v1/vehicles/{vin}?include=chargingProfiles` - with the desired fields changed. A `404` is returned when either the vehicle or its charging profile with the given id is unknown.
+         */
+        put: operations["updateChargingProfile"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/vehicles/{vin}/charging/limit": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Sets the charging limit for a given vehicle. */
+        put: operations["setChargingLimit"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/vehicles/{vin}/charging/mode": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /** Change the charge mode for a given vehicle. */
+        put: operations["setChargeMode"];
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -264,6 +318,14 @@ export interface components {
              */
             stateOfChargeInPercent?: number;
         };
+        /** @description Charge mode to set for the vehicle. */
+        ChargeMode: {
+            /**
+             * @description Charge mode. Possible values are:   * MANUAL   * TIMER   * TIMER_CHARGING_WITH_CLIMATISATION   * PREFERRED_CHARGING_TIMES   * ONLY_OWN_CURRENT   * IMMEDIATE_DISCHARGING   * HOME_STORAGE_CHARGING
+             * @example MANUAL
+             */
+            chargeMode: string;
+        };
         /** @description Charging and battery status of the vehicle. Returned only for vehicles that support charging - battery-electric vehicles and plug-in hybrids. Vehicles without a high-voltage battery do not report charging. When explicitly requested (via `include`) for a vehicle that does not support it, `charging` is omitted and `errors` contains `CHARGING_UNSUPPORTED`. Likewise, a supported but currently disabled charging service is reported via `CHARGING_DISABLED`. */
         Charging: {
             /**
@@ -279,6 +341,15 @@ export interface components {
             isVehicleInSavedLocation: boolean;
             settings?: components["schemas"]["ChargingSettings"];
             status?: components["schemas"]["ChargingStatus"];
+        };
+        /** @description Charging limit to set for the vehicle. */
+        ChargingLimit: {
+            /**
+             * Format: int32
+             * @description Target state of charge in percent. Vehicles typically accept values between 50 and 100 in steps of 10 and reject other values.
+             * @example 80
+             */
+            targetStateOfChargeInPercent: number;
         };
         /** @description Information about a charging profile. */
         ChargingProfile: {
@@ -715,6 +786,8 @@ export interface components {
              */
             name?: string;
             odometer?: components["schemas"]["Odometer"];
+            /** @description Remote operations the vehicle supports, derived from the vehicle's capabilities. An operation is listed when the vehicle supports it; it may still be temporarily rejected when executed (e.g. while the vehicle is in workshop mode). When the supported operations could not be determined, `operations` is omitted and `errors` contains `OPERATIONS_UNAVAILABLE`. */
+            operations?: components["schemas"]["VehicleOperation"][];
             parkingPosition?: components["schemas"]["ParkingPosition"];
             /**
              * Format: uri
@@ -736,10 +809,18 @@ export interface components {
              */
             description?: string;
             /**
-             * @description Machine-readable error type identifying the part of the response that is affected. Possible values are:   * RENDER_UNAVAILABLE - the vehicle render image URL could not be retrieved; name and licensePlate are unaffected   * VEHICLE_STATUS_UNSUPPORTED - vehicle status (doors, windows, lights, ...) is not supported   * VEHICLE_STATUS_DISABLED - vehicle status (doors, windows, lights, ...) is supported, but currently disabled   * VEHICLE_STATUS_UNAVAILABLE - vehicle status (doors, windows, lights, ...) could not be retrieved   * FUEL_STATUS_UNSUPPORTED - fuel status is not supported (for example a battery-electric vehicle)   * FUEL_STATUS_DISABLED - fuel status is supported, but currently disabled   * FUEL_STATUS_UNAVAILABLE - fuel status could not be retrieved   * ODOMETER_UNSUPPORTED - odometer reading is not supported   * ODOMETER_DISABLED - odometer reading is supported, but currently disabled   * ODOMETER_UNAVAILABLE - odometer reading could not be retrieved   * PARKING_POSITION_UNSUPPORTED - parking position is not supported   * PARKING_POSITION_DISABLED - parking position is supported, but currently disabled   * PARKING_POSITION_UNAVAILABLE - parking position could not be retrieved   * AIR_CONDITIONING_UNSUPPORTED - air conditioning information is not supported   * AIR_CONDITIONING_DISABLED - air conditioning information is supported, but currently disabled   * AIR_CONDITIONING_UNAVAILABLE - air conditioning information could not be retrieved   * AUXILIARY_HEATING_UNSUPPORTED - auxiliary heating information is not supported   * AUXILIARY_HEATING_DISABLED - auxiliary heating information is supported, but currently disabled   * AUXILIARY_HEATING_UNAVAILABLE - auxiliary heating information could not be retrieved   * ACTIVE_VENTILATION_UNSUPPORTED - active ventilation information is not supported   * ACTIVE_VENTILATION_DISABLED - active ventilation information is supported, but currently disabled   * ACTIVE_VENTILATION_UNAVAILABLE - active ventilation information could not be retrieved   * CHARGING_UNSUPPORTED - charging status is not supported   * CHARGING_DISABLED - charging status is supported, but currently disabled   * CHARGING_UNAVAILABLE - charging status could not be retrieved   * CHARGING_PROFILES_UNSUPPORTED - charging profiles are not supported   * CHARGING_PROFILES_DISABLED - charging profiles are supported, but currently disabled   * CHARGING_PROFILES_UNAVAILABLE - charging profiles could not be retrieved
+             * @description Machine-readable error type identifying the part of the response that is affected. Possible values are:   * RENDER_UNAVAILABLE - the vehicle render image URL could not be retrieved; name and licensePlate are unaffected   * VEHICLE_STATUS_UNSUPPORTED - vehicle status (doors, windows, lights, ...) is not supported   * VEHICLE_STATUS_DISABLED - vehicle status (doors, windows, lights, ...) is supported, but currently disabled   * VEHICLE_STATUS_UNAVAILABLE - vehicle status (doors, windows, lights, ...) could not be retrieved   * FUEL_STATUS_UNSUPPORTED - fuel status is not supported (for example a battery-electric vehicle)   * FUEL_STATUS_DISABLED - fuel status is supported, but currently disabled   * FUEL_STATUS_UNAVAILABLE - fuel status could not be retrieved   * ODOMETER_UNSUPPORTED - odometer reading is not supported   * ODOMETER_DISABLED - odometer reading is supported, but currently disabled   * ODOMETER_UNAVAILABLE - odometer reading could not be retrieved   * PARKING_POSITION_UNSUPPORTED - parking position is not supported   * PARKING_POSITION_DISABLED - parking position is supported, but currently disabled   * PARKING_POSITION_UNAVAILABLE - parking position could not be retrieved   * AIR_CONDITIONING_UNSUPPORTED - air conditioning information is not supported   * AIR_CONDITIONING_DISABLED - air conditioning information is supported, but currently disabled   * AIR_CONDITIONING_UNAVAILABLE - air conditioning information could not be retrieved   * AUXILIARY_HEATING_UNSUPPORTED - auxiliary heating information is not supported   * AUXILIARY_HEATING_DISABLED - auxiliary heating information is supported, but currently disabled   * AUXILIARY_HEATING_UNAVAILABLE - auxiliary heating information could not be retrieved   * ACTIVE_VENTILATION_UNSUPPORTED - active ventilation information is not supported   * ACTIVE_VENTILATION_DISABLED - active ventilation information is supported, but currently disabled   * ACTIVE_VENTILATION_UNAVAILABLE - active ventilation information could not be retrieved   * CHARGING_UNSUPPORTED - charging status is not supported   * CHARGING_DISABLED - charging status is supported, but currently disabled   * CHARGING_UNAVAILABLE - charging status could not be retrieved   * CHARGING_PROFILES_UNSUPPORTED - charging profiles are not supported   * CHARGING_PROFILES_DISABLED - charging profiles are supported, but currently disabled   * CHARGING_PROFILES_UNAVAILABLE - charging profiles could not be retrieved   * OPERATIONS_UNAVAILABLE - the supported operations could not be determined
              * @example CHARGING_UNAVAILABLE
              */
             type: string;
+        };
+        /** @description A remote operation the vehicle supports. Additional fields (e.g. the current availability state of the operation) may be added in the future. */
+        VehicleOperation: {
+            /**
+             * @description Identifies the operation; matches the `operationId` of the corresponding endpoint of this API. Additional values may be added over time. Possible values are:   * startCharging   * stopCharging   * setChargingLimit   * setChargeMode   * updateChargingProfile   * startAirConditioning   * stopAirConditioning   * startAuxiliaryHeating   * stopAuxiliaryHeating   * startActiveVentilation   * stopActiveVentilation
+             * @example startCharging
+             */
+            name: string;
         };
         /** @description The vehicle with all available data, and a summary of errors that occurred while the data was gathered. */
         VehicleResponse: {
@@ -806,7 +887,7 @@ export interface operations {
         parameters: {
             query?: {
                 /** @description Limits the response to the selected parts of the vehicle data, as a comma-separated list. Each value corresponds to the part of the response with the same name, except `info` which covers the basic vehicle information (`name`, `licensePlate` and `renderUrl`). The `vin` is always returned, regardless of this parameter.  When the parameter is omitted, all parts supported by the vehicle are returned. Parts the vehicle does not support are simply absent in that case - `*_UNSUPPORTED` errors are only reported for parts explicitly requested via this parameter. Unknown values are rejected with a `400 Bad Request` response.  A part that is not included is absent from the response. Note that an included part may also be absent when its data could not be retrieved - in that case the response contains a corresponding error in the `errors` list. */
-                include?: ("info" | "status" | "fuelStatus" | "odometer" | "parkingPosition" | "airConditioning" | "auxiliaryHeating" | "activeVentilation" | "charging" | "chargingProfiles")[];
+                include?: ("info" | "status" | "fuelStatus" | "odometer" | "parkingPosition" | "airConditioning" | "auxiliaryHeating" | "activeVentilation" | "charging" | "chargingProfiles" | "operations")[];
             };
             header?: never;
             path: {
@@ -1440,6 +1521,335 @@ export interface operations {
         requestBody?: never;
         responses: {
             /** @description Request to stop auxiliary heating was performed. */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Bad request (e.g. an unknown `include` value or a malformed request body). When a request parameter is rejected, the problem carries the extension members `parameter`, `rejectedValue` and `allowedValues` identifying what to fix. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description Unauthorized. If the API key has expired the problem type is https://public.api.connect.skoda-auto.cz/problems/api-key-expired. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description Forbidden. The `type` member tells the two causes apart:   * https://public.api.connect.skoda-auto.cz/problems/api-key-not-authorized - the API key does not cover the vehicle in the request path.   * https://public.api.connect.skoda-auto.cz/problems/operation-not-authorized - the key covers the vehicle, but the vehicle refused the operation for the user it belongs to. A user lacking the rights for an operation is normally answered with `422` before the operation is sent, so this is the rare case where the rights changed, or could not be checked, in between. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description No vehicle found for the given VIN. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description The vehicle cannot execute the operation. The problem type is https://public.api.connect.skoda-auto.cz/problems/operation-not-supported when the vehicle lacks the capability the operation needs (e.g. a vehicle without a high-voltage battery cannot charge), or https://public.api.connect.skoda-auto.cz/problems/operation-disabled when it has the capability but the capability is currently disabled (e.g. revoked consent, expired license, workshop mode). Retrying does not help in either case. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description Too many requests; retry after the period indicated by the `Retry-After` header. The `type` member tells the two possible causes apart:   * https://public.api.connect.skoda-auto.cz/problems/rate-limit-exceeded - the rate limit for the API key has been exceeded.   * https://public.api.connect.skoda-auto.cz/problems/vehicle-not-accepting-requests - the vehicle itself declined the operation, for example to limit how often it executes requests or because its battery level is too low.  The `RateLimit-*` headers describe the quota on every response, so they do not tell the two apart - the request that uses up the last of the quota can be the one the vehicle declines. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description Unexpected internal application error. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description Service temporarily unavailable (e.g. the API key could not be validated). Retry after the period indicated by the `Retry-After` header. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description Operation timeout. */
+            504: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+        };
+    };
+    updateChargingProfile: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Identifier of the charging profile. */
+                id: number;
+                /** @description Unique VIN of the vehicle. */
+                vin: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ChargingProfile"];
+            };
+        };
+        responses: {
+            /** @description Request to update the charging profile was performed. */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Bad request (e.g. an unknown `include` value or a malformed request body). When a request parameter is rejected, the problem carries the extension members `parameter`, `rejectedValue` and `allowedValues` identifying what to fix. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description Unauthorized. If the API key has expired the problem type is https://public.api.connect.skoda-auto.cz/problems/api-key-expired. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description Forbidden. The `type` member tells the two causes apart:   * https://public.api.connect.skoda-auto.cz/problems/api-key-not-authorized - the API key does not cover the vehicle in the request path.   * https://public.api.connect.skoda-auto.cz/problems/operation-not-authorized - the key covers the vehicle, but the vehicle refused the operation for the user it belongs to. A user lacking the rights for an operation is normally answered with `422` before the operation is sent, so this is the rare case where the rights changed, or could not be checked, in between. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description No vehicle found for the given VIN. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description The charging profile id in the URL does not match the id in the request body. */
+            412: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description The vehicle cannot execute the operation. The problem type is https://public.api.connect.skoda-auto.cz/problems/operation-not-supported when the vehicle lacks the capability the operation needs (e.g. a vehicle without a high-voltage battery cannot charge), or https://public.api.connect.skoda-auto.cz/problems/operation-disabled when it has the capability but the capability is currently disabled (e.g. revoked consent, expired license, workshop mode). Retrying does not help in either case. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description Too many requests; retry after the period indicated by the `Retry-After` header. The `type` member tells the two possible causes apart:   * https://public.api.connect.skoda-auto.cz/problems/rate-limit-exceeded - the rate limit for the API key has been exceeded.   * https://public.api.connect.skoda-auto.cz/problems/vehicle-not-accepting-requests - the vehicle itself declined the operation, for example to limit how often it executes requests or because its battery level is too low.  The `RateLimit-*` headers describe the quota on every response, so they do not tell the two apart - the request that uses up the last of the quota can be the one the vehicle declines. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description Unexpected internal application error. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description Service temporarily unavailable (e.g. the API key could not be validated). Retry after the period indicated by the `Retry-After` header. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description Operation timeout. */
+            504: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+        };
+    };
+    setChargingLimit: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Unique VIN of the vehicle. */
+                vin: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ChargingLimit"];
+            };
+        };
+        responses: {
+            /** @description Request to set the charging limit was performed. */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Bad request (e.g. an unknown `include` value or a malformed request body). When a request parameter is rejected, the problem carries the extension members `parameter`, `rejectedValue` and `allowedValues` identifying what to fix. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description Unauthorized. If the API key has expired the problem type is https://public.api.connect.skoda-auto.cz/problems/api-key-expired. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description Forbidden. The `type` member tells the two causes apart:   * https://public.api.connect.skoda-auto.cz/problems/api-key-not-authorized - the API key does not cover the vehicle in the request path.   * https://public.api.connect.skoda-auto.cz/problems/operation-not-authorized - the key covers the vehicle, but the vehicle refused the operation for the user it belongs to. A user lacking the rights for an operation is normally answered with `422` before the operation is sent, so this is the rare case where the rights changed, or could not be checked, in between. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description No vehicle found for the given VIN. */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description The vehicle cannot execute the operation. The problem type is https://public.api.connect.skoda-auto.cz/problems/operation-not-supported when the vehicle lacks the capability the operation needs (e.g. a vehicle without a high-voltage battery cannot charge), or https://public.api.connect.skoda-auto.cz/problems/operation-disabled when it has the capability but the capability is currently disabled (e.g. revoked consent, expired license, workshop mode). Retrying does not help in either case. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description Too many requests; retry after the period indicated by the `Retry-After` header. The `type` member tells the two possible causes apart:   * https://public.api.connect.skoda-auto.cz/problems/rate-limit-exceeded - the rate limit for the API key has been exceeded.   * https://public.api.connect.skoda-auto.cz/problems/vehicle-not-accepting-requests - the vehicle itself declined the operation, for example to limit how often it executes requests or because its battery level is too low.  The `RateLimit-*` headers describe the quota on every response, so they do not tell the two apart - the request that uses up the last of the quota can be the one the vehicle declines. */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description Unexpected internal application error. */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description Service temporarily unavailable (e.g. the API key could not be validated). Retry after the period indicated by the `Retry-After` header. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+            /** @description Operation timeout. */
+            504: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetail"];
+                };
+            };
+        };
+    };
+    setChargeMode: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description Unique VIN of the vehicle. */
+                vin: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ChargeMode"];
+            };
+        };
+        responses: {
+            /** @description Request to change the charge mode was performed. */
             202: {
                 headers: {
                     [name: string]: unknown;

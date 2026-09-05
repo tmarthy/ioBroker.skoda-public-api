@@ -21,7 +21,7 @@ import type { ApiError } from '../api/errors';
 import type { ApiMeta, ApiResult, CommandBody } from '../api/client';
 import type { CommandAction, CommandDomain, VehicleResponse } from '../api/types';
 import { newestCapturedAt } from '../api/vehicleData';
-import type { QuotaManager } from '../quota/QuotaManager';
+import type { VehicleQuota } from '../quota/VehicleQuotaManager';
 import { COMMAND_DEFS, type CommandDomainDef, type CommandReport, type CommandResult } from '../states/commandDefs';
 import { buildCommandBody, parseCommandState, type ParsedCommand } from './commandMap';
 
@@ -56,7 +56,7 @@ export interface CommandQueueOptions {
 	/** Die HTTP-Schicht. */
 	client: CommandSender;
 	/** Ohne Zustimmung des Budgets geht kein Befehl hinaus. */
-	quota: QuotaManager;
+	quota: VehicleQuota;
 	/** Die konfigurierten Fahrzeuge; alles andere wird ignoriert. */
 	vins: readonly string[];
 	/** Wohin das Ergebnis geht - in Phase 7 der StateWriter. */
@@ -107,7 +107,7 @@ interface QueueEntry {
  */
 export class CommandQueue {
 	private readonly client: CommandSender;
-	private readonly quota: QuotaManager;
+	private readonly quota: VehicleQuota;
 	private readonly vins: Set<string>;
 	private readonly onReport: CommandQueueOptions['onReport'];
 	private readonly onCommandSent?: (vin: string) => void;
@@ -376,7 +376,7 @@ export class CommandQueue {
 			return;
 		}
 
-		const permission = this.quota.tryAcquire(entry.protectReserve ? 'poll' : 'command');
+		const permission = this.quota.tryAcquire(command.vin, entry.protectReserve ? 'poll' : 'command');
 		if ('reason' in permission) {
 			const now = this.now();
 			if (now + permission.waitMs >= entry.expiresAt) {
@@ -413,7 +413,7 @@ export class CommandQueue {
 		} finally {
 			this.inFlight.delete(key);
 		}
-		this.quota.recordResponse(result.meta, permission);
+		this.quota.recordResponse(command.vin, result.meta, permission);
 		this.onResponse?.(result.meta, result.ok ? undefined : result.error);
 
 		if (result.ok) {

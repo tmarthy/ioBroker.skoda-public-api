@@ -60,7 +60,7 @@ class DelayedStore implements QuotaStore {
 	}
 }
 
-describe('quota/QuotaManager => ein Bucket pro Instanz', () => {
+describe('quota/QuotaManager => ein Bucket einer VIN', () => {
 	let clock: number;
 
 	const now = (): number => clock;

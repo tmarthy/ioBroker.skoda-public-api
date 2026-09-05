@@ -23,8 +23,8 @@ Read and control Škoda vehicles via the official MyŠkoda Public API.
 
 ### The one constraint that shapes everything
 
-The API allows **20 requests per hour per API key**. There is a single read endpoint,
-eight command endpoints, no push, no webhooks, and no operation-status endpoint — a
+The API allows **20 requests per hour per VIN**. There is a single read endpoint,
+several command endpoints, no push, no webhooks, and no operation-status endpoint — a
 command returns `202 Accepted` and you learn the outcome only from a later poll, which
 costs quota again. Near-real-time monitoring is not possible with this API, and neither
 is PV surplus charging with current modulation. Plan accordingly.
@@ -84,7 +84,7 @@ Two additions that are not in the API:
 | State | Meaning |
 |---|---|
 | `info.connection` | `false` when the key is rejected (401/403). **Stays `true` when the quota is exhausted** — an empty budget is normal operation, not a fault. |
-| `info.rateLimit.*` | `limit`, `remaining`, `resetAt`, `lastRequestAt` — straight from the `RateLimit-*` headers, and the adapter's memory across restarts. |
+| `<vin>.rateLimit.*` | `limit`, `remaining`, `resetAt`, `lastRequestAt` — the separate budget for this VIN, from the `RateLimit-*` headers and the adapter's memory across restarts. |
 | `info.apiKey.expiresAt`, `.daysRemaining` | From the `X-API-Key-Expires-At` header of every response. |
 | `<vin>.info.dataAge` | Seconds since the newest `carCapturedTimestamp` in the response. |
 | `<vin>.info.lastErrors` | The `errors[]` of the last response as JSON. |
@@ -137,6 +137,11 @@ newer than the accepted command ends this waiting phase. Without confirmation it
 at most the configured command lifetime (10 minutes by default), after which a new
 switch write can retry. Expiry does not automatically resend the command.
 
+The current Public API also advertises supported operations in `<vin>.operations` and
+offers endpoints for charging limit, charging mode and charging-profile updates. The
+adapter mirrors the operation list but does not expose these three setting operations
+as writable states yet; the on/off commands listed above are supported.
+
 `info.lastCommand.result` is one of:
 
 | Result | Meaning |
@@ -161,8 +166,8 @@ What this API cannot give you, no matter how it is configured:
 - **No second-by-second monitoring.** 20 requests per hour is one every three minutes,
   and that is the whole budget.
 - **No immediate notification when charging ends.** You learn about it at the next poll.
-- **No current modulation.** The API cannot set the charging current, so surplus
-  charging is bang-bang (on/off) only.
+- **No current modulation.** The API can set a target state of charge and a charging
+  mode, but it cannot set charging current, so surplus charging remains on/off only.
 
 ## PV surplus charging
 

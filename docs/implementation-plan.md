@@ -27,7 +27,7 @@ in eine Richtung; die Schichten kennen jeweils nur die darunterliegende.
          |  PollScheduler       |                      |   Schicht 3
          |  (Kadenz, Backoff)   |                      |
          +--------------------------------------------+
-         |  QuotaManager  (ein Bucket pro Instanz)     |   Schicht 2
+         |  QuotaManager  (ein Bucket pro VIN)         |   Schicht 2
          +--------------------------------------------+
          |  SkodaApiClient  (fetch, Header, sanitize)  |   Schicht 1
          +--------------------------------------------+
@@ -288,7 +288,7 @@ Beides liegt vor: `errors.test.ts` prüft die Tabelle Zeile für Zeile,
 >   abgesetzte Requests nicht beide denselben Reststand sehen.
 > - Die Persistenz hängt an einer Schnittstelle `QuotaStore`, nicht an einer
 >   Adapter-Instanz: Der Manager kennt kein ioBroker, und die Tests brauchen keins.
->   **Offen bleibt die Anbindung an `info.rateLimit.*` — sie kommt in Phase 6 mit der
+>   **Offen bleibt die Anbindung an `<vin>.rateLimit.*` — sie kommt in Phase 6 mit der
 >   Verdrahtung in `main.ts`.**
 
 Zustand: `limit`, `remaining`, `resetAt`, `lastRequestAt`.
@@ -305,7 +305,7 @@ snapshot(): { limit, remaining, resetAt, reserveFree }
 - `poll` wird abgelehnt, sobald `remaining <= commandReserve` (Default 6).
 - `command` darf bis `remaining === 0` gehen.
 - **Persistenz gegen Crash-Loops:** `remaining`, `resetAt` und `lastRequestAt`
-  werden in `info.rateLimit.*` geschrieben und beim Start gelesen. Liegt der
+  werden in `<vin>.rateLimit.*` geschrieben und beim Start gelesen. Liegt der
   letzte Request weniger als das minimale Intervall zurück, wartet der Adapter.
   Ohne das verbrennt eine Instanz in Neustartschleife 20 Requests in 90 Sekunden.
 
@@ -413,7 +413,7 @@ und kostet volles Budget. Ändert sich der Zeitstempel, sofort zurück auf Basis
 Erster Poll ohne `include` (Fähigkeitserkennung), danach mit der gelernten Liste
 — abzüglich `parkingPosition`, falls abgeschaltet (E14).
 
-Bei mehreren VINs: reihum aus demselben Bucket.
+Bei mehreren VINs: reihum, aber mit einem getrennten Bucket je VIN.
 
 **Fertig, wenn:** Der Adapter läuft gegen den Mock über eine simulierte Stunde,
 bleibt unter 20 Requests, füllt den Objektbaum und drosselt sich beim schlafenden
@@ -542,7 +542,7 @@ Hand im Admin des dev-servers (siehe HANDOFF.md, Abschnitt 3).
 > - Meldungen dieser Stufe sind deutsch **mit Umlauten** — sie erscheinen als
 >   Notification in der Oberfläche, nicht nur im Log.
 > - `info.apiKey.expiresAt` ist die ISO-Zeichenkette aus dem Header (`role: date`), wie
->   alle Zeitstempel dieser API im Baum; `info.rateLimit.resetAt` bleibt eine Zahl, weil
+>   alle Zeitstempel dieser API im Baum; `<vin>.rateLimit.resetAt` bleibt eine Zahl, weil
 >   der Adapter ihn selbst ausrechnet.
 
 - `X-API-Key-Expires-At` aus jeder Antwort nach `info.apiKey.expiresAt`,
@@ -571,7 +571,7 @@ Eintrag `{"apiKeyExpired":{"count":1}}` im Notification-Zustand des Hosts.
 > - **Ein Testaufbau lässt sich genau einmal starten** („This test harness has already
 >   been used"). Ein Neustart im laufenden Test ist damit nicht zu haben. Stattdessen
 >   bekommt jeder Lebenslauf eine eigene `suite`, und der Neustart wird nachgestellt,
->   indem der Zustand des Vorgängers **vor** dem Start in `info.rateLimit.*` liegt —
+>   indem der Zustand des Vorgängers **vor** dem Start in `<vin>.rateLimit.*` liegt —
 >   das prüft genau den Mechanismus, um den es geht.
 > - **`common.messagebox` landet im Testaufbau nicht im Instanzobjekt.**
 >   `iobroker add` nimmt die Kennzeichnung nicht mit, `iobroker upload` bei einer
@@ -591,7 +591,7 @@ Eintrag `{"apiKeyExpired":{"count":1}}` im Notification-Zustand des Hosts.
   mit dem Systemschlüssel aus `system.config` verschlüsseln — ein Klartextwert wird
   beim Start entschlüsselt und ergibt Unsinn.
   Der Durchlauf **von Hand** ist erledigt (Phase 8, siehe HANDOFF.md, Abschnitt 3):
-  Objektbaum, `info.rateLimit.*`, Sperrfrist nach dem Neustart, Befehl mit
+  Objektbaum, `<vin>.rateLimit.*`, Sperrfrist nach dem Neustart, Befehl mit
   Verifikations-Poll und der Verbindungstest liefen in einer echten Instanz gegen den
   Mock. Was fehlt, ist die Automatisierung davon.
 - `@iobroker/testing`: Paket- und Startup-Tests.

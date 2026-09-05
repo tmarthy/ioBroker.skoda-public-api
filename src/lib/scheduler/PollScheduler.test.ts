@@ -4,6 +4,7 @@ import { DEFAULT_API_KEY, DEFAULT_VIN, MockSkodaApi } from '../../../test/mock/s
 import { SkodaApiClient, type ApiResult } from '../api/client';
 import type { VehiclePart, VehicleResponse } from '../api/types';
 import { QuotaManager } from '../quota/QuotaManager';
+import { quotaForVehicle, VehicleQuotaManager } from '../quota/VehicleQuotaManager';
 import { StateWriter } from '../states/StateWriter';
 import { MIN_IDLE_MS, PollScheduler, type SchedulerLog, type VehicleReader } from './PollScheduler';
 
@@ -48,7 +49,7 @@ describe('scheduler/PollScheduler => Kadenz unter 20 Requests pro Stunde', () =>
 	const buildScheduler = (options: Partial<ConstructorParameters<typeof PollScheduler>[0]> = {}): PollScheduler =>
 		new PollScheduler({
 			client,
-			quota,
+			quota: quotaForVehicle(DEFAULT_VIN, quota),
 			vins: [DEFAULT_VIN],
 			onVehicleData: (vin, response) => writer.write(vin, response),
 			log,
@@ -387,7 +388,7 @@ describe('scheduler/PollScheduler => Kadenz unter 20 Requests pro Stunde', () =>
 	});
 
 	describe('Mehrere Fahrzeuge', () => {
-		it('fragt sie reihum aus demselben Budget', async () => {
+		it('fragt sie reihum mit getrennten Budgets', async () => {
 			const asked: string[] = [];
 			const stub: VehicleReader = {
 				getVehicle: (vin: string): Promise<ApiResult<VehicleResponse>> => {
@@ -401,7 +402,10 @@ describe('scheduler/PollScheduler => Kadenz unter 20 Requests pro Stunde', () =>
 			};
 			const scheduler = new PollScheduler({
 				client: stub,
-				quota,
+				quota: new VehicleQuotaManager({
+					vins: ['TMBJB9NY5RF999999', 'TMBJC1NY0SF123456'],
+					now,
+				}),
 				vins: ['TMBJB9NY5RF999999', 'TMBJC1NY0SF123456'],
 				onVehicleData: () => undefined,
 				log,

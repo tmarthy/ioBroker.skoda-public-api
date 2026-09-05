@@ -80,7 +80,7 @@
 		},
 		"_budgetHint": {
 			"type": "staticText",
-			"text": "The API allows 20 requests per hour and key. A command costs two of them, because the result only shows up in the next poll.",
+			"text": "The API allows 20 requests per hour and VIN. A command costs two of them, because the result only shows up in the next poll.",
 			"newLine": true,
 			"xs": 12,
 			"sm": 12,
