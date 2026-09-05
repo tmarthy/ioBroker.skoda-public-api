@@ -217,6 +217,8 @@ reproduce the official Škoda logo; it is distributed under this project's MIT l
 	Placeholder for the next version (at the beginning of the line):
 	### **WORK IN PROGRESS**
 -->
+### 0.0.2 (2026-09-05)
+* (Thomas Marthy) enabled npm Trusted Publishing for automated releases
 
 ### 0.0.1 (2026-09-05)
 * (Thomas Marthy) initial release

@@ -1,8 +1,21 @@
 {
   "common": {
     "name": "skoda-public-api",
-    "version": "0.0.1",
+    "version": "0.0.2",
     "news": {
+      "0.0.2": {
+        "en": "Enabled npm Trusted Publishing for automated releases",
+        "de": "npm Trusted Publishing für automatisierte Veröffentlichungen aktiviert",
+        "ru": "Включена доверенная публикация npm для автоматических выпусков",
+        "pt": "Publicação confiável do npm ativada para lançamentos automatizados",
+        "nl": "npm Trusted Publishing ingeschakeld voor geautomatiseerde releases",
+        "fr": "Publication fiable npm activée pour les versions automatisées",
+        "it": "Pubblicazione attendibile npm abilitata per le versioni automatizzate",
+        "es": "Publicación de confianza de npm habilitada para versiones automatizadas",
+        "pl": "Włączono npm Trusted Publishing dla automatycznych wydań",
+        "uk": "Увімкнено npm Trusted Publishing для автоматизованих випусків",
+        "zh-cn": "已为自动发布启用 npm 可信发布"
+      },
       "0.0.1": {
         "en": "initial release",
         "de": "Erstveröffentlichung",
