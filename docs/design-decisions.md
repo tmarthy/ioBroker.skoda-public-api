@@ -102,8 +102,19 @@ Felder fallen beim Regenerieren als Compile-Fehler auf statt als State, der stil
 aufhört sich zu aktualisieren.
 **Typisierung** kommt aus der Spec (`type`, `unit`, `role`, `common.states` mit
 deutschen Enum-Labels), unbekannte Felder werden dynamisch mit geratenem Typ angelegt.
-**Eine Ausnahme vom 1:1-Prinzip:** zusätzlicher State `parkingPosition.position`
+**Ausnahmen vom 1:1-Prinzip:** zusätzlicher State `parkingPosition.position`
 im Format `lat;lon` mit `role: value.gps` für VIS-Karten und Geofence-Adapter.
+
+**Anzeigeeinheiten, Nutzerwunsch vom 2026-09-05:**
+`charging.status.battery.remainingCruisingRangeInMeters` wird durch 1000 geteilt und
+in km dargestellt. `activeVentilation.durationInSeconds` und
+`auxiliaryHeating.durationInSeconds` werden durch 60 geteilt und in Minuten dargestellt.
+Die bestehenden IDs bleiben erhalten, auch wenn ihre Endung die API-Einheit nennt.
+Der StateWriter rechnet ausschließlich empfangene API-Werte um, ohne Rundung, und
+aktualisiert vorhandene Objekteinheiten und Standardbeschreibungen beim nächsten
+Empfang des Felds. Eigene Namen bleiben erhalten. Historien werden nicht umgerechnet;
+Skripte müssen die neuen Einheiten berücksichtigen. Spec, Fixtures und Befehlsdaten
+bleiben unverändert in den API-Einheiten.
 
 ### E8 — Umgang mit unvollständigen Antworten
 Fehlende Teile **nicht** auf `null` setzen. Letzter Wert bleibt stehen,

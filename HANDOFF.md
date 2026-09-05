@@ -1,6 +1,6 @@
 # Handoff — ioBroker.skoda-public-api
 
-**Stand: 2026-09-05, nach Review und Fehlerkorrekturen** auf Basis von `a4cdb4d`.
+**Stand: 2026-09-05, Anzeigeeinheiten nach dem Review-Commit `6eb228a`.**
 Der zuletzt dokumentierte CI-Stand ist weiterhin die Abrechnungssperre aus Abschnitt 2;
 er wurde beim Review nicht erneut auf GitHub geprüft.
 Der Adapter liest, steuert und meldet den Ablauf seines Schlüssels; die Admin-UI ist vollständig. Der Lebenslauf einer Instanz — Poll, Objektbaum, Befehl, Verbindungstest, Neustart mitten im Quota-Fenster, abgelaufener Schlüssel — läuft seit Phase 10 als Integrationstest gegen den Mock, in einer echten ioBroker-Instanz. Diese Datei ist der Einstieg für jeden, der die
@@ -46,6 +46,27 @@ Ziel-SoC setzen, Ladeprofile ändern, Schlüssel automatisch erneuern.
 ---
 
 ## 2. Wo das Projekt steht
+
+### Lesbare Anzeigeeinheiten vom 2026-09-05
+
+- Elektrische Restreichweite: `remainingCruisingRangeInMeters` enthält nun **km**
+  (Wert durch 1000), bei unveränderter State-ID.
+- Laufzeiten von aktiver Lüftung und Standheizung: `durationInSeconds` enthält
+  **Minuten** (Wert durch 60). Andere Reichweiten und der Kilometerstand waren bereits
+  in km, verbleibende Ladezeit bereits in Minuten.
+- Umrechnung ohne Rundung im StateWriter; API-Antworten und Befehlsdaten bleiben roh.
+  Die Registry `displayConversions` in `objectOverlay.ts` verbindet Wertumrechnung,
+  Anzeigeeinheit und Beschreibung.
+- Vorhandene Objekte erhalten beim nächsten Empfang des Felds die neue Einheit und
+  eine passende Standardbeschreibung. Eigene Namen bleiben erhalten. Bei fehlenden
+  Daten bleibt der alte Wert mit seiner bisherigen Einheit stehen.
+- Skripte müssen die neuen Einheiten berücksichtigen; Historien werden nicht rückwirkend
+  umgerechnet. README und E7 beschreiben diese bewusste Ausnahme vom 1:1-Spiegel.
+
+**Lokal geprüft (Node 26.7.0):** Typprüfung, Lint und Build erfolgreich;
+**352 Unit-Tests**, **57 Pakettests** und **10 Integrationstests** bestanden.
+Der Integrationstest enthält die Migration eines bestehenden Reichweiten-States
+von `352000 m` auf `352 km`. Noch keine Installation auf der Produktiv-VM.
 
 ### Review-Korrekturen vom 2026-09-05
 

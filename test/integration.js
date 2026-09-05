@@ -171,14 +171,22 @@ tests.integration(path.join(__dirname, '..'), {
 
 				// Werte eines Vorgaengerprozesses: ein inzwischen fehlendes Feld und
 				// ein unveraenderter Wert, dessen alte Fehlerqualitaet verschwinden muss.
-				for (const [path, val, q] of [
+				for (const [path, val, q, unit] of [
 					['charging.status.chargeType', 'AC', 0],
 					['odometer.mileageInKm', 30069, 1],
+					['charging.status.battery.remainingCruisingRangeInMeters', 352000, 0, 'm'],
 				]) {
 					const id = `${VEHICLE}.${path}`;
 					const obj = {
 						type: 'state',
-						common: { name: path, type: typeof val, role: 'state', read: true, write: false },
+						common: {
+							name: path,
+							type: typeof val,
+							role: 'state',
+							read: true,
+							write: false,
+							...(unit ? { unit } : {}),
+						},
 						native: {},
 					};
 					if (harness.objects.setObjectAsync) {
@@ -223,6 +231,17 @@ tests.integration(path.join(__dirname, '..'), {
 				expect(limit.val).to.equal(20);
 				const days = await readState(harness, `${INSTANCE}.info.apiKey.daysRemaining`);
 				expect(days.val).to.be.greaterThan(80);
+			});
+
+			it('migriert die Reichweite von Metern auf Kilometer', async function () {
+				this.timeout(60000);
+				const id = `${VEHICLE}.charging.status.battery.remainingCruisingRangeInMeters`;
+				await waitFor('die Reichweite in km', async () => (await getState(harness, id))?.val === 352);
+				const obj = harness.objects.getObjectAsync
+					? await harness.objects.getObjectAsync(id)
+					: await harness.objects.getObject(id);
+				expect(obj.common.unit).to.equal('km');
+				expect(obj.common.name).to.contain('kilometers');
 			});
 
 			it('korrigiert gespeicherte Qualitaet und markiert verschwundene Felder', async function () {

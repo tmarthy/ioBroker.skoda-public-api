@@ -3,6 +3,18 @@ import { generatedStateDefs } from './objectDefs.generated';
 import { exactOverlayPaths, resolveCommon } from './objectOverlay';
 
 describe('objectOverlay => resolveCommon', () => {
+	for (const [path, unit] of [
+		['charging.status.battery.remainingCruisingRangeInMeters', 'km'],
+		['activeVentilation.durationInSeconds', 'min'],
+		['auxiliaryHeating.durationInSeconds', 'min'],
+		['charging.status.remainingTimeToFullyChargedInMinutes', 'min'],
+		['fuelStatus.totalRangeInKm', 'km'],
+		['fuelStatus.primaryEngineRange.remainingRangeInKm', 'km'],
+	]) {
+		it(`verwendet ${unit} fuer ${path}`, () => {
+			expect(resolveCommon(path, generatedStateDefs[path]).unit).to.equal(unit);
+		});
+	}
 	it('reicht Einheit, Grenzen und Rolle fuer Prozentwerte durch', () => {
 		const common = resolveCommon(
 			'charging.status.battery.stateOfChargeInPercent',

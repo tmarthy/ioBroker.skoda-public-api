@@ -4,6 +4,7 @@ import path from 'node:path';
 import { FakeAdapter } from '../../../test/helpers/fakeAdapter';
 import type { VehicleResponse } from '../api/types';
 import { QUALITY_NOT_GOOD, StateWriter, type StateApi } from './StateWriter';
+import { generatedStateDefs } from './objectDefs.generated';
 
 /**
  * Beweist zur Uebersetzungszeit, dass eine echte Adapter-Instanz die schmale
@@ -82,7 +83,15 @@ describe('states/StateWriter => Antwort in den Objektbaum', () => {
 					}
 					const id = `${VIN}.${leafPath}`;
 					expect(adapter.objects.has(id), `Zustand fehlt: ${leafPath}`).to.equal(true);
-					expect(adapter.val(id), `Wert weicht ab: ${leafPath}`).to.equal(value);
+					const displayed =
+						typeof value === 'number'
+							? leafPath.endsWith('remainingCruisingRangeInMeters')
+								? value / 1000
+								: leafPath.endsWith('durationInSeconds')
+									? value / 60
+									: value
+							: value;
+					expect(adapter.val(id), `Wert weicht ab: ${leafPath}`).to.equal(displayed);
 				}
 			});
 		}
@@ -216,6 +225,77 @@ describe('states/StateWriter => Antwort in den Objektbaum', () => {
 			const id = `${VIN}.parkingPosition.position`;
 			expect(adapter.objects.get(id)?.common).to.include({ role: 'value.gps' });
 			expect(adapter.val(id)).to.equal('47.3769;8.5417');
+		});
+	});
+
+	describe('Lesbare Einheiten und bestehende Objekte', () => {
+		const response: VehicleResponse = {
+			vehicle: {
+				charging: {
+					isVehicleInSavedLocation: false,
+					status: { battery: { remainingCruisingRangeInMeters: 300500 } },
+				},
+				activeVentilation: { state: 'OFF', durationInSeconds: 600 },
+				auxiliaryHeating: { state: 'OFF', durationInSeconds: 90 },
+			},
+		};
+		const cases = [
+			{
+				path: 'charging.status.battery.remainingCruisingRangeInMeters',
+				raw: 300500,
+				val: 300.5,
+				oldUnit: 'm',
+				unit: 'km',
+			},
+			{ path: 'activeVentilation.durationInSeconds', raw: 600, val: 10, oldUnit: 's', unit: 'min' },
+			{ path: 'auxiliaryHeating.durationInSeconds', raw: 90, val: 1.5, oldUnit: 's', unit: 'min' },
+		];
+		for (const item of cases) {
+			it(`rechnet ${item.path} um und migriert vorhandene Metadaten`, async () => {
+				const id = `${VIN}.${item.path}`;
+				await adapter.setObjectNotExistsAsync(id, {
+					type: 'state',
+					common: {
+						name: generatedStateDefs[item.path].desc!,
+						type: 'number',
+						role: 'value',
+						read: true,
+						write: false,
+						unit: item.oldUnit,
+					},
+					native: { retained: true },
+				});
+				await adapter.setStateAsync(id, { val: item.raw, ack: true, q: 1 });
+				await writer.write(VIN, structuredClone(response));
+				expect(adapter.states.get(id)).to.include({ val: item.val, q: 0 });
+				expect(adapter.objects.get(id)?.common).to.include({ unit: item.unit });
+				expect(adapter.objects.get(id)?.common?.name).not.to.equal(generatedStateDefs[item.path].desc);
+				expect(adapter.objects.get(id)?.native).to.deep.equal({ retained: true });
+				writer = new StateWriter({ api: adapter });
+				adapter.writes.length = 0;
+				await writer.write(VIN, structuredClone(response));
+				expect(adapter.val(id)).to.equal(item.val);
+				expect(adapter.writes).not.to.contain(id);
+			});
+		}
+		it('behaelt eigene Beschriftungen und laesst die API-Antwort unveraendert', async () => {
+			const id = `${VIN}.${cases[0].path}`;
+			await adapter.setObjectNotExistsAsync(id, {
+				type: 'state',
+				common: {
+					name: 'Meine Reichweite',
+					type: 'number',
+					role: 'value.distance',
+					read: true,
+					write: false,
+					unit: 'm',
+				},
+				native: {},
+			});
+			const raw = structuredClone(response);
+			await writer.write(VIN, raw);
+			expect(raw).to.deep.equal(response);
+			expect(adapter.objects.get(id)?.common?.name).to.equal('Meine Reichweite');
 		});
 	});
 

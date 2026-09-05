@@ -36,6 +36,21 @@ export class FakeAdapter implements StateApi {
 		return Promise.resolve({ id });
 	}
 
+	public getObjectAsync(id: string): ioBroker.GetObjectPromise {
+		return Promise.resolve((this.objects.get(id) as ioBroker.Object | undefined) ?? null);
+	}
+
+	public extendObjectAsync(id: string, obj: ioBroker.PartialObject): ioBroker.SetObjectPromise {
+		const existing = this.objects.get(id);
+		if (existing) {
+			this.objects.set(id, {
+				...existing,
+				common: { ...existing.common, ...obj.common },
+			} as ioBroker.SettableObject);
+		}
+		return Promise.resolve({ id });
+	}
+
 	public setStateAsync(id: string, state: ioBroker.SettableState): ioBroker.SetStatePromise {
 		this.apply(id, state);
 		return Promise.resolve(id);

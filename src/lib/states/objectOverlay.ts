@@ -6,7 +6,7 @@
  * zur Laufzeit in `resolveCommon()` zusammengefuehrt - so kann der Codegen jederzeit neu
  * laufen, ohne handgepflegte Werte zu ueberschreiben (siehe docs/design-decisions.md, E7).
  *
- * Aufloesungsreihenfolge: exakter Pfad > Endungsregel > Generat.
+ * Aufloesungsreihenfolge: Anzeigeumrechnung > exakter Pfad > Endungsregel > Generat.
  */
 import type { GeneratedStateDef } from './objectDefs.generated';
 
@@ -25,6 +25,35 @@ export interface OverlayEntry {
 }
 
 const PERCENT: OverlayEntry = { role: 'value.battery', unit: '%', min: 0, max: 100 };
+
+/** Anzeigeumrechnung eines API-Werts; die State-ID bleibt aus Kompatibilitaetsgruenden bestehen. */
+interface DisplayConversion {
+	/** Teiler fuer den unveraenderten numerischen API-Wert. */
+	divisor: number;
+	/** Einheit des umgerechneten Werts. */
+	unit: string;
+	/** Beschreibung mit der Anzeigeeinheit statt der API-Einheit. */
+	name: string;
+}
+
+/** Nur ausdruecklich bekannte API-Felder umrechnen, keine Einheiten anhand unbekannter Namen erraten. */
+export const displayConversions: Readonly<Record<string, DisplayConversion>> = {
+	'charging.status.battery.remainingCruisingRangeInMeters': {
+		divisor: 1000,
+		unit: 'km',
+		name: 'Remaining cruising range with HV battery power in kilometers.',
+	},
+	'activeVentilation.durationInSeconds': {
+		divisor: 60,
+		unit: 'min',
+		name: 'Duration in minutes the active ventilation runs for when started.',
+	},
+	'auxiliaryHeating.durationInSeconds': {
+		divisor: 60,
+		unit: 'min',
+		name: 'Duration in minutes the auxiliary heating runs for when started.',
+	},
+};
 
 /**
  * Endungsregeln greifen auf jeden Pfad, der so endet. Reihenfolge ist bedeutsam:
@@ -208,6 +237,11 @@ export function resolveCommon(path: string, def: GeneratedStateDef): ioBroker.St
 		common.states = Object.fromEntries(
 			Object.keys(def.states).map(value => [value, overlay?.labels?.[value] ?? value]),
 		);
+	}
+	const conversion = displayConversions[path];
+	if (conversion) {
+		common.unit = conversion.unit;
+		common.name = conversion.name;
 	}
 
 	return common;

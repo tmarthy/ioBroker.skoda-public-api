@@ -1,8 +1,8 @@
 /**
  * StateWriter - traegt die Antwort der API in den ioBroker-Objektbaum ein.
  *
- * Der Baum spiegelt das JSON der Antwort 1:1 (E7): Wurzel ist die VIN, darunter genau
- * die Struktur, die die API liefert. Das ist kein Selbstzweck. Bei einer API der
+ * Der Baum spiegelt die Struktur des JSON (E7): Wurzel ist die VIN, darunter genau
+ * die Pfade der API; ausgewaehlte Werte werden in km/min dargestellt. Bei einer API der
  * Version `v0` erscheinen neue Felder von selbst, und ein umbenanntes Feld faellt beim
  * naechsten `npm run codegen` als Compile-Fehler auf - statt als Zustand, der still
  * aufhoert sich zu aktualisieren.
@@ -25,7 +25,7 @@ import { partFromErrorType } from '../api/parts';
 import type { VehicleResponse } from '../api/types';
 import { COMMAND_DEFS, COMMAND_RESULTS, type CommandReport } from './commandDefs';
 import { generatedChannels, generatedStateDefs } from './objectDefs.generated';
-import { resolveCommon } from './objectOverlay';
+import { displayConversions, resolveCommon } from './objectOverlay';
 
 /**
  * Quality-Flag "general problem".
@@ -56,6 +56,10 @@ export interface StateApi {
 	getStateAsync(id: string): ioBroker.GetStatePromise;
 	/** Liest bestehende Werte nach einem Neustart, inklusive ihrer Qualitaet. */
 	getStatesAsync(pattern: string): ioBroker.GetStatesPromise;
+	/** Liest vorhandene Metadaten fuer die Migration einer Anzeigeeinheit. */
+	getObjectAsync(id: string): ioBroker.GetObjectPromise;
+	/** Aktualisiert gezielt Einheit und Standardbeschreibung bestehender States. */
+	extendObjectAsync(id: string, obj: ioBroker.PartialObject): ioBroker.SetObjectPromise;
 	/** Der Adapter-Logger, auf zwei Stufen beschraenkt. */
 	log: {
 		debug(message: string): void;
@@ -444,16 +448,31 @@ export class StateWriter {
 		overrides: Partial<ioBroker.StateCommon> = {},
 	): Promise<void> {
 		const id = `${vin}.${path}`;
+		const conversion = displayConversions[path];
 		if (!this.createdObjects.has(id)) {
 			await this.api.setObjectNotExistsAsync(id, {
 				type: 'state',
 				common: { ...this.commonFor(path, value), ...overrides },
 				native: {},
 			});
+			if (conversion) {
+				const existing = await this.api.getObjectAsync(id);
+				const oldName = generatedStateDefs[path]?.desc;
+				const replaceName = existing?.common.name === oldName || existing?.common.name === path;
+				if (existing?.common.unit !== conversion.unit || replaceName) {
+					await this.api.extendObjectAsync(id, {
+						common: {
+							unit: conversion.unit,
+							...(replaceName ? { name: conversion.name } : {}),
+						},
+					});
+				}
+			}
 			this.createdObjects.add(id);
 			this.createdStates.add(id);
 		}
-		await this.writeValue(id, value);
+		// Immer vom API-Wert ausgehen: Ein Neustart darf gespeicherte km/min nicht erneut teilen.
+		await this.writeValue(id, conversion && typeof value === 'number' ? value / conversion.divisor : value);
 	}
 
 	/**
@@ -527,7 +546,7 @@ export class StateWriter {
 	/**
 	 * Zusaetzlicher Zustand `parkingPosition.position` im Format `lat;lon`.
 	 *
-	 * Die einzige Ausnahme vom 1:1-Prinzip (E7): VIS-Karten und Geofence-Adapter
+	 * Eine Ausnahme vom 1:1-Prinzip (E7): VIS-Karten und Geofence-Adapter
 	 * erwarten beide Koordinaten in einem Zustand.
 	 *
 	 * @param vin Fahrgestellnummer.

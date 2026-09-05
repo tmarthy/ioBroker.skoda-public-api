@@ -98,6 +98,24 @@ Parts intentionally excluded from the request are left alone. `dataAge` measures
 age of the newest vehicle timestamp at the last successful poll; it is not a live clock
 or a freshness guarantee for every individual state.
 
+### Display units
+
+The following numeric values use more readable display units. Their state IDs keep
+the API field names, including the original unit suffixes:
+
+| State below `<vin>` | Display unit | Example |
+|---|---|---|
+| `charging.status.battery.remainingCruisingRangeInMeters` | km | API `352000` → state `352` |
+| `activeVentilation.durationInSeconds` | min | API `600` → state `10` |
+| `auxiliaryHeating.durationInSeconds` | min | API `90` → state `1.5` |
+
+Other ranges and the odometer already use km; charging time already uses minutes.
+Values are divided without rounding. Existing object units and default descriptions
+are updated when the corresponding value is next received; custom names are retained.
+Scripts reading these three states must use km/min. Historical values recorded before
+this change retain their original m/s units. API responses and command payloads retain
+the API units.
+
 ## Controlling the vehicle
 
 Each domain the vehicle supports gets three states, for example under `<vin>.charging`:
