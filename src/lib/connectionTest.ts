@@ -177,8 +177,8 @@ function explainError(error: ApiError, meta: ApiMeta, now: number): string {
 		case 'not-found':
 			return 'Zu dieser VIN gibt es kein Fahrzeug. Bitte die 17 Zeichen nachsehen.';
 		case 'rate-limit-exceeded': {
-			const wait = waitMinutes(error.retryAfterMs ?? metaResetMs(meta));
-			return `Das Stundenbudget ist erschöpft${wait ? `, in ${wait} wieder versuchen` : ''}. Der Schlüssel selbst ist in Ordnung.`;
+			const duration = formatMinutes(error.retryAfterMs ?? metaResetMs(meta));
+			return `Das Stundenbudget ist erschöpft${duration ? `, in ${duration} wieder versuchen` : ''}. Der Schlüssel selbst ist in Ordnung.`;
 		}
 		case 'vehicle-not-accepting-requests':
 			return 'Das Fahrzeug nimmt gerade keine Anfragen an. Schlüssel und VIN sind in Ordnung; später erneut versuchen.';
@@ -232,8 +232,8 @@ function describeQuota(meta: ApiMeta): string | undefined {
 	if (!meta.rateLimit) {
 		return undefined;
 	}
-	const wait = waitMinutes(meta.rateLimit.resetInSeconds * 1000);
-	return `Budget: ${meta.rateLimit.remaining} von ${meta.rateLimit.limit} Requests frei, Fenster setzt in ${wait} zurück.`;
+	const duration = formatMinutes(meta.rateLimit.resetInSeconds * 1000);
+	return `Budget: ${meta.rateLimit.remaining} von ${meta.rateLimit.limit} Requests frei, Fenster setzt in ${duration} zurück.`;
 }
 
 /**
@@ -252,7 +252,7 @@ function metaResetMs(meta: ApiMeta): number | undefined {
  * @param ms Die Wartezeit.
  * @returns Etwas wie `42 Minuten`, oder eine leere Zeichenkette.
  */
-function waitMinutes(ms: number | undefined): string {
+function formatMinutes(ms: number | undefined): string {
 	if (ms === undefined || ms <= 0) {
 		return '';
 	}

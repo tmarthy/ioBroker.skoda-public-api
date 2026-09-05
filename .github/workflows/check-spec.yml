@@ -17,8 +17,8 @@ permissions:
 jobs:
   check-spec:
     runs-on: ubuntu-latest
-    # Ohne Obergrenze laeuft ein haengender Job bis zum GitHub-Standard von
-    # sechs Stunden - abgerechnet werden sie trotzdem.
+    # Die Obergrenze beendet einen haengenden Job deutlich vor dem GitHub-Standard
+    # von sechs Stunden.
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v5

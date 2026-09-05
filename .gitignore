@@ -7,7 +7,7 @@
 node_modules
 nbproject
 
-# Kompilat: wird von "prepare" erzeugt, nicht versioniert.
+# Kompilat: wird vor Tests und Releases explizit erzeugt, nicht versioniert.
 # Sonst erzeugt jede Aenderung an src/ zusaetzlich einen Diff im Build.
 build/
 

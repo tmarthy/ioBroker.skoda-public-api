@@ -1,5 +1,0 @@
-package.json
-package-lock.json
-build/
-# Generat aus der OpenAPI-Spec
-src/**/*.generated.ts

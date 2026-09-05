@@ -198,8 +198,8 @@ export class PollScheduler {
 		this.readParkingPosition = options.readParkingPosition ?? true;
 		this.now = options.now ?? (() => Date.now());
 		this.random = options.random ?? Math.random;
-		this.setTimer = options.setTimer ?? ((handler, ms) => setTimeout(handler, ms));
-		this.clearTimer = options.clearTimer ?? (handle => clearTimeout(handle as NodeJS.Timeout));
+		this.setTimer = options.setTimer ?? ((handler, ms) => globalThis.setTimeout(handler, ms));
+		this.clearTimer = options.clearTimer ?? (handle => globalThis.clearTimeout(handle as NodeJS.Timeout));
 
 		const wanted = { ...DEFAULT_INTERVALS, ...options.intervals };
 		// Die Untergrenzen aus dem Plan gelten hier und nicht in der Admin-UI: Wer die

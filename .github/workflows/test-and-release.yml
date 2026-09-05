@@ -2,11 +2,8 @@ name: Test and Release
 
 # Laeuft bei jedem Push und Pull Request sowie bei Versions-Tags.
 #
-# Die Matrix ist bewusst gestaffelt: Auf jeden Push geht nur Linux, die volle
-# Matrix erst zum Release-Tag oder auf Zuruf. Grund ist die Abrechnung von
-# GitHub Actions - Linux zaehlt einfach, Windows doppelt, **macOS zehnfach**.
-# Mit der vollen Matrix kostete ein einziger Push rund 385 abgerechnete Minuten;
-# bei 2000 Freiminuten im Monat waeren das fuenf Pushes.
+# Die vollstaendige Plattformmatrix ist eine Veroeffentlichungsanforderung des
+# ioBroker-Repository-Checkers und laeuft deshalb bei Pushes und Pull Requests.
 on:
   push:
     branches:
@@ -22,12 +19,7 @@ on:
       - "docs/**"
       - ".vscode/**"
   pull_request: {}
-  workflow_dispatch:
-    inputs:
-      full_matrix:
-        description: "Auch auf Windows und macOS testen (teuer)"
-        type: boolean
-        default: false
+  workflow_dispatch: {}
 
 # Cancel previous PR/branch runs when a new commit is pushed
 concurrency:
@@ -40,15 +32,14 @@ jobs:
     if: contains(github.event.head_commit.message, '[skip ci]') == false
 
     runs-on: ubuntu-latest
-    # Ohne Obergrenze laeuft ein haengender Job bis zum GitHub-Standard von sechs
-    # Stunden - auf macOS waeren das 3600 abgerechnete Minuten aus einem einzigen
-    # Versehen.
+    # Die Obergrenze beendet einen haengenden Job deutlich vor dem GitHub-Standard
+    # von sechs Stunden.
     timeout-minutes: 15
 
     steps:
       - uses: ioBroker/testing-action-check@v2
         with:
-          node-version: '22.x'
+          node-version: '24.x'
           # Uncomment the following line if your adapter cannot be installed using 'npm ci'
           # install-command: 'npm install'
           type-checking: true
@@ -56,9 +47,7 @@ jobs:
 
   # Testet den Adapter auf allen unterstuetzten Node-Versionen.
   #
-  # Betriebssysteme: Auf jeden Push nur Linux. Windows und macOS kommen beim
-  # Release-Tag dazu oder wenn der Lauf von Hand mit "full_matrix" gestartet wird -
-  # dann, wenn ein Plattformunterschied tatsaechlich Folgen haette.
+  # Alle drei vom ioBroker-Repository-Checker verlangten Betriebssysteme.
   adapter-tests:
     if: contains(github.event.head_commit.message, '[skip ci]') == false
     # Erst pruefen, dann testen: Wenn Lint oder Typpruefung scheitern, muessen die
@@ -70,12 +59,7 @@ jobs:
     strategy:
       matrix:
         node-version: [22.x, 24.x]
-        os: >-
-          ${{ fromJSON(
-            (github.ref_type == 'tag' || inputs.full_matrix)
-            && '["ubuntu-latest", "windows-latest", "macos-latest"]'
-            || '["ubuntu-latest"]'
-          ) }}
+        os: [ubuntu-latest, windows-latest, macos-latest]
 
     steps:
       - uses: ioBroker/testing-action-adapter@v1
@@ -86,44 +70,25 @@ jobs:
           # install-command: 'npm install'
           build: true
 
-# TODO: To enable automatic npm releases, set up trusted publishing in your npm account
-# See https://docs.npmjs.com/trusted-publishers for more details
-# Then uncomment the following block:
+  # Publishes tagged releases through npm Trusted Publishing and creates a GitHub release.
+  deploy:
+    needs: [check-and-lint, adapter-tests]
 
-#  # Deploys the final package to NPM
-#  deploy:
-#    needs: [check-and-lint, adapter-tests]
-#
-#    # Trigger this step only when a commit on any branch is tagged with a version number
-#    if: |
-#      contains(github.event.head_commit.message, '[skip ci]') == false &&
-#      github.event_name == 'push' &&
-#      startsWith(github.ref, 'refs/tags/v')
-#
-#    runs-on: ubuntu-latest
-#
-#    # Write permissions are required to create Github releases
-#    permissions:
-#      id-token: write
-#      contents: write
-#
-#    steps:
-#      - uses: ioBroker/testing-action-deploy@v1
-#        with:
-#          node-version: '22.x'
-#          # Uncomment the following line if your adapter cannot be installed using 'npm ci'
-#          # install-command: 'npm install'
-#          build: true
-#          github-token: ${{ secrets.GITHUB_TOKEN }}
-#
-#          # When using Sentry for error reporting, Sentry can be informed about new releases
-#          # To enable create a API-Token in Sentry (User settings, API keys)
-#          # Enter this token as a GitHub secret (with name SENTRY_AUTH_TOKEN) in the repository options
-#          # Then uncomment and customize the following block:
-#          sentry: true
-#          sentry-token: ${{ secrets.SENTRY_AUTH_TOKEN }}
-#          sentry-project: "iobroker-skoda-public-api"
-#          sentry-version-prefix: "iobroker.skoda-public-api"
-#          sentry-sourcemap-paths: "build/"
-#          # If your sentry project is linked to a GitHub repository, you can enable the following option
-#          # sentry-github-integration: true
+    if: |
+      contains(github.event.head_commit.message, '[skip ci]') == false &&
+      github.event_name == 'push' &&
+      startsWith(github.ref, 'refs/tags/v')
+
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    permissions:
+      id-token: write
+      contents: write
+
+    steps:
+      - uses: ioBroker/testing-action-deploy@v1
+        with:
+          node-version: '24.x'
+          build: true
+          github-token: ${{ secrets.GITHUB_TOKEN }}

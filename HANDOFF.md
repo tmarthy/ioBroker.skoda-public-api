@@ -141,10 +141,10 @@ npm run check:spec       eingecheckte Spec deckungsgleich mit der Live-API
 npm run codegen          reproduzierbar (identische Prüfsummen bei erneutem Lauf)
 ```
 
-`main` ist nach `https://github.com/tmarthy/ioBroker.skoda-public-api` gepusht. Das
-Repository ist derzeit noch privat und das Paket noch nicht auf npm veröffentlicht;
-beides sind jetzt offene Veröffentlichungsschritte. Der Deploy-Job im
-Release-Workflow ist bis zur Einrichtung von npm Trusted Publishing auskommentiert.
+`main` ist nach `https://github.com/tmarthy/ioBroker.skoda-public-api` gepusht und das
+Repository ist öffentlich. Das Paket ist noch nicht auf npm veröffentlicht. Der
+Deploy-Job ist definiert; vor dem ersten Versions-Tag muss npm Trusted Publishing für
+dieses Repository eingerichtet werden.
 
 ### Stand der CI
 
@@ -153,37 +153,34 @@ für Commit `15550e7` war vollständig grün: Check und Lint sowie Adaptertests 
 Ubuntu mit Node 22 und 24. Vor dem Release wird zusätzlich die vollständige
 Plattformmatrix ausgeführt.
 
-**Die Matrix ist gestaffelt, und zwar aus Kostengründen.** GitHub rechnet Linux
-einfach, Windows doppelt und **macOS zehnfach** ab. Mit der vollen Matrix kostete ein
-einziger Push rund **385 abgerechnete Minuten** — bei 2000 Freiminuten im Monat sind
-das fünf Pushes. Deshalb:
+**Die Matrix ist vollständig, wie es der Repository-Checker verlangt.** Seit das
+Repository öffentlich ist, sind die verwendeten Standard-Runner von GitHub Actions
+für Ubuntu, Windows und macOS kostenfrei.
 
-| Anlass | Was läuft | Kosten |
+| Anlass | Was läuft | Abrechnung |
 |---|---|---|
-| Push, Pull Request | `check-and-lint` + `adapter-tests` auf **Ubuntu** × Node 22/24 | ~40 min |
-| Versions-Tag (`v*`) | zusätzlich Windows und macOS | ~385 min |
-| `workflow_dispatch` mit `full_matrix` | dasselbe auf Zuruf | ~385 min |
+| Push, Pull Request | `check-and-lint` + `adapter-tests` auf Ubuntu, Windows und macOS × Node 22/24 | kostenfrei im öffentlichen Repository |
+| Versions-Tag (`v*`) | volle Testmatrix, danach Deploy | kostenfrei im öffentlichen Repository |
+| `workflow_dispatch` | vollständige Matrix auf Zuruf | kostenfrei im öffentlichen Repository |
 
 Dazu: `paths-ignore` für `**.md` und `docs/**` (reine Dokumentations-Pushes lösen
 nichts aus), `[skip ci]` in der Commit-Nachricht wirkt weiterhin, und **jeder Job hat
 jetzt ein `timeout-minutes`**. Ohne das läuft ein hängender Job bis zum GitHub-Standard
-von sechs Stunden — auf macOS wären das 3600 abgerechnete Minuten aus einem einzigen
-Versehen.
+von sechs Stunden und bindet unnötig einen Runner.
 
 | Workflow | Auslöser | Stand |
 |---|---|---|
-| `Test and Release` | Push auf `main`, Tags, PRs, `workflow_dispatch` | ✓ Ubuntu × Node 22/24; volle Matrix nur bei Tags oder auf Zuruf |
+| `Test and Release` | Push auf `main`, Tags, PRs, `workflow_dispatch` | vollständige Matrix: Ubuntu, Windows, macOS × Node 22/24 |
 | `Check Škoda API spec` | **nur** `schedule` (Mo 05:17 UTC) und `workflow_dispatch` | ✓ manuell geprüft, „Spec unveraendert" |
-| `Auto-Merge Dependabot PRs` | `pull_request_target` | noch nie gelaufen — wartet auf den ersten Dependabot-PR (monatlich am 21.) |
-| Deploy | Tag `v*` | auskommentiert, bis npm Trusted Publishing eingerichtet ist |
+| `Auto-Merge Dependabot PRs` | `pull_request_target` | noch nie gelaufen — wartet auf den ersten Dependabot-PR; npm am 8., Actions am 22. jedes Monats |
+| Deploy | Tag `v*` | definiert; Veröffentlichung funktioniert nach Einrichtung von npm Trusted Publishing |
 
 **Der Spec-Wächter läuft bei einem Push nicht mit.** Wer ihn nach einer Änderung
 prüfen will, muss ihn von Hand auslösen: Actions → *Check Škoda API spec* →
 *Run workflow*.
 
-Der `adapter-tests`-Job ist die belastbare Absicherung der `build/`-Umstellung
-(siehe Fallstrick 7): Er läuft mit `npm ci` ohne expliziten Build-Schritt, in
-sechs OS/Node-Kombinationen. Windows braucht dafür 4–5 Minuten, der Rest gut eine.
+Der `adapter-tests`-Job baut den Adapter über `build: true` und prüft ihn in sechs
+OS/Node-Kombinationen. Windows braucht dafür 4–5 Minuten, der Rest gut eine.
 
 ---
 
@@ -261,16 +258,16 @@ des QuotaManagers greift.
 
 ### Auf dem Produktivsystem installieren
 
-Solange das Repository noch **privat** ist, scheitert `iob url https://github.com/...`
-an der Anmeldung. Ein GitHub-*Tarball* (der ZIP-Download) enthält außerdem **kein `build/`**, weil
-`prepare` dabei nicht läuft (Fallstrick 7). Was funktioniert, ist ein selbst gepacktes
-Paket: `npm pack` führt `prepare` aus, das Kompilat liegt also im Archiv — nachgemessen
-195 kB mit `build/main.js`, `io-package.json` und `admin/`.
+Vor der npm-Veröffentlichung funktioniert eine lokale Installation über ein selbst
+gepacktes Paket. Weil `build/` nicht versioniert wird, muss der Build ausdrücklich vor
+dem Packen laufen. Ein GitHub-Tarball enthält kein Kompilat und ist kein unterstützter
+Installationsweg.
 
 Auf dem Entwicklungsrechner:
 
 ```bash
-npm pack
+npm run build
+npm pack --ignore-scripts
 scp iobroker.skoda-public-api-0.0.1.tgz USER@IOBROKER-VM:/tmp/
 ```
 
@@ -512,16 +509,12 @@ zweites Mal hineinläuft oder eine Korrektur versehentlich zurückdreht.
    ist Englisch, Deutsch wird von Hand gesetzt, der Rest maschinell daraus.
    `titleLang` bleibt in allen Sprachen `Škoda Public API` — ein Produktname wird nicht
    übersetzt.
-7. **`build/` ist bewusst *nicht* versioniert** — abweichend von der Generator-Vorgabe
-   für TypeScript-Adapter. Stattdessen erzeugt das `prepare`-Skript das Kompilat
-   überall dort, wo es gebraucht wird: bei `npm ci` in der CI, bei `npm install` in der
-   Entwicklung, bei `npm pack`/`npm publish` und bei einer Installation über eine
-   git-URL. Beides ist nachgemessen. **`build/` nicht wieder einchecken** — es würde bei
-   jeder Änderung an `src/` einen zweiten Diff erzeugen.
-   Einzige verbliebene Lücke: Eine Installation direkt aus einem GitHub-*Tarball*
-   (statt über npm oder eine git-URL) führt `prepare` nicht aus und bekäme kein
-   Kompilat. Der übliche Weg `iob url …` installiert über eine git-URL und ist davon
-   nicht betroffen.
+7. **`build/` ist bewusst *nicht* versioniert.** Der Repository-Checker verbietet ein
+   `prepare`-Lifecycle-Skript für Adapter. Lokal gilt deshalb `npm run build` vor
+   `npm pack --ignore-scripts`; der Release-Workflow baut mit `build: true`, bevor er
+   veröffentlicht. **`build/` nicht wieder einchecken** — es würde bei jeder Änderung
+   an `src/` einen zweiten Diff erzeugen. Installationen sollen nach dem ersten Release
+   über npm erfolgen, nicht über einen GitHub-Tarball ohne Kompilat.
 8. **Generierte Dateien sind von ESLint und Prettier ausgenommen** (`src/**/*.generated.ts`).
    Nicht wieder einschließen — das erzeugt 738 Formatierungsfehler.
 9. **GitHub-Actions-Versionen im Blick behalten.** GitHub kündigt Node-Laufzeiten ab und
@@ -529,8 +522,8 @@ zweites Mal hineinläuft oder eine Korrektur versehentlich zurückdreht.
    `actions/checkout@v4` und `actions/setup-node@v4` (auf `@v5` gehoben). Eine Warnung im
    Job `check-and-lint` stammt **nicht** aus unserem Workflow — der ruft `checkout` gar
    nicht selbst auf —, sondern aus dem Inneren von `ioBroker/testing-action-check`
-   (auf `@v2` gehoben). Dependabot pflegt `github-actions` monatlich am 21., spätere
-   Sprünge kommen also als geprüfter Pull Request.
+   (auf `@v2` gehoben). Dependabot prüft `github-actions` per Cron am 22. jedes Monats;
+   spätere Sprünge kommen also als geprüfter Pull Request.
 10. **`errors` fehlt in einer fehlerfreien Antwort ganz** — die API sendet *kein* leeres
    Array, entgegen dem Beispiel in Škodas eigener Dokumentation. Am 2026-09-02 an einem
    echten Fahrzeug nachgemessen. `body.errors.map(...)` läuft deshalb im Betrieb auf einen
@@ -557,13 +550,9 @@ zweites Mal hineinläuft oder eine Korrektur versehentlich zurückdreht.
    erst zu: Der „Verbindung testen"-Knopf dreht sich bis zum Timeout — keine
    Fehlermeldung, keine Logzeile, nichts. Kein Unit-Test hätte das gezeigt; gefunden
    hat es erst der Versuch in einer echten Instanz.
-14. **`iobroker-dev-server upload` ist in diesem Repo kaputt** — als Folge von
-   Fallstrick 7. Das Werkzeug liest den Namen des Pakets aus der Ausgabe von
-   `npm pack`, und unser `prepare`-Skript schreibt genau dort den Build-Fortschritt
-   hinein; `npm` sucht die Datei dann unter „> iobroker.skoda-public-api@0.0.1
-   prepare" und bricht mit `ENOENT` ab. Der Weg von Hand steht in Abschnitt 3.
-   Dazu gehört: **Der dev-server hält eine Kopie des Adapters, keinen Symlink**, und
-   `dev-server run` frischt sie nicht auf.
+14. **Der dev-server hält eine Kopie des Adapters, keinen Symlink.** Nach Änderungen
+   muss das Paket neu gebaut, gepackt und in `.dev-server/default` installiert werden;
+   `dev-server run` frischt die Kopie nicht auf. Der Weg von Hand steht in Abschnitt 3.
 15. **Die CI ruft `npm run test:unit`, nicht `test:ts`.** Fehlt das Skript,
    überspringt der Job die Unit-Tests **stillschweigend** — bis Phase 10 liefen die
    317 Tests deshalb ausschließlich lokal. Wer ein Testskript umbenennt, nimmt der CI

@@ -155,8 +155,8 @@ export class CommandQueue {
 		this.retryMs = options.retryMs ?? 15_000;
 		this.now = options.now ?? (() => Date.now());
 		this.random = options.random ?? Math.random;
-		this.setTimer = options.setTimer ?? ((handler, ms) => setTimeout(handler, ms));
-		this.clearTimer = options.clearTimer ?? (handle => clearTimeout(handle as NodeJS.Timeout));
+		this.setTimer = options.setTimer ?? ((handler, ms) => globalThis.setTimeout(handler, ms));
+		this.clearTimer = options.clearTimer ?? (handle => globalThis.clearTimeout(handle as NodeJS.Timeout));
 	}
 
 	/** Startet die Schleife fuer wartende Befehle. */

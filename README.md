@@ -12,7 +12,8 @@
 
 ## skoda-public-api adapter for ioBroker
 
-Read and control Škoda vehicles via the official MyŠkoda Public API.
+Read and control Škoda vehicles via the official
+[MyŠkoda Public API](https://public.api.connect.skoda-auto.cz/docs).
 
 > **Preparing the first public release.** The adapter reads and controls a vehicle
 > and has been run against a real ioBroker instance. Publication to npm and the
@@ -209,7 +210,8 @@ at 2, plus an ioBroker notification from 7 days on and an alert once the key is 
 Škoda and MyŠkoda are trademarks of Škoda Auto a.s. This project is an independent
 open-source adapter and is neither affiliated with nor endorsed by Škoda Auto. It uses
 the publicly documented MyŠkoda Public API with a key that the vehicle owner creates
-themselves.
+themselves. The adapter icon is original, brand-neutral project artwork and does not
+reproduce the official Škoda logo; it is distributed under this project's MIT license.
 
 ## Changelog
 <!--
@@ -217,7 +219,7 @@ themselves.
 	### **WORK IN PROGRESS**
 -->
 
-### **WORK IN PROGRESS**
+### 0.0.1 (2026-09-05)
 * (Thomas Marthy) initial release
 
 ## License

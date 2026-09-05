@@ -69,6 +69,7 @@
     "messagebox": true,
     "type": "vehicle",
     "compact": false,
+    "nogit": true,
     "connectionType": "cloud",
     "dataSource": "poll",
     "adminUI": {
@@ -81,7 +82,7 @@
     ],
     "globalDependencies": [
       {
-        "admin": ">=7.0.23"
+        "admin": ">=7.6.20"
       }
     ]
   },
@@ -133,23 +134,59 @@
       "scope": "skoda-public-api",
       "name": {
         "en": "Škoda Public API",
-        "de": "Škoda Public API"
+        "de": "Škoda Public API",
+        "ru": "Škoda Public API",
+        "pt": "Škoda Public API",
+        "nl": "Škoda Public API",
+        "fr": "Škoda Public API",
+        "it": "Škoda Public API",
+        "es": "Škoda Public API",
+        "pl": "Škoda Public API",
+        "uk": "Škoda Public API",
+        "zh-cn": "Škoda Public API"
       },
       "description": {
         "en": "Notifications of the Škoda Public API adapter",
-        "de": "Meldungen des Adapters Škoda Public API"
+        "de": "Meldungen des Adapters Škoda Public API",
+        "ru": "Уведомления адаптера Škoda Public API",
+        "pt": "Notificações do adaptador Škoda Public API",
+        "nl": "Meldingen van de Škoda Public API-adapter",
+        "fr": "Notifications de l'adaptateur Škoda Public API",
+        "it": "Notifiche dell'adattatore Škoda Public API",
+        "es": "Notificaciones del adaptador Škoda Public API",
+        "pl": "Powiadomienia adaptera Škoda Public API",
+        "uk": "Сповіщення адаптера Škoda Public API",
+        "zh-cn": "Škoda Public API 适配器通知"
       },
       "categories": [
         {
           "category": "apiKeyExpiring",
           "name": {
             "en": "API key expires soon",
-            "de": "API-Schlüssel läuft bald ab"
+            "de": "API-Schlüssel läuft bald ab",
+            "ru": "Срок действия ключа API скоро истечет",
+            "pt": "A chave da API expira em breve",
+            "nl": "API-sleutel verloopt binnenkort",
+            "fr": "La clé API expire bientôt",
+            "it": "La chiave API scade a breve",
+            "es": "La clave de API caduca pronto",
+            "pl": "Klucz API wkrótce wygaśnie",
+            "uk": "Термін дії ключа API скоро закінчиться",
+            "zh-cn": "API 密钥即将过期"
           },
           "severity": "notify",
           "description": {
             "en": "The API key expires within the next week. A new one has to be created in the MyŠkoda app; the adapter cannot renew it.",
-            "de": "Der API-Schlüssel läuft innerhalb der nächsten Woche ab. Ein neuer muss in der MyŠkoda-App erzeugt werden; der Adapter kann ihn nicht erneuern."
+            "de": "Der API-Schlüssel läuft innerhalb der nächsten Woche ab. Ein neuer muss in der MyŠkoda-App erzeugt werden; der Adapter kann ihn nicht erneuern.",
+            "ru": "Срок действия ключа API истекает в течение следующей недели. Новый ключ необходимо создать в приложении MyŠkoda; адаптер не может продлить его.",
+            "pt": "A chave da API expira na próxima semana. É necessário criar uma nova na aplicação MyŠkoda; o adaptador não a pode renovar.",
+            "nl": "De API-sleutel verloopt binnen een week. Maak een nieuwe sleutel aan in de MyŠkoda-app; de adapter kan deze niet verlengen.",
+            "fr": "La clé API expire dans la semaine. Une nouvelle clé doit être créée dans l'application MyŠkoda ; l'adaptateur ne peut pas la renouveler.",
+            "it": "La chiave API scade entro una settimana. È necessario crearne una nuova nell'app MyŠkoda; l'adattatore non può rinnovarla.",
+            "es": "La clave de API caduca durante la próxima semana. Debe crearse una nueva en la aplicación MyŠkoda; el adaptador no puede renovarla.",
+            "pl": "Klucz API wygaśnie w ciągu najbliższego tygodnia. Nowy klucz trzeba utworzyć w aplikacji MyŠkoda; adapter nie może go odnowić.",
+            "uk": "Термін дії ключа API закінчується протягом наступного тижня. Новий ключ потрібно створити в застосунку MyŠkoda; адаптер не може його поновити.",
+            "zh-cn": "API 密钥将在未来一周内过期。必须在 MyŠkoda 应用中创建新密钥；适配器无法续期。"
           },
           "regex": [],
           "limit": 3
@@ -158,12 +195,30 @@
           "category": "apiKeyExpired",
           "name": {
             "en": "API key expired",
-            "de": "API-Schlüssel abgelaufen"
+            "de": "API-Schlüssel abgelaufen",
+            "ru": "Срок действия ключа API истек",
+            "pt": "A chave da API expirou",
+            "nl": "API-sleutel is verlopen",
+            "fr": "La clé API a expiré",
+            "it": "La chiave API è scaduta",
+            "es": "La clave de API ha caducado",
+            "pl": "Klucz API wygasł",
+            "uk": "Термін дії ключа API закінчився",
+            "zh-cn": "API 密钥已过期"
           },
           "severity": "alert",
           "description": {
             "en": "The API key has expired. The adapter only polls once per hour until a new key is configured.",
-            "de": "Der API-Schlüssel ist abgelaufen. Der Adapter fragt nur noch einmal pro Stunde nach, bis ein neuer Schlüssel eingetragen ist."
+            "de": "Der API-Schlüssel ist abgelaufen. Der Adapter fragt nur noch einmal pro Stunde nach, bis ein neuer Schlüssel eingetragen ist.",
+            "ru": "Срок действия ключа API истек. Адаптер выполняет опрос только раз в час, пока не будет настроен новый ключ.",
+            "pt": "A chave da API expirou. O adaptador consulta apenas uma vez por hora até ser configurada uma nova chave.",
+            "nl": "De API-sleutel is verlopen. De adapter vraagt slechts eenmaal per uur gegevens op totdat een nieuwe sleutel is ingesteld.",
+            "fr": "La clé API a expiré. L'adaptateur interroge le véhicule une fois par heure jusqu'à la configuration d'une nouvelle clé.",
+            "it": "La chiave API è scaduta. L'adattatore esegue una sola richiesta all'ora finché non viene configurata una nuova chiave.",
+            "es": "La clave de API ha caducado. El adaptador solo consulta una vez por hora hasta que se configure una nueva clave.",
+            "pl": "Klucz API wygasł. Adapter odpytuje pojazd tylko raz na godzinę, dopóki nie zostanie skonfigurowany nowy klucz.",
+            "uk": "Термін дії ключа API закінчився. Адаптер опитує автомобіль лише раз на годину, доки не буде налаштовано новий ключ.",
+            "zh-cn": "API 密钥已过期。在配置新密钥之前，适配器每小时仅轮询一次。"
           },
           "regex": [],
           "limit": 3

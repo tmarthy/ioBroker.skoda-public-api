@@ -630,11 +630,10 @@ die API bedeutet.
 
 ### Phase 12 — Release-Vorbereitung · S · **in Arbeit**
 
-> **Wie geprüft wurde:** Der Adapter-Checker (`@iobroker/repochecker`) arbeitet
-> ausschließlich über die GitHub-API und kommt an das derzeit noch **private**
-> Repository nicht heran. Sein Regelkatalog wurde vorläufig lokal ausgewertet. Nach
-> dem Umschalten auf öffentlich wird der Checker regulär ausgeführt und jeder Fehler
-> vor dem Release behoben; `io-package.json` und `admin/jsonConfig.json` sind bereits
+> **Wie geprüft wurde:** Das Repository ist öffentlich und der Adapter-Checker
+> (`@iobroker/repochecker`) wird gegen GitHub sowie mit den lokalen Änderungen
+> ausgeführt. Fehler, die vor npm-Veröffentlichung und Release-Tag lokal behebbar sind,
+> werden vor dem Release beseitigt. `io-package.json` und `admin/jsonConfig.json` sind
 > zusätzlich gegen die offiziellen JSON-Schemata validiert.
 >
 > **Gefunden und behoben:**
@@ -648,9 +647,14 @@ die API bedeutet.
 > - `adapter-tests` hat jetzt `needs: check-and-lint` (`S3014`). Das spart nebenbei
 >   Actions-Minuten: Scheitert die Prüfung, starten die teuren Testläufe gar nicht.
 >
-> **Noch offen:** `W3027` — vor dem Release wird die vollständige OS-Matrix ausgeführt
-> und die Workflow-Matrix checker-konform gemacht, falls der aktuelle Checker die
-> dynamische Auswahl weiterhin beanstandet.
+> `W3027` ist behoben: Die Workflow-Matrix nennt Ubuntu, Windows und macOS statisch und
+> läuft für Node 22 und 24. Der Deploy-Job ist für npm Trusted Publishing definiert.
+>
+> **Repochecker 5.20.14 am 2026-09-05:** Alle lokal behebbaren Fehler sind beseitigt.
+> Offen bleiben erwartungsgemäß `E2000` (noch nicht auf npm), `E3032` (noch kein
+> Release-Tag), `W4001` (noch nicht in `latest`) und `S8005` (noch kein GitHub-Release).
+> Die Warnung zu `process.env` betrifft ausschließlich `SKODA_API_BASE_URL` für Mock-
+> und Integrationstests; deshalb bleibt `common.compact` ausdrücklich `false`.
 
 
 `@alcalzone/release-script`, Übersetzungen mit `@iobroker/adapter-dev translate`
