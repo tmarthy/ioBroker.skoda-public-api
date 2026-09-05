@@ -657,20 +657,20 @@ die API bedeutet.
 > unkonfigurierten oder doppelten npm-Publish auslösen.
 >
 > **Repochecker 5.20.14 am 2026-09-05 nach Veröffentlichung:** `FINAL status 'OK'`.
-> npm-Paket `0.0.1`, Release-Tag und GitHub-Release werden erkannt. Offen bleiben
-> `W4001` bis zur Aufnahme in `latest`, `E2001` bis `bluefox` die bereits versandte
-> npm-Einladung annimmt und `E2008`, weil die einmalige manuelle Erstveröffentlichung
-> noch keine Provenance besitzt. Die Warnung zu `process.env` betrifft ausschließlich
-> `SKODA_API_BASE_URL` für Mock- und Integrationstests; deshalb bleibt
+> npm-Paket, Release-Tag und GitHub-Release werden erkannt. Version `0.0.2` wurde über
+> npm Trusted Publishing mit SLSA-Provenance veröffentlicht und beseitigt `E2008`.
+> Offen bleiben `W4001` bis zur Aufnahme in `latest` und `E2001` bis `bluefox` die
+> bereits versandte npm-Einladung annimmt. Die Warnung zu `process.env` betrifft
+> ausschließlich `SKODA_API_BASE_URL` für Mock- und Integrationstests; deshalb bleibt
 > `common.compact` ausdrücklich `false`.
 
 
 `@alcalzone/release-script`, Übersetzungen mit `@iobroker/adapter-dev translate`
 (DE/EN von Hand, Rest maschinell), Adapter-Checker durchlaufen lassen, erstes Paket
 auf npm veröffentlichen und die Aufnahme in das offizielle Repository `latest`
-beantragen (E1). npm und GitHub-Release `0.0.1` sind veröffentlicht; der `latest`-Antrag
-ist der verbleibende Schritt. `stable` folgt erst nach öffentlichem Test und
-Rückmeldungen.
+beantragen (E1). npm und GitHub-Release `0.0.2` sind veröffentlicht; der `latest`-Antrag
+läuft als `ioBroker/ioBroker.repositories#6592`. `stable` folgt erst nach öffentlichem
+Test und Rückmeldungen.
 
 ---
 

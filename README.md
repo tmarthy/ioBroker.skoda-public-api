@@ -15,7 +15,7 @@
 Read and control Škoda vehicles via the official
 [MyŠkoda Public API](https://public.api.connect.skoda-auto.cz/docs).
 
-> **Initial release available.** Version 0.0.1 is published on npm and as a GitHub
+> **Initial release available.** Version 0.0.2 is published on npm and as a GitHub
 > release. Inclusion in the ioBroker `latest` repository is in progress. See
 > [HANDOFF.md](HANDOFF.md) for the current state and how to run it against the
 > development mock. The design rationale lives in

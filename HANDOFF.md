@@ -142,11 +142,13 @@ npm run codegen          reproduzierbar (identische Prüfsummen bei erneutem Lau
 ```
 
 `main` ist nach `https://github.com/tmarthy/ioBroker.skoda-public-api` gepusht und das
-Repository ist öffentlich. Version `0.0.1` ist auf npm sowie als GitHub-Release
-veröffentlicht; Tag und npm-Paket basieren auf Commit `9f240c0`. `bluefox` wurde als
-npm-Maintainer eingeladen, hat die Einladung aber noch nicht angenommen. Für künftige
-Versionen ist der Deploy-Job vorbereitet; npm Trusted Publishing und anschließend die
-Repository-Variable `NPM_TRUSTED_PUBLISHING=true` müssen noch aktiviert werden.
+Repository ist öffentlich. Version `0.0.2` ist auf npm mit SLSA-Provenance sowie als
+GitHub-Release veröffentlicht; Tag und npm-Paket basieren auf Commit `ae29e63`.
+Trusted Publishing vertraut ausschließlich dem Workflow `test-and-release.yml` in
+diesem Repository, und `NPM_TRUSTED_PUBLISHING=true` aktiviert den Deploy-Job.
+`bluefox` wurde als npm-Maintainer eingeladen, hat die Einladung aber noch nicht
+angenommen. Der Antrag für das offizielle ioBroker-Repository läuft als
+`ioBroker/ioBroker.repositories#6592`.
 
 ### Stand der CI
 
@@ -173,7 +175,7 @@ von sechs Stunden und bindet unnötig einen Runner.
 | `Test and Release` | Push auf `main`, Tags, PRs, `workflow_dispatch` | schnell bei Push/PR; vollständige Matrix bei Tag oder manuellem Lauf |
 | `Check Škoda API spec` | **nur** `schedule` (Mo 05:17 UTC) und `workflow_dispatch` | ✓ manuell geprüft, „Spec unveraendert" |
 | `Auto-Merge Dependabot PRs` | `pull_request_target` | noch nie gelaufen — wartet auf den ersten Dependabot-PR; npm am 8., Actions am 22. jedes Monats |
-| Deploy | Tag `v*` | definiert; beim ersten, manuell veröffentlichten Tag bewusst übersprungen; läuft nach Einrichtung von npm Trusted Publishing und Freigabe über `NPM_TRUSTED_PUBLISHING=true` |
+| Deploy | Tag `v*` | ✓ mit `v0.0.2` über npm Trusted Publishing samt Provenance geprüft |
 
 **Der Spec-Wächter läuft bei einem Push nicht mit.** Wer ihn nach einer Änderung
 prüfen will, muss ihn von Hand auslösen: Actions → *Check Škoda API spec* →
