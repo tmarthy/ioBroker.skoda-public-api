@@ -1,8 +1,21 @@
 {
   "common": {
     "name": "skoda-public-api",
-    "version": "0.1.1",
+    "version": "0.1.2",
     "news": {
+      "0.1.2": {
+        "en": "Resolved repository checker warnings for CI test discovery, environment access, changelog archiving, and npm packaging",
+        "de": "Repository-Checker-Warnungen für CI-Testerkennung, Umgebungszugriff, Changelog-Archivierung und npm-Paketierung behoben",
+        "ru": "Устранены предупреждения проверки репозитория для обнаружения CI-тестов, доступа к окружению, архива журнала изменений и упаковки npm",
+        "pt": "Resolvidos avisos do verificador do repositório sobre testes de CI, acesso ao ambiente, arquivo do changelog e pacote npm",
+        "nl": "Repositorychecker-waarschuwingen opgelost voor CI-testdetectie, omgevingstoegang, changelogarchivering en npm-pakkettering",
+        "fr": "Résolution des avertissements du vérificateur concernant les tests CI, l’accès à l’environnement, l’archivage du changelog et le paquet npm",
+        "it": "Risolti gli avvisi del controllo repository relativi ai test CI, all’accesso all’ambiente, all’archiviazione del changelog e al pacchetto npm",
+        "es": "Resueltos los avisos del verificador sobre pruebas de CI, acceso al entorno, archivo del historial y empaquetado npm",
+        "pl": "Usunięto ostrzeżenia kontroli repozytorium dotyczące testów CI, dostępu do środowiska, archiwizacji zmian i pakowania npm",
+        "uk": "Усунено попередження перевірки репозиторію щодо CI-тестів, доступу до середовища, архіву змін і пакування npm",
+        "zh-cn": "解决了有关 CI 测试发现、环境访问、变更日志归档和 npm 打包的仓库检查警告"
+      },
       "0.1.1": {
         "en": "Completed ioBroker object name translations for all supported languages",
         "de": "ioBroker-Objektnamen für alle unterstützten Sprachen vervollständigt",

@@ -1,7 +1,7 @@
 import { expect } from 'chai';
 import { createServer, type RequestListener, type Server } from 'node:http';
 import { DEFAULT_API_KEY, DEFAULT_VIN, MockSkodaApi, type MockScenario } from '../../../test/mock/server';
-import { BASE_URL_ENV_VAR, LIVE_BASE_URL, SkodaApiClient, vehicleErrors } from './client';
+import { LIVE_BASE_URL, SkodaApiClient, vehicleErrors } from './client';
 import type { ApiErrorKind } from './errors';
 import type { VehiclePart } from './types';
 
@@ -354,29 +354,12 @@ describe('api/client => HTTP-Schicht gegen den Mock', () => {
 	});
 
 	describe('Basis-URL', () => {
-		const previous = process.env[BASE_URL_ENV_VAR];
-
-		afterEach(() => {
-			if (previous === undefined) {
-				delete process.env[BASE_URL_ENV_VAR];
-			} else {
-				process.env[BASE_URL_ENV_VAR] = previous;
-			}
-		});
-
 		it('nimmt ohne alles die echte API', () => {
-			delete process.env[BASE_URL_ENV_VAR];
 			expect(new SkodaApiClient({ apiKey: DEFAULT_API_KEY }).baseUrl).to.equal(LIVE_BASE_URL);
 		});
 
-		it('folgt der Umgebungsvariablen - der einzige Weg auf den Mock', () => {
-			process.env[BASE_URL_ENV_VAR] = 'http://127.0.0.1:8099/';
-			expect(new SkodaApiClient({ apiKey: DEFAULT_API_KEY }).baseUrl).to.equal('http://127.0.0.1:8099');
-		});
-
 		it('laesst sich fuer Tests ausdruecklich uebersteuern', () => {
-			process.env[BASE_URL_ENV_VAR] = 'http://127.0.0.1:8099';
-			const explicit = new SkodaApiClient({ apiKey: DEFAULT_API_KEY, baseUrl: 'http://127.0.0.1:1234' });
+			const explicit = new SkodaApiClient({ apiKey: DEFAULT_API_KEY, baseUrl: 'http://127.0.0.1:1234/' });
 			expect(explicit.baseUrl).to.equal('http://127.0.0.1:1234');
 		});
 

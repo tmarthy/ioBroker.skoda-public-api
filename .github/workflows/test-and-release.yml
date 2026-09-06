@@ -46,7 +46,7 @@ jobs:
           lint: true
 
   # Schneller Test fuer normale Commits: aelteste unterstuetzte Node-Version auf Linux.
-  adapter-tests-minimal:
+  adapter-tests:
     if: |
       contains(github.event.head_commit.message, '[skip ci]') == false &&
       github.ref_type != 'tag' &&
@@ -66,7 +66,7 @@ jobs:
           build: true
 
   # Checker-konforme vollstaendige Matrix fuer Releases und manuelle Abnahmen.
-  adapter-tests:
+  adapter-tests-release:
     if: |
       contains(github.event.head_commit.message, '[skip ci]') == false &&
       (github.ref_type == 'tag' || github.event_name == 'workflow_dispatch')
@@ -90,7 +90,7 @@ jobs:
 
   # Publishes tagged releases through npm Trusted Publishing and creates a GitHub release.
   deploy:
-    needs: [check-and-lint, adapter-tests]
+    needs: [check-and-lint, adapter-tests-release]
 
     if: |
       contains(github.event.head_commit.message, '[skip ci]') == false &&

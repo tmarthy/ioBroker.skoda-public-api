@@ -15,6 +15,21 @@ const { MockSkodaApi, DEFAULT_API_KEY, DEFAULT_VIN } = require('./mock/server');
 const ADAPTER = 'skoda-public-api';
 const INSTANCE = `${ADAPTER}.0`;
 const VEHICLE = `${INSTANCE}.${DEFAULT_VIN}`;
+const API_REDIRECT_PRELOAD = path.join(__dirname, 'preload-api-redirect.js');
+
+/**
+ * Routes the official API origin to a local mock entirely from the test process.
+ * Production code therefore needs no process-wide environment-variable override.
+ *
+ * @param {string} baseUrl URL of the local mock.
+ * @returns {Record<string, string>} Environment additions for the adapter process.
+ */
+function adapterEnvironment(baseUrl) {
+	return {
+		NODE_OPTIONS: `${process.env.NODE_OPTIONS || ''} --require=${API_REDIRECT_PRELOAD}`.trim(),
+		SKODA_TEST_API_BASE_URL: baseUrl,
+	};
+}
 
 /**
  * Verschluesselt einen Wert so, wie es der js-controller fuer `encryptedNative` tut.
@@ -207,7 +222,7 @@ tests.integration(path.join(__dirname, '..'), {
 
 			it('pollt genau einmal und fuellt den Objektbaum', async function () {
 				this.timeout(90000);
-				await harness.startAdapterAndWait(true, { SKODA_API_BASE_URL: baseUrl });
+				await harness.startAdapterAndWait(true, adapterEnvironment(baseUrl));
 
 				// Ein Start, ein Request. Alles andere waere im Budget nicht zu haben.
 				expect(mock.requests).to.have.length(1);
@@ -330,7 +345,7 @@ tests.integration(path.join(__dirname, '..'), {
 
 			it('haelt die Sperrfrist ein und uebernimmt den Budgetstand', async function () {
 				this.timeout(90000);
-				await harness.startAdapter({ SKODA_API_BASE_URL: baseUrl });
+				await harness.startAdapter(adapterEnvironment(baseUrl));
 
 				// Der letzte Request liegt weniger als drei Minuten zurueck (Fenster
 				// durch Limit). Genau diese Sperrfrist bricht die Neustartschleife,
@@ -365,7 +380,7 @@ tests.integration(path.join(__dirname, '..'), {
 
 			it('meldet ihn, statt weiter zu fragen', async function () {
 				this.timeout(90000);
-				await harness.startAdapter({ SKODA_API_BASE_URL: baseUrl });
+				await harness.startAdapter(adapterEnvironment(baseUrl));
 
 				await waitFor('den Poll mit abgelaufenem Schluessel', () => mock.requests.length > 0);
 				expect(mock.requests[0].status).to.equal(401);

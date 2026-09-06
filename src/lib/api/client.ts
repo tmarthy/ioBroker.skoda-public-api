@@ -35,16 +35,6 @@ import type {
 export const LIVE_BASE_URL = 'https://public.api.connect.skoda-auto.cz';
 
 /**
- * Umgebungsvariable, mit der die Basis-URL auf den Mock gezogen wird.
- *
- * Bewusst **keine** Einstellung in der Admin-UI (E12): Ein sichtbares Feld
- * "API-Server" laedt dazu ein, den Adapter samt Schluessel auf einen fremden Host
- * zeigen zu lassen. Wer entwickelt, setzt eine Umgebungsvariable; wer den Adapter
- * benutzt, hat damit nichts zu tun.
- */
-export const BASE_URL_ENV_VAR = 'SKODA_API_BASE_URL';
-
-/**
  * Zeitgrenze eines einzelnen Requests.
  *
  * Grosszuegig gewaehlt: Die API weckt das Fahrzeug und antwortet dann langsam. Ein zu
@@ -87,7 +77,7 @@ export type CommandBody = StartAirConditioningConfiguration | StartAuxiliaryHeat
 export interface SkodaApiClientOptions {
 	/** Statischer Schluessel aus der MySkoda-App. */
 	apiKey: string;
-	/** Basis-URL ohne Pfad. Vorgabe: `SKODA_API_BASE_URL`, sonst die echte API. */
+	/** Basis-URL ohne Pfad. Vorgabe ist die echte API; Tests injizieren ihren Mock explizit. */
 	baseUrl?: string;
 	/** Zeitgrenze je Request in Millisekunden. */
 	timeoutMs?: number;
@@ -229,7 +219,7 @@ export class SkodaApiClient {
 	 */
 	public constructor(options: SkodaApiClientOptions) {
 		this.apiKey = options.apiKey;
-		this.baseUrl = normalizeBaseUrl(options.baseUrl ?? process.env[BASE_URL_ENV_VAR] ?? LIVE_BASE_URL);
+		this.baseUrl = normalizeBaseUrl(options.baseUrl ?? LIVE_BASE_URL);
 		this.timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
 		this.sanitizer = createSanitizer({ apiKey: options.apiKey, secrets: options.secrets });
 	}
