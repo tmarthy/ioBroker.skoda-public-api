@@ -1,8 +1,21 @@
 {
   "common": {
     "name": "skoda-public-api",
-    "version": "0.1.3",
+    "version": "0.1.4",
     "news": {
+      "0.1.4": {
+        "en": "Added complete backend translations for all supported ioBroker languages",
+        "de": "Vollständige Backend-Übersetzungen für alle unterstützten ioBroker-Sprachen ergänzt",
+        "ru": "Добавлены полные серверные переводы для всех поддерживаемых языков ioBroker",
+        "pt": "Adicionadas traduções completas do backend para todos os idiomas suportados pelo ioBroker",
+        "nl": "Volledige backendvertalingen toegevoegd voor alle ondersteunde ioBroker-talen",
+        "fr": "Ajout des traductions complètes du backend pour toutes les langues prises en charge par ioBroker",
+        "it": "Aggiunte traduzioni complete del backend per tutte le lingue supportate da ioBroker",
+        "es": "Añadidas traducciones completas del backend para todos los idiomas compatibles con ioBroker",
+        "pl": "Dodano kompletne tłumaczenia backendu dla wszystkich języków obsługiwanych przez ioBroker",
+        "uk": "Додано повні переклади серверної частини для всіх мов, які підтримує ioBroker",
+        "zh-cn": "为 ioBroker 支持的所有语言添加了完整的后端翻译"
+      },
       "0.1.3": {
         "en": "Completed missing admin UI translations for all supported languages",
         "de": "Fehlende Übersetzungen der Admin-Oberfläche für alle unterstützten Sprachen ergänzt",

@@ -3,12 +3,12 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { pickTestTarget } from './connectionTest';
 import { readConfig } from './config';
-import type { Translate } from './i18n';
+import { OBJECT_NAME_LANGUAGES, type Translate } from './i18n';
 
 const root = join(__dirname, '..', '..');
 const readJson = (path: string): Record<string, string> =>
 	JSON.parse(readFileSync(path, 'utf8')) as Record<string, string>;
-const catalogTranslate = (language: 'de' | 'en'): Translate => {
+const catalogTranslate = (language: (typeof OBJECT_NAME_LANGUAGES)[number]): Translate => {
 	const catalog = readJson(join(root, 'i18n', `${language}.json`));
 	return (key, ...args) => {
 		let text = catalog[key] ?? key;
@@ -20,10 +20,22 @@ const catalogTranslate = (language: 'de' | 'en'): Translate => {
 };
 
 describe('backend i18n', () => {
-	it('keeps the German and English catalogs in sync', () => {
+	it('ships complete translations with intact placeholders for every supported language', () => {
 		const en = readJson(join(root, 'i18n', 'en.json'));
-		const de = readJson(join(root, 'i18n', 'de.json'));
-		expect(Object.keys(de).sort()).to.deep.equal(Object.keys(en).sort());
+		for (const language of OBJECT_NAME_LANGUAGES) {
+			const catalog = readJson(join(root, 'i18n', `${language}.json`));
+			expect(Object.keys(catalog).sort(), language).to.deep.equal(Object.keys(en).sort());
+
+			for (const key of Object.keys(en)) {
+				expect(catalog[key].trim(), `${language}: ${key}`).to.not.be.empty;
+				expect(catalog[key].match(/%s/g) ?? [], `${language}: ${key}`).to.have.lengthOf(
+					en[key].match(/%s/g)?.length ?? 0,
+				);
+				if (language !== 'en' && en[key].trim().split(/\s+/).length > 5) {
+					expect(catalog[key], `${language}: ${key}`).to.not.equal(en[key]);
+				}
+			}
+		}
 	});
 
 	it('returns configuration and UI-action errors in the selected language', () => {
