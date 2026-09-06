@@ -1,8 +1,21 @@
 {
   "common": {
     "name": "skoda-public-api",
-    "version": "0.1.2",
+    "version": "0.1.3",
     "news": {
+      "0.1.3": {
+        "en": "Completed missing admin UI translations for all supported languages",
+        "de": "Fehlende Übersetzungen der Admin-Oberfläche für alle unterstützten Sprachen ergänzt",
+        "ru": "Добавлены отсутствующие переводы интерфейса администратора для всех поддерживаемых языков",
+        "pt": "Concluídas as traduções em falta da interface de administração para todos os idiomas suportados",
+        "nl": "Ontbrekende vertalingen van de beheerinterface voor alle ondersteunde talen aangevuld",
+        "fr": "Ajout des traductions manquantes de l’interface d’administration pour toutes les langues prises en charge",
+        "it": "Completate le traduzioni mancanti dell’interfaccia di amministrazione per tutte le lingue supportate",
+        "es": "Completadas las traducciones que faltaban en la interfaz de administración para todos los idiomas compatibles",
+        "pl": "Uzupełniono brakujące tłumaczenia interfejsu administratora dla wszystkich obsługiwanych języków",
+        "uk": "Додано відсутні переклади інтерфейсу адміністратора для всіх підтримуваних мов",
+        "zh-cn": "补全了所有受支持语言中缺失的管理界面翻译"
+      },
       "0.1.2": {
         "en": "Resolved repository checker warnings for CI test discovery, environment access, changelog archiving, and npm packaging",
         "de": "Repository-Checker-Warnungen für CI-Testerkennung, Umgebungszugriff, Changelog-Archivierung und npm-Paketierung behoben",

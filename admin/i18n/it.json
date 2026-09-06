@@ -25,9 +25,9 @@
 	"Vehicles": "Veicoli",
 	"When switched off the position is not even requested from the API.": "Quando è spento la posizione non viene nemmeno richiesta all'API.",
 	"skoda-public-api adapter settings": "Impostazioni dell'adattatore per skoda-public-api",
-	"Language for logs and notifications": "Language for logs and notifications",
-	"System language follows ioBroker. The override affects logs, notifications and connection-test results.": "System language follows ioBroker. The override affects logs, notifications and connection-test results.",
-	"System language": "System language",
-	"English": "English",
-	"German": "German"
+	"Language for logs and notifications": "Lingua dei registri e delle notifiche",
+	"System language follows ioBroker. The override affects logs, notifications and connection-test results.": "La lingua di sistema segue la configurazione di ioBroker. La selezione manuale si applica ai registri, alle notifiche e ai risultati del test di connessione.",
+	"System language": "Lingua di sistema",
+	"English": "Inglese",
+	"German": "Tedesco"
 }

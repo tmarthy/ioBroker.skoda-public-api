@@ -25,9 +25,9 @@
 	"Vehicles": "车辆",
 	"When switched off the position is not even requested from the API.": "当关闭时，甚至不会向 API 请求位置。",
 	"skoda-public-api adapter settings": "skoda-public-api的适配器设置",
-	"Language for logs and notifications": "Language for logs and notifications",
-	"System language follows ioBroker. The override affects logs, notifications and connection-test results.": "System language follows ioBroker. The override affects logs, notifications and connection-test results.",
-	"System language": "System language",
-	"English": "English",
-	"German": "German"
+	"Language for logs and notifications": "日志和通知的语言",
+	"System language follows ioBroker. The override affects logs, notifications and connection-test results.": "系统语言跟随 ioBroker 设置。手动选择的语言将用于日志、通知和连接测试结果。",
+	"System language": "系统语言",
+	"English": "英语",
+	"German": "德语"
 }
