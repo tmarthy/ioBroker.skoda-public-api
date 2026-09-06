@@ -2,6 +2,7 @@ import { expect } from 'chai';
 import { FakeAdapter } from '../../../test/helpers/fakeAdapter';
 import type { ApiMeta } from '../api/client';
 import { httpApiError } from '../api/errors';
+import { OBJECT_NAME_LANGUAGES } from '../i18n';
 import { API_KEY_CHANNEL, KeyExpiryWatcher, type KeyExpiryLog } from './keyExpiry';
 
 const DAY = 86_400_000;
@@ -68,10 +69,12 @@ describe('notifications/keyExpiry => der Schluessel laeuft ab', () => {
 				role: 'date',
 			});
 			expect(adapter.objects.get(`${API_KEY_CHANNEL}.daysRemaining`)?.common).to.include({ unit: 'd' });
-			expect(adapter.objects.get(API_KEY_CHANNEL)?.common?.name).to.deep.equal({
+			const name = adapter.objects.get(API_KEY_CHANNEL)?.common?.name as ioBroker.Translated;
+			expect(name).to.include({
 				en: 'API key',
 				de: 'API-Schlüssel',
 			});
+			expect(Object.keys(name).sort()).to.deep.equal([...OBJECT_NAME_LANGUAGES].sort());
 		});
 
 		it('legt gar nichts an, solange die API nichts ueber den Ablauf sagt', async () => {

@@ -27,7 +27,14 @@ import { COMMAND_DEFS, COMMAND_RESULTS, type CommandReport } from './commandDefs
 import { generatedChannels, generatedStateDefs } from './objectDefs.generated';
 import { displayConversions, legacyRoleMigration, resolveCommon } from './objectOverlay';
 import { localizedObjectName } from './objectNames';
-import { translateFallback, translated, type Translate } from '../i18n';
+import {
+	isIncompleteDefaultObjectName,
+	translateFallback,
+	translated,
+	translatedCommandAction,
+	type CompleteObjectName,
+	type Translate,
+} from '../i18n';
 
 /**
  * Quality-Flag "general problem".
@@ -586,7 +593,7 @@ export class StateWriter {
 	 * Replaces only adapter-provided English names, preserving user customizations.
 	 *
 	 * @param id Relative Objekt-ID.
-	 * @param name Neuer zweisprachiger Standardname.
+	 * @param name Neuer vollstaendig uebersetzter Standardname.
 	 * @param legacyNames Bisherige Standardnamen.
 	 */
 	private async migrateStandardName(
@@ -598,11 +605,7 @@ export class StateWriter {
 			return;
 		}
 		const existing = await this.api.getObjectAsync(id);
-		if (
-			existing &&
-			typeof existing.common.name === 'string' &&
-			(existing.common.name === name.en || legacyNames.includes(existing.common.name))
-		) {
+		if (existing && isIncompleteDefaultObjectName(existing.common.name, name as CompleteObjectName, legacyNames)) {
 			await this.api.extendObjectAsync(id, { common: { name } });
 		}
 	}
@@ -690,10 +693,7 @@ export class StateWriter {
 					await this.api.setObjectNotExistsAsync(buttonId, {
 						type: 'state',
 						common: {
-							name: translated(
-								`${def.label} - ${action}`,
-								`${def.labelDe} - ${action === 'start' ? 'starten' : 'stoppen'}`,
-							),
+							name: translatedCommandAction(def.label, def.labelDe, action),
 							type: 'boolean',
 							role: 'button',
 							read: false,
@@ -701,13 +701,7 @@ export class StateWriter {
 						},
 						native: {},
 					});
-					await this.migrateStandardName(
-						buttonId,
-						translated(
-							`${def.label} - ${action}`,
-							`${def.labelDe} - ${action === 'start' ? 'starten' : 'stoppen'}`,
-						),
-					);
+					await this.migrateStandardName(buttonId, translatedCommandAction(def.label, def.labelDe, action));
 					this.createdObjects.add(buttonId);
 				}
 			}

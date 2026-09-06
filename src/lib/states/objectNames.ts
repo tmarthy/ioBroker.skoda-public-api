@@ -1,7 +1,7 @@
-import { translated } from '../i18n';
+import { translated, type ObjectNameKey } from '../i18n';
 
 /** Short object-tree labels shared by repeated OpenAPI fields. */
-const labels: Readonly<Record<string, readonly [en: string, de: string]>> = {
+const labels: Readonly<Record<string, readonly [en: ObjectNameKey, de: string]>> = {
 	activeVentilation: ['Active ventilation', 'Aktive Belüftung'],
 	airConditioning: ['Air conditioning', 'Klimatisierung'],
 	auxiliaryHeating: ['Auxiliary heating', 'Standheizung'],
@@ -83,12 +83,12 @@ const labels: Readonly<Record<string, readonly [en: string, de: string]>> = {
 };
 
 /**
- * Returns a bilingual label and retains the OpenAPI text as an English fallback.
+ * Returns a complete translated label and retains the OpenAPI text as a string fallback.
  *
  * @param path Relativer Pfad des Objekts.
  * @param fallback Englischer Text aus der OpenAPI-Spezifikation.
  */
-export function localizedObjectName(path: string, fallback: string): ioBroker.Translated {
+export function localizedObjectName(path: string, fallback: string): ioBroker.StringOrTranslated {
 	const label = labels[path.slice(path.lastIndexOf('.') + 1)];
-	return label ? translated(label[0], label[1]) : translated(fallback, fallback);
+	return label ? translated(label[0], label[1]) : fallback;
 }

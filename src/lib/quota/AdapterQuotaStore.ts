@@ -10,7 +10,7 @@
  * ein internes Ablagefach.
  */
 import type { PersistedQuota, QuotaStore } from './QuotaManager';
-import { translated } from '../i18n';
+import { isIncompleteDefaultObjectName, translated, type CompleteObjectName } from '../i18n';
 
 /** Der Ausschnitt der Adapter-Schnittstelle, den die Ablage braucht. */
 export interface QuotaStateApi {
@@ -170,14 +170,14 @@ export class AdapterQuotaStore implements QuotaStore {
 	 * Migrates adapter defaults while preserving names changed by the user.
 	 *
 	 * @param id Relative Objekt-ID.
-	 * @param name Neuer zweisprachiger Standardname.
+	 * @param name Neuer vollstaendig uebersetzter Standardname.
 	 */
 	private async migrateName(id: string, name: ioBroker.StringOrTranslated): Promise<void> {
 		if (typeof name === 'string') {
 			return;
 		}
 		const existing = await this.api.getObjectAsync(id);
-		if (existing && existing.common.name === name.en) {
+		if (existing && isIncompleteDefaultObjectName(existing.common.name, name as CompleteObjectName)) {
 			await this.api.extendObjectAsync(id, { common: { name } });
 		}
 	}

@@ -1,5 +1,6 @@
 import { expect } from 'chai';
 import { FakeAdapter } from '../../../test/helpers/fakeAdapter';
+import { OBJECT_NAME_LANGUAGES } from '../i18n';
 import { AdapterQuotaStore, LEGACY_QUOTA_CHANNEL, quotaChannel } from './AdapterQuotaStore';
 import { QuotaManager } from './QuotaManager';
 
@@ -29,10 +30,12 @@ describe('quota/AdapterQuotaStore => Budget ueberlebt den Neustart', () => {
 			role: 'value',
 		});
 		expect(adapter.objects.get(`${QUOTA_CHANNEL}.resetAt`)?.common).to.include({ role: 'date' });
-		expect(adapter.objects.get(`${QUOTA_CHANNEL}.remaining`)?.common?.name).to.deep.equal({
+		const name = adapter.objects.get(`${QUOTA_CHANNEL}.remaining`)?.common?.name as ioBroker.Translated;
+		expect(name).to.include({
 			en: 'Requests left in the current window',
 			de: 'Verbleibende Requests im aktuellen Zeitfenster',
 		});
+		expect(Object.keys(name).sort()).to.deep.equal([...OBJECT_NAME_LANGUAGES].sort());
 	});
 
 	it('schreibt und liest denselben Zustand', async () => {

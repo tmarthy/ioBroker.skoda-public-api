@@ -22,7 +22,13 @@
  */
 import type { ApiMeta } from '../api/client';
 import type { ApiError } from '../api/errors';
-import { translateFallback, translated, type Translate } from '../i18n';
+import {
+	isIncompleteDefaultObjectName,
+	translateFallback,
+	translated,
+	type CompleteObjectName,
+	type Translate,
+} from '../i18n';
 
 /** Schwellen in Tagen, aufsteigend: Die kleinste passende bestimmt die Dringlichkeit. */
 export const EXPIRY_THRESHOLDS_DAYS = [2, 7, 14] as const;
@@ -240,11 +246,11 @@ export class KeyExpiryWatcher {
 	 * Migrates adapter defaults while preserving names changed by the user.
 	 *
 	 * @param id Relative Objekt-ID.
-	 * @param name Neuer zweisprachiger Standardname.
+	 * @param name Neuer vollstaendig uebersetzter Standardname.
 	 */
 	private async migrateName(id: string, name: ioBroker.Translated): Promise<void> {
 		const existing = await this.states.getObjectAsync(id);
-		if (existing && existing.common.name === name.en) {
+		if (existing && isIncompleteDefaultObjectName(existing.common.name, name as CompleteObjectName)) {
 			await this.states.extendObjectAsync(id, { common: { name } });
 		}
 	}

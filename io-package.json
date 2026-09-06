@@ -1,8 +1,21 @@
 {
   "common": {
     "name": "skoda-public-api",
-    "version": "0.1.0",
+    "version": "0.1.1",
     "news": {
+      "0.1.1": {
+        "en": "Completed ioBroker object name translations for all supported languages",
+        "de": "ioBroker-Objektnamen für alle unterstützten Sprachen vervollständigt",
+        "ru": "Переводы имён объектов ioBroker дополнены для всех поддерживаемых языков",
+        "pt": "Traduções dos nomes de objetos ioBroker concluídas para todos os idiomas suportados",
+        "nl": "Vertalingen van ioBroker-objectnamen voltooid voor alle ondersteunde talen",
+        "fr": "Traductions des noms d’objets ioBroker complétées pour toutes les langues prises en charge",
+        "it": "Completate le traduzioni dei nomi degli oggetti ioBroker per tutte le lingue supportate",
+        "es": "Completadas las traducciones de nombres de objetos ioBroker para todos los idiomas compatibles",
+        "pl": "Uzupełniono tłumaczenia nazw obiektów ioBroker dla wszystkich obsługiwanych języków",
+        "uk": "Переклади назв об’єктів ioBroker доповнено для всіх підтримуваних мов",
+        "zh-cn": "已完成所有受支持语言的 ioBroker 对象名称翻译"
+      },
       "0.1.0": {
         "en": "Added German and English backend texts and object names, packaged backend translations, and corrected invalid ioBroker roles for string states",
         "de": "Deutsche und englische Backend-Texte und Objektnamen ergänzt, Backend-Übersetzungen paketiert und ungültige ioBroker-Rollen für String-States korrigiert",

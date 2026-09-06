@@ -12,6 +12,7 @@
  * Standheizung und aktive Belueftung liefert er gar nicht erst.
  */
 import type { CommandDomain, VehiclePart } from '../api/types';
+import type { ObjectNameKey } from '../i18n';
 
 /** Was eine steuerbare Domaene ausmacht. */
 export interface CommandDomainDef {
@@ -30,7 +31,7 @@ export interface CommandDomainDef {
 	 */
 	activeStates: readonly string[];
 	/** Name des Soll-Schalters im Objektbaum. */
-	label: string;
+	label: ObjectNameKey;
 	/** Deutscher Anzeigename des Soll-Schalters. */
 	labelDe: string;
 }

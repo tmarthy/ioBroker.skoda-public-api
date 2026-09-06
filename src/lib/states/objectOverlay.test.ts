@@ -1,4 +1,5 @@
 import { expect } from 'chai';
+import { OBJECT_NAME_LANGUAGES } from '../i18n';
 import { generatedStateDefs } from './objectDefs.generated';
 import { exactOverlayPaths, legacyRoleMigration, resolveCommon } from './objectOverlay';
 
@@ -105,9 +106,11 @@ describe('objectOverlay => resolveCommon', () => {
 			const common = resolveCommon(path, def);
 			expect(common.type, path).to.be.oneOf(['number', 'string', 'boolean']);
 			expect(common.role, path).to.be.a('string').and.not.empty;
-			expect(common.name, path).to.be.an('object').that.includes.keys('en', 'de');
-			expect((common.name as ioBroker.Translated).en, path).to.not.be.empty;
-			expect((common.name as ioBroker.Translated).de, path).to.not.be.empty;
+			expect(common.name, path).to.be.an('object');
+			expect(Object.keys(common.name as object).sort(), path).to.deep.equal([...OBJECT_NAME_LANGUAGES].sort());
+			for (const language of OBJECT_NAME_LANGUAGES) {
+				expect((common.name as ioBroker.Translated)[language]?.trim(), `${path} (${language})`).to.not.be.empty;
+			}
 		}
 	});
 });

@@ -5,6 +5,7 @@ import { FakeAdapter } from '../../../test/helpers/fakeAdapter';
 import type { VehicleResponse } from '../api/types';
 import { QUALITY_NOT_GOOD, StateWriter, type StateApi } from './StateWriter';
 import { generatedStateDefs } from './objectDefs.generated';
+import { OBJECT_NAME_LANGUAGES } from '../i18n';
 
 /**
  * Beweist zur Uebersetzungszeit, dass eine echte Adapter-Instanz die schmale
@@ -69,6 +70,35 @@ describe('states/StateWriter => Antwort in den Objektbaum', () => {
 	});
 
 	describe('Der Baum spiegelt die Antwort', () => {
+		it('verwendet fuer alle statischen mehrsprachigen Namen genau die elf ioBroker-Sprachen', async () => {
+			await writer.write(VIN, fixture('synth-idle'));
+			await writer.writeCommandResult(VIN, { name: 'charging.start', result: 'SENT', timestamp: clock });
+
+			for (const [id, object] of adapter.objects) {
+				const name = object.common?.name;
+				if (name === undefined) {
+					continue;
+				}
+				if (typeof name === 'string') {
+					continue;
+				}
+				expect(Object.keys(name).sort(), id).to.deep.equal([...OBJECT_NAME_LANGUAGES].sort());
+				for (const language of OBJECT_NAME_LANGUAGES) {
+					expect(name[language]?.trim(), `${id} (${language})`).to.not.be.empty;
+				}
+			}
+		});
+
+		it('laesst externe und unbekannte dynamische Namen als einfache Strings stehen', async () => {
+			const response = fixture('idle');
+			(response.vehicle as Record<string, unknown>).futureApiField = 'raw API value';
+			await writer.write(VIN, response);
+
+			expect(adapter.objects.get(VIN)?.common?.name).to.equal('Enyaq');
+			expect(adapter.objects.get(`${VIN}.chargingProfiles.profiles.1`)?.common?.name).to.equal('Zu Hause');
+			expect(adapter.objects.get(`${VIN}.futureApiField`)?.common?.name).to.equal('futureApiField');
+		});
+
 		for (const name of ['idle', 'plugged', 'charging', 'climatising', 'synth-idle']) {
 			it(`bildet jedes Feld der Aufnahme "${name}" auf einen Zustand ab`, async () => {
 				const response = fixture(name);
@@ -298,7 +328,7 @@ describe('states/StateWriter => Antwort in den Objektbaum', () => {
 			expect(adapter.objects.get(id)?.common?.name).to.equal('Meine Reichweite');
 		});
 
-		it('migriert bisherige englische Standardnamen auf zweisprachige Metadaten', async () => {
+		it('migriert bisherige englische Standardnamen auf vollstaendige Metadaten', async () => {
 			const path = 'charging.status.battery.stateOfChargeInPercent';
 			const id = `${VIN}.${path}`;
 			await adapter.setObjectNotExistsAsync(id, {
@@ -317,7 +347,52 @@ describe('states/StateWriter => Antwort in den Objektbaum', () => {
 					charging: { isVehicleInSavedLocation: false, status: { battery: { stateOfChargeInPercent: 80 } } },
 				},
 			});
-			expect(adapter.objects.get(id)?.common?.name).to.deep.equal({ en: 'State of charge', de: 'Ladestand' });
+			const name = adapter.objects.get(id)?.common?.name as ioBroker.Translated;
+			expect(name).to.include({ en: 'State of charge', de: 'Ladestand', ru: 'Уровень заряда' });
+			expect(Object.keys(name).sort()).to.deep.equal([...OBJECT_NAME_LANGUAGES].sort());
+		});
+
+		it('migriert bisherige unvollstaendige Uebersetzungsobjekte, aber keine Benutzertexte', async () => {
+			const path = 'charging.status.battery.stateOfChargeInPercent';
+			const id = `${VIN}.${path}`;
+			await adapter.setObjectNotExistsAsync(id, {
+				type: 'state',
+				common: {
+					name: { en: 'State of charge', de: 'Ladestand' },
+					type: 'number',
+					role: 'value.battery',
+					read: true,
+					write: false,
+				},
+				native: {},
+			});
+			await writer.write(VIN, {
+				vehicle: {
+					charging: { isVehicleInSavedLocation: false, status: { battery: { stateOfChargeInPercent: 80 } } },
+				},
+			});
+			expect(Object.keys(adapter.objects.get(id)?.common?.name as object).sort()).to.deep.equal(
+				[...OBJECT_NAME_LANGUAGES].sort(),
+			);
+
+			const customized = new FakeAdapter();
+			await customized.setObjectNotExistsAsync(id, {
+				type: 'state',
+				common: {
+					name: { en: 'My charge', de: 'Mein Ladestand' },
+					type: 'number',
+					role: 'value.battery',
+					read: true,
+					write: false,
+				},
+				native: {},
+			});
+			await new StateWriter({ api: customized }).write(VIN, {
+				vehicle: {
+					charging: { isVehicleInSavedLocation: false, status: { battery: { stateOfChargeInPercent: 80 } } },
+				},
+			});
+			expect(customized.objects.get(id)?.common?.name).to.deep.equal({ en: 'My charge', de: 'Mein Ladestand' });
 		});
 
 		it('korrigiert die Rolle eines bestehenden String-States ohne Wertverlust', async () => {
