@@ -218,6 +218,9 @@ themselves. The adapter icon is original, brand-neutral project artwork and does
 reproduce the official Škoda logo; it is distributed under this project's MIT license.
 
 ## Changelog
+### 0.1.5 (2026-09-06)
+* (Thomas Marthy) aligned the test workflow and changelog archive with repository checker requirements
+
 ### 0.1.4 (2026-09-06)
 * (Thomas Marthy) added complete backend translations for all supported ioBroker languages
 
@@ -240,6 +243,8 @@ reproduce the official Škoda logo; it is distributed under this project's MIT l
 
 ### 0.0.1 (2026-09-05)
 * (Thomas Marthy) initial release
+
+[Older changelog entries](https://github.com/tmarthy/ioBroker.skoda-public-api/blob/main/CHANGELOG_OLD.md)
 
 ## License
 MIT License

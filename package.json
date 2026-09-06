@@ -1,6 +1,6 @@
 {
   "name": "iobroker.skoda-public-api",
-  "version": "0.1.4",
+  "version": "0.1.5",
   "description": "Read and control Škoda vehicles via the official MyŠkoda Public API",
   "author": {
     "name": "Thomas Marthy",
@@ -54,7 +54,6 @@
     "i18n/",
     "www/",
     "io-package.json",
-    "CHANGELOG_OLD.md",
     "LICENSE"
   ],
   "scripts": {

@@ -2,8 +2,8 @@ name: Test and Release
 
 # Laeuft bei jedem Push und Pull Request sowie bei Versions-Tags.
 #
-# Pushes und Pull Requests erhalten eine schnelle Mindestpruefung. Die vollstaendige
-# Plattformmatrix laeuft vor einer Veroeffentlichung oder auf manuellen Aufruf.
+# Die vollstaendige Plattformmatrix laeuft bei Pushes, Pull Requests, Versions-Tags
+# und manuellen Aufrufen.
 on:
   push:
     branches:
@@ -45,31 +45,11 @@ jobs:
           type-checking: true
           lint: true
 
-  # Schneller Test fuer normale Commits: aelteste unterstuetzte Node-Version auf Linux.
+  # Checker-konforme vollstaendige Matrix fuer alle Testlaeufe und Releases.
   adapter-tests:
-    if: |
-      contains(github.event.head_commit.message, '[skip ci]') == false &&
-      github.ref_type != 'tag' &&
-      github.event_name != 'workflow_dispatch'
+    if: contains(github.event.head_commit.message, '[skip ci]') == false
     # Erst pruefen, dann testen: Wenn Lint oder Typpruefung scheitern, muessen die
     # teuren Testlaeufe gar nicht erst starten.
-    needs: check-and-lint
-
-    runs-on: ubuntu-latest
-    timeout-minutes: 30
-
-    steps:
-      - uses: ioBroker/testing-action-adapter@v1
-        with:
-          node-version: '22.x'
-          os: ubuntu-latest
-          build: true
-
-  # Checker-konforme vollstaendige Matrix fuer Releases und manuelle Abnahmen.
-  adapter-tests-release:
-    if: |
-      contains(github.event.head_commit.message, '[skip ci]') == false &&
-      (github.ref_type == 'tag' || github.event_name == 'workflow_dispatch')
     needs: check-and-lint
 
     runs-on: ${{ matrix.os }}
@@ -90,7 +70,7 @@ jobs:
 
   # Publishes tagged releases through npm Trusted Publishing and creates a GitHub release.
   deploy:
-    needs: [check-and-lint, adapter-tests-release]
+    needs: [check-and-lint, adapter-tests]
 
     if: |
       contains(github.event.head_commit.message, '[skip ci]') == false &&

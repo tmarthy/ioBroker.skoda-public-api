@@ -1,8 +1,21 @@
 {
   "common": {
     "name": "skoda-public-api",
-    "version": "0.1.4",
+    "version": "0.1.5",
     "news": {
+      "0.1.5": {
+        "en": "Aligned the test workflow and changelog archive with repository checker requirements",
+        "de": "Test-Workflow und Changelog-Archiv an die Anforderungen des Repository-Checkers angepasst",
+        "ru": "Рабочий процесс тестирования и архив журнала изменений приведены в соответствие с требованиями проверки репозитория",
+        "pt": "Fluxo de testes e arquivo do changelog alinhados com os requisitos do verificador do repositório",
+        "nl": "Testworkflow en changelogarchief afgestemd op de vereisten van de repositorychecker",
+        "fr": "Workflow de test et archive du changelog alignés sur les exigences du vérificateur de dépôt",
+        "it": "Flusso di test e archivio del changelog adeguati ai requisiti del controllo repository",
+        "es": "Flujo de pruebas y archivo del historial adaptados a los requisitos del verificador del repositorio",
+        "pl": "Dostosowano proces testowania i archiwum zmian do wymagań kontroli repozytorium",
+        "uk": "Процес тестування та архів змін узгоджено з вимогами перевірки репозиторію",
+        "zh-cn": "使测试工作流和变更日志归档符合仓库检查器要求"
+      },
       "0.1.4": {
         "en": "Added complete backend translations for all supported ioBroker languages",
         "de": "Vollständige Backend-Übersetzungen für alle unterstützten ioBroker-Sprachen ergänzt",
