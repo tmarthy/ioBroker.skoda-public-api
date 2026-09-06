@@ -84,6 +84,10 @@ export interface SkodaApiClientOptions {
 	timeoutMs?: number;
 	/** Weitere Zeichenketten, die in keiner Meldung auftauchen duerfen (z.B. der S-PIN). */
 	secrets?: readonly string[];
+	/** Zeitgeber der Adapterinstanz; ioBroker raeumt ihn beim Entladen automatisch auf. */
+	setTimer?: (handler: () => void, ms: number) => unknown;
+	/** Passende Aufraeumfunktion fuer den von `setTimer` gelieferten Handle. */
+	clearTimer?: (handle: unknown) => void;
 }
 
 /** Was `send()` an die oeffentlichen Methoden zurueckgibt. */
@@ -213,6 +217,8 @@ export class SkodaApiClient {
 	private readonly apiKey: string;
 	private readonly timeoutMs: number;
 	private readonly sanitizer: Sanitizer;
+	private readonly setTimer: (handler: () => void, ms: number) => unknown;
+	private readonly clearTimer: (handle: unknown) => void;
 
 	/** Basis-URL ohne abschliessenden Schraegstrich, z.B. `http://127.0.0.1:8099`. */
 	public readonly baseUrl: string;
@@ -225,6 +231,10 @@ export class SkodaApiClient {
 		this.baseUrl = normalizeBaseUrl(options.baseUrl ?? LIVE_BASE_URL);
 		this.timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
 		this.sanitizer = createSanitizer({ apiKey: options.apiKey, secrets: options.secrets });
+		this.setTimer = options.setTimer ?? ((handler, ms) => globalThis.setTimeout(handler, ms));
+		this.clearTimer =
+			options.clearTimer ??
+			(handle => globalThis.clearTimeout(handle as ReturnType<typeof globalThis.setTimeout>));
 	}
 
 	/** Immediately cancels this client's requests, including response bodies. */
@@ -332,7 +342,7 @@ export class SkodaApiClient {
 		}
 		const controller = new AbortController();
 		this.requests.add(controller);
-		const timeout = setTimeout(() => controller.abort(), this.timeoutMs);
+		const timeout = this.setTimer(() => controller.abort(), this.timeoutMs);
 		try {
 			const headers: Record<string, string> = {
 				'X-API-Key': this.apiKey,
@@ -396,7 +406,7 @@ export class SkodaApiClient {
 				meta: { rateLimit, apiKeyExpiresAt, consumedQuota: consumesQuotaForStatus(response.status) },
 			};
 		} finally {
-			clearTimeout(timeout);
+			this.clearTimer(timeout);
 			this.requests.delete(controller);
 		}
 	}

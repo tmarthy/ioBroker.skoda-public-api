@@ -1,8 +1,21 @@
 {
   "common": {
     "name": "skoda-public-api",
-    "version": "0.1.8",
+    "version": "0.1.9",
     "news": {
+      "0.1.9": {
+        "en": "Used ioBroker-managed request timers and removed news for the skipped npm version 0.1.7.",
+        "de": "ioBroker-verwaltete Request-Timer verwendet und den News-Eintrag für die übersprungene npm-Version 0.1.7 entfernt.",
+        "ru": "Для запросов использованы таймеры ioBroker, а запись новостей для пропущенной npm-версии 0.1.7 удалена.",
+        "pt": "Utilizados temporizadores de pedidos geridos pelo ioBroker e removida a notícia da versão npm 0.1.7 não publicada.",
+        "nl": "Door ioBroker beheerde requesttimers gebruikt en het nieuwsbericht voor de overgeslagen npm-versie 0.1.7 verwijderd.",
+        "fr": "Utilisation des temporisateurs de requête gérés par ioBroker et suppression de l’actualité concernant la version npm 0.1.7 non publiée.",
+        "it": "Utilizzati timer delle richieste gestiti da ioBroker e rimossa la notizia relativa alla versione npm 0.1.7 non pubblicata.",
+        "es": "Se utilizaron temporizadores de solicitudes gestionados por ioBroker y se eliminó la noticia de la versión npm 0.1.7 no publicada.",
+        "pl": "Zastosowano timery żądań zarządzane przez ioBroker i usunięto wpis aktualności dotyczący nieopublikowanej wersji npm 0.1.7.",
+        "uk": "Для запитів використано таймери ioBroker і видалено запис новин про неопубліковану npm-версію 0.1.7.",
+        "zh-cn": "请求改用 ioBroker 管理的定时器，并移除了未发布 npm 版本 0.1.7 的新闻条目。"
+      },
       "0.1.8": {
         "en": "Kept Windows CI stable while retaining Compact Mode controller coverage on Unix hosts.",
         "de": "Windows-CI stabilisiert und die Compact-Mode-Controller-Abdeckung auf Unix-Hosts beibehalten.",
@@ -15,19 +28,6 @@
         "pl": "Ustabilizowano CI w Windows, zachowując testy kontrolera Compact Mode na systemach Unix.",
         "uk": "Стабілізовано CI у Windows зі збереженням перевірки контролера Compact Mode на Unix-системах.",
         "zh-cn": "稳定了 Windows CI，同时保留 Unix 主机上的 Compact Mode 控制器测试覆盖。"
-      },
-      "0.1.7": {
-        "en": "Added and verified ioBroker Compact Mode support.",
-        "de": "Unterstützung für den ioBroker Compact Mode hinzugefügt und verifiziert.",
-        "ru": "Добавлена и проверена поддержка Compact Mode в ioBroker.",
-        "pt": "Adicionado e verificado o suporte ao Compact Mode do ioBroker.",
-        "nl": "Ondersteuning voor ioBroker Compact Mode toegevoegd en geverifieerd.",
-        "fr": "Ajout et vérification de la prise en charge du Compact Mode d’ioBroker.",
-        "it": "Aggiunto e verificato il supporto per Compact Mode di ioBroker.",
-        "es": "Añadido y verificado el soporte para Compact Mode de ioBroker.",
-        "pl": "Dodano i zweryfikowano obsługę Compact Mode w ioBroker.",
-        "uk": "Додано та перевірено підтримку Compact Mode в ioBroker.",
-        "zh-cn": "已添加并验证 ioBroker Compact Mode 支持。"
       },
       "0.1.6": {
         "en": "Limited adapter news to the seven entries supported by the repository builder",

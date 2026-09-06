@@ -77,6 +77,8 @@ class SkodaPublicApi extends utils.Adapter {
 		const client = new SkodaApiClient({
 			apiKey: settings.apiKey,
 			secrets: settings.spin ? [settings.spin] : [],
+			setTimer: (handler, ms) => this.setTimeout(handler, ms),
+			clearTimer: handle => this.clearTimeout(handle as ioBroker.Timeout),
 		});
 
 		this.clients.add(client);
@@ -231,7 +233,12 @@ class SkodaPublicApi extends utils.Adapter {
 		}
 		const { apiKey, vin } = target;
 
-		const client = new SkodaApiClient({ apiKey, secrets: this.config.spin ? [this.config.spin] : [] });
+		const client = new SkodaApiClient({
+			apiKey,
+			secrets: this.config.spin ? [this.config.spin] : [],
+			setTimer: (handler, ms) => this.setTimeout(handler, ms),
+			clearTimer: handle => this.clearTimeout(handle as ioBroker.Timeout),
+		});
 		this.clients.add(client);
 		try {
 			// Der Verbindungstest darf auch bei ausgeschoepftem Adapter-Budget bewusst auf

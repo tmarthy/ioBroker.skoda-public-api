@@ -225,6 +225,9 @@ reproduce the official Škoda logo; it is distributed under this project's MIT l
 
 ## Changelog
 
+### 0.1.9 (2026-09-06)
+- Used ioBroker-managed request timers and removed news for the skipped npm version 0.1.7.
+
 ### 0.1.8 (2026-09-06)
 - Kept Windows CI stable while retaining Compact Mode controller coverage on Unix hosts.
 

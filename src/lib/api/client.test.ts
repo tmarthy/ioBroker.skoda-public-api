@@ -27,6 +27,30 @@ describe('api/client => HTTP-Schicht gegen den Mock', () => {
 	});
 
 	describe('Normalbetrieb', () => {
+		it('verwendet und bereinigt die injizierten Adapter-Zeitgeber', async () => {
+			let scheduled = 0;
+			let cleared = 0;
+			const timedClient = new SkodaApiClient({
+				apiKey: DEFAULT_API_KEY,
+				baseUrl: client.baseUrl,
+				timeoutMs: 2000,
+				setTimer: (handler, ms) => {
+					scheduled++;
+					return globalThis.setTimeout(handler, ms);
+				},
+				clearTimer: handle => {
+					cleared++;
+					globalThis.clearTimeout(handle as ReturnType<typeof globalThis.setTimeout>);
+				},
+			});
+
+			const result = await timedClient.getVehicle(DEFAULT_VIN);
+
+			expect(result.ok).to.equal(true);
+			expect(scheduled).to.equal(1);
+			expect(cleared).to.equal(1);
+		});
+
 		it('liest das Fahrzeug', async () => {
 			const result = await client.getVehicle(DEFAULT_VIN);
 			expect(result.ok).to.equal(true);
