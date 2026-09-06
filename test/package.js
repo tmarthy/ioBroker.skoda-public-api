@@ -6,6 +6,13 @@ const { tests } = require('@iobroker/testing');
 // Validate the package files
 tests.packageFiles(path.join(__dirname, '..'));
 
+describe('io-package metadata', () => {
+	it('keeps at most seven news entries for the repository builder', () => {
+		const ioPackage = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'io-package.json'), 'utf8'));
+		assert.ok(Object.keys(ioPackage.common.news).length <= 7);
+	});
+});
+
 describe('admin translations', () => {
 	it('does not leave longer texts untranslated', () => {
 		const translationsDir = path.join(__dirname, '..', 'admin', 'i18n');

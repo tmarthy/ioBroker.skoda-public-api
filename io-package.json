@@ -1,8 +1,21 @@
 {
   "common": {
     "name": "skoda-public-api",
-    "version": "0.1.5",
+    "version": "0.1.6",
     "news": {
+      "0.1.6": {
+        "en": "Limited adapter news to the seven entries supported by the repository builder",
+        "de": "Adapter-Neuigkeiten auf die sieben vom Repository-Builder unterstützten Einträge begrenzt",
+        "ru": "Новости адаптера ограничены семью записями, поддерживаемыми сборщиком репозитория",
+        "pt": "Notícias do adaptador limitadas às sete entradas suportadas pelo criador do repositório",
+        "nl": "Adapternieuws beperkt tot de zeven items die door de repositorybuilder worden ondersteund",
+        "fr": "Actualités de l’adaptateur limitées aux sept entrées prises en charge par le générateur du dépôt",
+        "it": "Notizie dell’adattatore limitate alle sette voci supportate dal generatore del repository",
+        "es": "Noticias del adaptador limitadas a las siete entradas compatibles con el generador del repositorio",
+        "pl": "Ograniczono aktualności adaptera do siedmiu wpisów obsługiwanych przez generator repozytorium",
+        "uk": "Новини адаптера обмежено сімома записами, які підтримує генератор репозиторію",
+        "zh-cn": "将适配器新闻限制为仓库构建器支持的七个条目"
+      },
       "0.1.5": {
         "en": "Aligned the test workflow and changelog archive with repository checker requirements",
         "de": "Test-Workflow und Changelog-Archiv an die Anforderungen des Repository-Checkers angepasst",
@@ -80,32 +93,6 @@
         "pl": "Dodano niemieckie i angielskie teksty backendu oraz nazwy obiektów, dołączono tłumaczenia do pakietu i poprawiono nieprawidłowe role ioBroker dla stanów tekstowych",
         "uk": "Додано німецькі й англійські тексти бекенду та назви об’єктів, переклади включено до пакета й виправлено недійсні ролі ioBroker для текстових станів",
         "zh-cn": "新增德语和英语后端文本及对象名称，将后端翻译包含在软件包中，并修正了字符串状态的无效 ioBroker 角色"
-      },
-      "0.0.2": {
-        "en": "Enabled npm Trusted Publishing for automated releases",
-        "de": "npm Trusted Publishing für automatisierte Veröffentlichungen aktiviert",
-        "ru": "Включена доверенная публикация npm для автоматических выпусков",
-        "pt": "Publicação confiável do npm ativada para lançamentos automatizados",
-        "nl": "npm Trusted Publishing ingeschakeld voor geautomatiseerde releases",
-        "fr": "Publication fiable npm activée pour les versions automatisées",
-        "it": "Pubblicazione attendibile npm abilitata per le versioni automatizzate",
-        "es": "Publicación de confianza de npm habilitada para versiones automatizadas",
-        "pl": "Włączono npm Trusted Publishing dla automatycznych wydań",
-        "uk": "Увімкнено npm Trusted Publishing для автоматизованих випусків",
-        "zh-cn": "已为自动发布启用 npm 可信发布"
-      },
-      "0.0.1": {
-        "en": "initial release",
-        "de": "Erstveröffentlichung",
-        "ru": "Начальная версия",
-        "pt": "lançamento inicial",
-        "nl": "Eerste uitgave",
-        "fr": "Première version",
-        "it": "Versione iniziale",
-        "es": "Versión inicial",
-        "pl": "Pierwsze wydanie",
-        "uk": "Початкова версія",
-        "zh-cn": "首次出版"
       }
     },
     "titleLang": {

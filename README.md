@@ -218,6 +218,9 @@ themselves. The adapter icon is original, brand-neutral project artwork and does
 reproduce the official Škoda logo; it is distributed under this project's MIT license.
 
 ## Changelog
+### 0.1.6 (2026-09-06)
+* (Thomas Marthy) limited adapter news to the seven entries supported by the repository builder
+
 ### 0.1.5 (2026-09-06)
 * (Thomas Marthy) aligned the test workflow and changelog archive with repository checker requirements
 
