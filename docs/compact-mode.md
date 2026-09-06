@@ -130,3 +130,10 @@ On a disposable ioBroker installation with the supported Admin dependency instal
 Group 0, live vehicle execution, a full host's group-spawning path, other Node/controller
 versions and other operating systems require their own acceptance run. They are not
 implied by a successful local group-1/mock test.
+
+The real compact-group controller suite is skipped on Windows because the development
+js-controller installed by `@iobroker/testing` can run its initial status report before
+its zero-delay instance-start timers there and terminate the otherwise empty group.
+Windows continues to run the complete unit suite, including compact lifecycle and
+isolation coverage, and the ordinary adapter integration tests. The controller-level
+Compact Mode suite remains active on Linux and macOS.

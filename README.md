@@ -225,6 +225,9 @@ reproduce the official Škoda logo; it is distributed under this project's MIT l
 
 ## Changelog
 
+### 0.1.8 (2026-09-06)
+- Kept Windows CI stable while retaining Compact Mode controller coverage on Unix hosts.
+
 ### 0.1.7 (2026-09-06)
 - Added and verified ioBroker Compact Mode support.
 
