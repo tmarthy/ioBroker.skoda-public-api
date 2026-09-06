@@ -66,6 +66,8 @@ export interface KeyExpiryLog {
 
 /** Womit der Waechter eingerichtet wird. */
 export interface KeyExpiryOptions {
+	/** Whether the owning instance is stopping. */
+	isStopping?: () => boolean;
 	/** Wohin `info.apiKey.*` geschrieben wird. */
 	states: KeyExpiryStateApi;
 	/** Wohin die Meldungen gehen. */
@@ -91,11 +93,13 @@ export class KeyExpiryWatcher {
 	/** Was an welchem Tag schon gemeldet wurde - Schluessel auf Tagesnummer. */
 	private readonly announced = new Map<string, number>();
 	private objectsReady = false;
+	private readonly isStopping: () => boolean;
 
 	/**
 	 * @param options Zustandsschnittstelle, Log, Notification-Kanal und Zeitquelle.
 	 */
 	public constructor(options: KeyExpiryOptions) {
+		this.isStopping = options.isStopping ?? (() => false);
 		this.states = options.states;
 		this.log = options.log;
 		this.notify = options.notify;
@@ -110,6 +114,9 @@ export class KeyExpiryWatcher {
 	 * @param error Der Fehler, falls die Antwort einer war.
 	 */
 	public async observe(meta: ApiMeta, error?: ApiError): Promise<void> {
+		if (this.isStopping()) {
+			return;
+		}
 		if (error?.kind === 'api-key-expired') {
 			// Die API sagt es ausdruecklich - das schlaegt jede Rechnerei mit Tagen.
 			await this.announceExpired(this.t('The API key has expired.'));
@@ -122,6 +129,9 @@ export class KeyExpiryWatcher {
 
 		const remainingDays = Math.floor((meta.apiKeyExpiresAt.getTime() - this.now()) / 86_400_000);
 		await this.writeStates(meta.apiKeyExpiresAt, remainingDays);
+		if (this.isStopping()) {
+			return;
+		}
 
 		if (remainingDays > EXPIRY_THRESHOLDS_DAYS[EXPIRY_THRESHOLDS_DAYS.length - 1]) {
 			// Weit weg vom Ablauf: Ein erneuerter Schluessel soll spaeter wieder alle

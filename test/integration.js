@@ -169,6 +169,7 @@ function delay(ms) {
 
 tests.integration(path.join(__dirname, '..'), {
 	defineAdditionalTests({ suite }) {
+		require('./compact-suite.js')({ suite, configure, encrypt, getState, setState, readState, waitFor, delay, MockSkodaApi, DEFAULT_API_KEY, DEFAULT_VIN });
 		// Jede suite bekommt einen frischen Testaufbau - und der laesst sich genau
 		// einmal starten ("This test harness has already been used"). Ein Neustart im
 		// laufenden Test ist damit nicht zu haben; deshalb ist jeder Lebenslauf eine

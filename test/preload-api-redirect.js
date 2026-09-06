@@ -14,7 +14,10 @@ if (mockBaseUrl && originalFetch) {
 		if (url.origin !== productionOrigin) {
 			return originalFetch(input, init);
 		}
-		const mock = new URL(mockBaseUrl);
+		const routes = JSON.parse(process.env.SKODA_TEST_API_ROUTES || '{}');
+		const key = new Headers(init?.headers).get('X-API-Key');
+		const mock = new URL(routes[key] || mockBaseUrl);
+		process.send?.({ event: 'skoda-test-request', pid: process.pid, key, url: url.pathname });
 		url.protocol = mock.protocol;
 		url.host = mock.host;
 		const redirected = input instanceof Request ? new Request(url, input) : url;

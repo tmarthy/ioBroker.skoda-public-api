@@ -17,6 +17,7 @@
  *
  * `ack: true` heisst hier **an die API uebergeben**, nicht "das Auto hat es getan" (E6).
  */
+import { ShutdownError } from '../lifecycle';
 import type { ApiError } from '../api/errors';
 import type { ApiMeta, ApiResult, CommandBody } from '../api/client';
 import type { CommandAction, CommandDomain, VehicleResponse } from '../api/types';
@@ -28,6 +29,8 @@ import { translateFallback, type Translate } from '../i18n';
 
 /** Der Ausschnitt des Clients, den die Queue braucht. */
 export interface CommandSender {
+	/** Cancels outstanding HTTP activity. */
+	abort?(): void;
 	/** Setzt einen Befehl ab; `ok: true` heisst `202 Accepted`. */
 	sendCommand(
 		vin: string,
@@ -137,9 +140,13 @@ export class CommandQueue {
 	/** Akzeptierte Sollwerte, die noch kein Poll bestaetigt hat. */
 	private readonly awaitingState = new Map<string, { desired: boolean; sentAt: number; expiresAt: number }>();
 
+	/** Admitted submissions, including immediate reports outside the send chain. */
+	private readonly submissions = new Set<Promise<void>>();
 	/** Serialisiert die Durchlaeufe: Zwei gleichzeitige Sendungen waeren ein Leck. */
 	private chain: Promise<void> = Promise.resolve();
+	private tickTask?: Promise<number | undefined>;
 	private running = false;
+	private stopped = false;
 	private timer?: TimerHandle;
 
 	/**
@@ -166,16 +173,28 @@ export class CommandQueue {
 
 	/** Startet die Schleife fuer wartende Befehle. */
 	public start(): void {
+		if (this.stopped) {
+			return;
+		}
 		this.running = true;
 	}
 
 	/** Haelt die Schleife an. Muss beim Entladen des Adapters gerufen werden. */
 	public stop(): void {
+		this.stopped = true;
 		this.running = false;
 		if (this.timer !== undefined) {
 			this.clearTimer(this.timer);
 			this.timer = undefined;
 		}
+		this.client.abort?.();
+		this.entries.clear();
+	}
+
+	/** Stops permanently and drains active work. Restart uses a fresh component. */
+	public async shutdown(): Promise<void> {
+		this.stop();
+		await Promise.all([this.chain, this.tickTask, ...this.submissions]);
 	}
 
 	/**
@@ -189,6 +208,9 @@ export class CommandQueue {
 	 * @param response Die Antwort eines Polls.
 	 */
 	public updateFromResponse(vin: string, response: VehicleResponse): void {
+		if (this.stopped) {
+			return;
+		}
 		const vehicle = response.vehicle as unknown as Record<string, unknown>;
 		const blocks = this.blocks.get(vin) ?? new Map<string, Record<string, unknown>>();
 		for (const def of COMMAND_DEFS) {
@@ -219,7 +241,29 @@ export class CommandQueue {
 	 * @param value Der geschriebene Wert.
 	 * @returns Nichts; das Ergebnis geht ueber `onReport` hinaus.
 	 */
-	public async submit(relativeId: string, value: unknown): Promise<void> {
+	public submit(relativeId: string, value: unknown): Promise<void> {
+		if (this.stopped) {
+			return Promise.resolve();
+		}
+		const task = this.runSubmit(relativeId, value);
+		this.submissions.add(task);
+		void task.then(
+			() => this.submissions.delete(task),
+			() => this.submissions.delete(task),
+		);
+		return task;
+	}
+
+	/**
+	 * Processes one admitted submission, including immediate reports.
+	 *
+	 * @param relativeId Relative command state ID.
+	 * @param value Requested state value.
+	 */
+	private async runSubmit(relativeId: string, value: unknown): Promise<void> {
+		if (this.stopped) {
+			return;
+		}
 		const command = parseCommandState(relativeId, value);
 		if (!command || !this.vins.has(command.vin)) {
 			return;
@@ -285,8 +329,22 @@ export class CommandQueue {
 	 *
 	 * @returns Millisekunden bis zum naechsten Versuch, oder undefined wenn nichts wartet.
 	 */
-	public async tick(): Promise<number | undefined> {
+	public tick(): Promise<number | undefined> {
+		if (this.stopped) {
+			return Promise.resolve(undefined);
+		}
+		this.tickTask ??= this.runTick().finally(() => {
+			this.tickTask = undefined;
+		});
+		return this.tickTask;
+	}
+
+	/** Processes a single serialized batch. */
+	private async runTick(): Promise<number | undefined> {
 		for (const [key, entry] of [...this.entries]) {
+			if (this.stopped) {
+				break;
+			}
 			// Ein vorheriger await in diesem Durchlauf kann dem Event-Handler Zeit
 			// gegeben haben, denselben Schluessel durch einen neueren Befehl zu ersetzen.
 			if (this.entries.get(key) !== entry) {
@@ -328,7 +386,10 @@ export class CommandQueue {
 				const next = await this.tick();
 				this.arm(next);
 			})
-			.catch(() => {
+			.catch(error => {
+				if (this.stopped || error instanceof ShutdownError) {
+					return;
+				}
 				// Eine abgewiesene Promise darf die serielle Kette nicht dauerhaft
 				// vergiften. Der konkrete Client liefert Fehler als ApiResult; hier landen
 				// nur unerwartete Fehler aus einem Port oder Callback.
@@ -424,11 +485,22 @@ export class CommandQueue {
 		let result: ApiResult<void>;
 		try {
 			result = await this.client.sendCommand(command.vin, command.def.domain, command.action, body);
+		} catch (error) {
+			if (this.stopped || error instanceof ShutdownError) {
+				return;
+			}
+			throw error;
 		} finally {
 			this.inFlight.delete(key);
 		}
+		if (this.stopped) {
+			return;
+		}
 		this.quota.recordResponse(command.vin, result.meta, permission);
 		this.onResponse?.(result.meta, result.ok ? undefined : result.error);
+		if (this.stopped) {
+			return;
+		}
 
 		if (result.ok) {
 			this.awaitingState.set(key, {
@@ -551,6 +623,9 @@ export class CommandQueue {
 		acknowledge?: CommandReport['acknowledge'],
 	): Promise<void> {
 		try {
+			if (this.stopped) {
+				return;
+			}
 			await this.onReport(command.vin, {
 				name: command.name,
 				result,
@@ -559,6 +634,9 @@ export class CommandQueue {
 				acknowledge,
 			});
 		} catch {
+			if (this.stopped) {
+				return;
+			}
 			// Fehlertexte des State-Backends koennen die volle State-ID und damit die
 			// VIN enthalten. Deshalb nur eine eigene, maskierungsfreie Meldung loggen.
 			this.log.error(this.t('%s: Result could not be written to ioBroker states.', command.name));

@@ -4,6 +4,7 @@
 import * as utils from '@iobroker/adapter-core';
 import { join } from 'node:path';
 import { SkodaApiClient } from './lib/api/client';
+import { createSanitizer } from './lib/api/sanitize';
 import { CommandQueue } from './lib/commands/CommandQueue';
 import { readConfig } from './lib/config';
 import { pickTestTarget, testConnection } from './lib/connectionTest';
@@ -12,7 +13,8 @@ import { VehicleQuotaManager } from './lib/quota/VehicleQuotaManager';
 import { KeyExpiryWatcher } from './lib/notifications/keyExpiry';
 import { PollScheduler } from './lib/scheduler/PollScheduler';
 import { StateWriter } from './lib/states/StateWriter';
-import { translateFallback, type Translate } from './lib/i18n';
+import { Lifecycle, ShutdownError } from './lib/lifecycle';
+import { createTranslator, translateFallback, type Translate } from './lib/i18n';
 
 /**
  * Der Adapter selbst ist nur die Verdrahtung: Er liest die Konfiguration, baut die
@@ -23,6 +25,9 @@ import { translateFallback, type Translate } from './lib/i18n';
  * glaubt eine Instanz in Neustartschleife jedes Mal, sie habe 20 Requests frei.
  */
 class SkodaPublicApi extends utils.Adapter {
+	private readonly lifecycle = new Lifecycle();
+	private readonly clients = new Set<SkodaApiClient>();
+	private cleanup?: Promise<void>;
 	private scheduler?: PollScheduler;
 	private queue?: CommandQueue;
 	private quota?: VehicleQuotaManager;
@@ -34,7 +39,7 @@ class SkodaPublicApi extends utils.Adapter {
 			...options,
 			name: 'skoda-public-api',
 		});
-		this.on('ready', this.onReady.bind(this));
+		this.on('ready', () => this.run(() => this.onReady()));
 		this.on('stateChange', this.onStateChange.bind(this));
 		this.on('message', this.onMessage.bind(this));
 		this.on('unload', this.onUnload.bind(this));
@@ -42,13 +47,20 @@ class SkodaPublicApi extends utils.Adapter {
 
 	/** Wird gerufen, sobald die Datenbanken verbunden sind und die Konfiguration steht. */
 	private async onReady(): Promise<void> {
-		await this.setState('info.connection', false, true);
+		this.lifecycle.check();
+		const api = this.lifecycle.guard(this);
+		await api.setState('info.connection', false, true);
 		const configuredLanguage = this.config.backendLanguage;
-		await utils.I18n.init(
+		const system =
+			configuredLanguage === 'de' || configuredLanguage === 'en'
+				? undefined
+				: await api.getForeignObjectAsync('system.config');
+		const t = await createTranslator(
 			join(__dirname, '..'),
-			configuredLanguage === 'de' || configuredLanguage === 'en' ? configuredLanguage : this,
+			configuredLanguage || 'system',
+			system?.common.language,
 		);
-		const t = utils.I18n.t;
+		this.lifecycle.check();
 		this.t = t;
 
 		const { settings, problems } = readConfig(this.config, t);
@@ -67,29 +79,39 @@ class SkodaPublicApi extends utils.Adapter {
 			secrets: settings.spin ? [settings.spin] : [],
 		});
 
+		this.clients.add(client);
+
 		const quota = new VehicleQuotaManager({
 			vins: settings.vins,
 			commandReserve: settings.commandReserve,
-			storeForVin: vin => new AdapterQuotaStore(this, vin),
-			onStoreError: error => this.log.warn(t('Quota state could not be saved: %s', String(error))),
+			storeForVin: vin => new AdapterQuotaStore(api, vin),
+			onStoreError: error => {
+				if (!(error instanceof ShutdownError)) {
+					this.log.warn(t('Quota state could not be saved: %s', String(error)));
+				}
+			},
 		});
-		await quota.start();
 		this.quota = quota;
+		await quota.start();
+		this.lifecycle.check();
 
-		const writer = new StateWriter({ api: this, t });
+		const writer = new StateWriter({ api, t });
 
 		// Der Schluessel erneuert sich nicht von selbst, und sein Ablauf faellt sonst
 		// wochenlang nicht auf: Die Werte im Baum bleiben laut E8 ja stehen.
 		this.keyExpiry = new KeyExpiryWatcher({
-			states: this,
+			states: api,
+			isStopping: () => this.lifecycle.stopping,
 			log: this.log,
 			t,
 			notify: (category, message) =>
 				// Eine gescheiterte Notification darf den Adapter nicht mitreissen: Sie
 				// ist die Zugabe, die Logzeile ist die eigentliche Meldung.
-				this.registerNotification('skoda-public-api', category, message).catch((error: unknown) =>
-					this.log.warn(t('Notification "%s" could not be sent: %s', category, String(error))),
-				),
+				api
+					.registerNotification('skoda-public-api', category, message)
+					.catch((error: unknown) =>
+						this.log.warn(t('Notification "%s" could not be sent: %s', category, String(error))),
+					),
 		});
 
 		this.scheduler = new PollScheduler({
@@ -100,14 +122,15 @@ class SkodaPublicApi extends utils.Adapter {
 				await writer.write(vin, response);
 				// Dieselbe Antwort traegt den Ist-Zustand fuer die Idempotenz und die
 				// Zieltemperatur fuer den Koerper von `air-conditioning/start`.
+				this.lifecycle.check();
 				this.queue?.updateFromResponse(vin, response);
 			},
 			log: this.log,
 			t,
 			onConnectionChange: connected => {
-				void this.setState('info.connection', connected, true);
+				this.run(() => api.setState('info.connection', connected, true));
 			},
-			onResponse: (meta, error) => void this.keyExpiry?.observe(meta, error),
+			onResponse: (meta, error) => this.run(() => this.keyExpiry?.observe(meta, error)),
 			intervals: {
 				idleMs: settings.idleMs,
 				activeMs: settings.activeMs,
@@ -131,9 +154,9 @@ class SkodaPublicApi extends utils.Adapter {
 			// Ob das Fahrzeug den Befehl ausgefuehrt hat, zeigt erst der naechste Poll.
 			onCommandSent: vin => this.scheduler?.requestVerificationPoll(vin),
 			onConnectionChange: connected => {
-				void this.setState('info.connection', connected, true);
+				this.run(() => api.setState('info.connection', connected, true));
 			},
-			onResponse: (meta, error) => void this.keyExpiry?.observe(meta, error),
+			onResponse: (meta, error) => this.run(() => this.keyExpiry?.observe(meta, error)),
 			ttlMs: settings.commandTtlMs,
 			// Der S-PIN kommt aus der Instanzkonfiguration, niemals aus einem State.
 			spin: settings.spin || undefined,
@@ -172,10 +195,10 @@ class SkodaPublicApi extends utils.Adapter {
 	 * @param obj Die Nachricht.
 	 */
 	private onMessage(obj: ioBroker.Message): void {
-		if (obj.command !== 'testConnection') {
+		if (this.lifecycle.stopping || obj.command !== 'testConnection') {
 			return;
 		}
-		void this.answerConnectionTest(obj);
+		this.run(() => this.answerConnectionTest(obj));
 	}
 
 	/**
@@ -188,7 +211,7 @@ class SkodaPublicApi extends utils.Adapter {
 	 */
 	private async answerConnectionTest(obj: ioBroker.Message): Promise<void> {
 		const answer = await this.runConnectionTest(obj.message);
-		if (obj.callback) {
+		if (!this.lifecycle.stopping && obj.callback) {
 			this.sendTo(obj.from, obj.command, answer, obj.callback);
 		}
 	}
@@ -200,7 +223,8 @@ class SkodaPublicApi extends utils.Adapter {
 	 * @returns Die Antwort fuer die Admin-UI.
 	 */
 	private async runConnectionTest(payload: unknown): Promise<{ result?: string; error?: string }> {
-		const t = utils.I18n.t;
+		this.lifecycle.check();
+		const t = this.t;
 		const target = pickTestTarget(payload, { apiKey: this.config.apiKey, vins: this.config.vins }, t);
 		if ('problem' in target) {
 			return { error: target.problem };
@@ -208,26 +232,34 @@ class SkodaPublicApi extends utils.Adapter {
 		const { apiKey, vin } = target;
 
 		const client = new SkodaApiClient({ apiKey, secrets: this.config.spin ? [this.config.spin] : [] });
-		// Der Verbindungstest darf auch bei ausgeschoepftem Adapter-Budget bewusst auf
-		// Nutzerwunsch laufen. Eine freie Sequenzbuchung sorgt trotzdem dafuer, dass
-		// seine spaete Antwort keinen neueren Quota-Stand ueberschreibt.
-		const watcher = this.keyExpiry;
-		const result = await testConnection(
-			client,
-			vin,
-			Date.now(),
-			{
-				testedKey: apiKey,
-				activeKey: (this.config.apiKey ?? '').trim(),
-				quota: this.quota,
-				onResponse: meta => watcher?.observe(meta),
-			},
-			t,
-		);
-		// Absichtlich ohne den Text: Er nennt Fahrzeugname und Kennzeichen, und die
-		// muessen nicht ins Log, das im Forum landet (E14).
-		this.log.info(result.ok ? t('Connection test succeeded.') : t('Connection test failed: %s', result.text));
-		return result.ok ? { result: result.text } : { error: result.text };
+		this.clients.add(client);
+		try {
+			// Der Verbindungstest darf auch bei ausgeschoepftem Adapter-Budget bewusst auf
+			// Nutzerwunsch laufen. Eine freie Sequenzbuchung sorgt trotzdem dafuer, dass
+			// seine spaete Antwort keinen neueren Quota-Stand ueberschreibt.
+			const watcher = this.keyExpiry;
+			const result = await testConnection(
+				client,
+				vin,
+				Date.now(),
+				{
+					isStopping: () => this.lifecycle.stopping,
+					testedKey: apiKey,
+					activeKey: (this.config.apiKey ?? '').trim(),
+					quota: this.quota,
+					onResponse: meta => watcher?.observe(meta),
+				},
+				t,
+			);
+			this.lifecycle.check();
+			// Absichtlich ohne den Text: Er nennt Fahrzeugname und Kennzeichen, und die
+			// muessen nicht ins Log, das im Forum landet (E14).
+			this.log.info(result.ok ? t('Connection test succeeded.') : t('Connection test failed: %s', result.text));
+			return result.ok ? { result: result.text } : { error: result.text };
+		} finally {
+			client.abort();
+			this.clients.delete(client);
+		}
 	}
 
 	/**
@@ -240,10 +272,10 @@ class SkodaPublicApi extends utils.Adapter {
 	 * @param state Der neue Zustand.
 	 */
 	private onStateChange(id: string, state: ioBroker.State | null | undefined): void {
-		if (!state || state.ack) {
+		if (this.lifecycle.stopping || !state || state.ack) {
 			return;
 		}
-		void this.queue?.submit(id.slice(`${this.namespace}.`.length), state.val);
+		this.run(() => this.queue?.submit(id.slice(`${this.namespace}.`.length), state.val));
 	}
 
 	/**
@@ -252,27 +284,64 @@ class SkodaPublicApi extends utils.Adapter {
 	 * @param callback Von ioBroker gestellt.
 	 */
 	private onUnload(callback: () => void): void {
-		try {
-			this.scheduler?.stop();
-			this.scheduler = undefined;
-			this.queue?.stop();
-			this.queue = undefined;
-			const quota = this.quota;
-			this.quota = undefined;
-			this.keyExpiry = undefined;
-			if (quota) {
-				void quota
-					.flush()
-					.catch((error: unknown) =>
-						this.log.warn(this.t('Quota state could not be saved during shutdown: %s', String(error))),
-					)
-					.finally(callback);
-			} else {
-				callback();
+		this.lifecycle.stopping = true;
+		this.cleanup ??= this.shutdown();
+		void this.cleanup.finally(callback).catch(error => this.cleanupError(error));
+	}
+
+	/** Stops admission synchronously, then drains all instance-owned work. */
+	private async shutdown(): Promise<void> {
+		const actions = [
+			() => this.scheduler?.stop(),
+			() => this.queue?.stop(),
+			...Array.from(this.clients, client => () => client.abort()),
+		];
+		for (const action of actions) {
+			try {
+				action();
+			} catch (error) {
+				this.cleanupError(error);
 			}
-		} catch (error) {
-			this.log.error(this.t('Error during shutdown: %s', (error as Error).message));
-			callback();
+		}
+		const results = await Promise.allSettled([
+			this.scheduler?.shutdown(),
+			this.queue?.shutdown(),
+			this.lifecycle.drain(),
+			this.quota?.flush(),
+		]);
+		for (const result of results) {
+			if (result.status === 'rejected') {
+				this.cleanupError(result.reason);
+			}
+		}
+		this.clients.clear();
+		this.scheduler = undefined;
+		this.queue = undefined;
+		this.keyExpiry = undefined;
+		this.quota = undefined;
+	}
+
+	/**
+	 * Admits and tracks asynchronous event handlers and callbacks.
+	 *
+	 * @param work Instance work.
+	 */
+	private run(work: () => unknown): void {
+		this.lifecycle.run(work, error => this.cleanupError(error));
+	}
+
+	/**
+	 * Logs unexpected lifecycle failures without exposing vehicle identifiers.
+	 *
+	 * @param error Failure or expected cancellation.
+	 */
+	private cleanupError(error: unknown): void {
+		if (!(error instanceof ShutdownError)) {
+			const sanitize = createSanitizer({
+				apiKey: this.config.apiKey,
+				secrets: this.config.spin ? [this.config.spin] : [],
+			});
+			this.log.error(this.t('Error during shutdown: %s', sanitize(error)));
 		}
 	}
 }

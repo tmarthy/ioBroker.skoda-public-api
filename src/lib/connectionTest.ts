@@ -11,6 +11,7 @@
  * liefert aber Name und Kennzeichen zur Wiedererkennung - und eben **nicht** die
  * Parkposition, die in einem Verbindungstest nichts zu suchen hat (E14).
  */
+import { ShutdownError } from './lifecycle';
 import type { ApiMeta, ApiResult } from './api/client';
 import type { ApiError } from './api/errors';
 import type { VehiclePart, VehicleResponse } from './api/types';
@@ -19,6 +20,8 @@ import { translateFallback, type Translate } from './i18n';
 
 /** Nur Antworten fuer den aktiven Schluessel duerfen dessen Betriebszustand aendern. */
 export interface ConnectionTestTracking {
+	/** Instance shutdown admission check. */
+	isStopping?: () => boolean;
 	/** Schluessel aus dem noch ungespeicherten Formular. */
 	testedKey: string;
 	/** Schluessel, mit dem die laufende Instanz arbeitet. */
@@ -65,9 +68,15 @@ export async function testConnection(
 	tracking?: ConnectionTestTracking,
 	t: Translate = translateFallback,
 ): Promise<ConnectionTestResult> {
+	if (tracking?.isStopping?.()) {
+		throw new ShutdownError();
+	}
 	const active = tracking?.testedKey === tracking?.activeKey ? tracking : undefined;
 	const permit = active?.quota?.trackRequest(vin);
 	const result = await client.getVehicle(vin, ['info']);
+	if (tracking?.isStopping?.()) {
+		throw new ShutdownError();
+	}
 	active?.quota?.recordResponse(vin, result.meta, permit);
 	await active?.onResponse?.(result.meta);
 	if (!result.ok) {

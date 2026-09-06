@@ -1,10 +1,13 @@
+import { readFile } from 'node:fs/promises';
+import { join } from 'node:path';
+
 /** A small, injectable facade around adapter-core's backend translations. */
 export type Translate = (key: string, ...args: (string | number | boolean | null)[]) => string;
 
 /**
  * English fallback used by isolated classes and unit tests.
  *
- * Production passes `adapter-core`'s initialized translator instead.
+ * Production passes an instance-local translator instead.
  *
  * @param key Englischer Ausgangstext und Katalogschluessel.
  * @param args Werte fuer die Platzhalter.
@@ -12,7 +15,7 @@ export type Translate = (key: string, ...args: (string | number | boolean | null
 export const translateFallback: Translate = (key, ...args) => {
 	let text = key;
 	for (const arg of args) {
-		text = text.replace('%s', arg === null ? 'null' : String(arg));
+		text = text.replace('%s', () => (arg === null ? 'null' : String(arg)));
 	}
 	return text;
 };
@@ -1041,4 +1044,31 @@ export function isIncompleteDefaultObjectName(
 		entries.length < OBJECT_NAME_LANGUAGES.length &&
 		entries.every(([language, value]) => target[language as keyof CompleteObjectName] === value)
 	);
+}
+
+/**
+ * Loads private backend catalogs without changing adapter-core's global language.
+ *
+ * @param root Adapter directory containing i18n.
+ * @param language Configured language or system.
+ * @param systemLanguage Language read from system.config.
+ */
+export async function createTranslator(root: string, language: string, systemLanguage = 'en'): Promise<Translate> {
+	const selected = language === 'system' ? systemLanguage : language;
+	const load = async (name: string): Promise<Record<string, string>> => {
+		try {
+			return JSON.parse(await readFile(join(root, 'i18n', `${name}.json`), 'utf8')) as Record<string, string>;
+		} catch {
+			return {};
+		}
+	};
+	const en = await load('en');
+	const catalog = OBJECT_NAME_LANGUAGES.includes(selected as (typeof OBJECT_NAME_LANGUAGES)[number])
+		? await load(selected)
+		: en;
+	return (key, ...args) => {
+		const local = Object.hasOwn(catalog, key) ? catalog[key] : undefined;
+		const fallback = Object.hasOwn(en, key) ? en[key] : undefined;
+		return translateFallback(local || fallback || key, ...args);
+	};
 }

@@ -20,6 +20,7 @@
  * Zustaende: Die Antwort geht ueber `onVehicleData` nach oben an den StateWriter.
  * So bleibt die Schichtung aus dem Architekturbild erhalten.
  */
+import { ShutdownError } from '../lifecycle';
 import { vehicleErrors, type ApiMeta, type ApiResult } from '../api/client';
 import type { ApiError } from '../api/errors';
 import { partFromErrorType } from '../api/parts';
@@ -31,6 +32,8 @@ import { translateFallback, type Translate } from '../i18n';
 
 /** Der Ausschnitt des Clients, den der Scheduler braucht. */
 export interface VehicleReader {
+	/** Cancels outstanding HTTP activity. */
+	abort?(): void;
 	/** Holt den Zustand eines Fahrzeugs, wahlweise auf Teile beschraenkt. */
 	getVehicle(vin: string, include?: readonly VehiclePart[]): Promise<ApiResult<VehicleResponse>>;
 }
@@ -185,6 +188,7 @@ export class PollScheduler {
 
 	private readonly states = new Map<string, VehicleState>();
 	private running = false;
+	private stopped = false;
 	private timer?: TimerHandle;
 	private tickTask?: Promise<number>;
 	private connected?: boolean;
@@ -225,6 +229,9 @@ export class PollScheduler {
 
 	/** Startet die Schleife. Der erste Poll geht sofort hinaus. */
 	public start(): void {
+		if (this.stopped) {
+			return;
+		}
 		if (this.running) {
 			return;
 		}
@@ -234,11 +241,19 @@ export class PollScheduler {
 
 	/** Haelt die Schleife an. Muss beim Entladen des Adapters gerufen werden. */
 	public stop(): void {
+		this.stopped = true;
 		this.running = false;
 		if (this.timer !== undefined) {
 			this.clearTimer(this.timer);
 			this.timer = undefined;
 		}
+		this.client.abort?.();
+	}
+
+	/** Stops permanently and drains active work. Restart uses a fresh component. */
+	public async shutdown(): Promise<void> {
+		this.stop();
+		await this.tickTask;
 	}
 
 	/**
@@ -251,6 +266,9 @@ export class PollScheduler {
 	 * @returns Millisekunden bis zum naechsten faelligen Poll.
 	 */
 	public tick(): Promise<number> {
+		if (this.stopped) {
+			return Promise.resolve(MIN_SLEEP_MS);
+		}
 		this.tickTask ??= this.runTick().finally(() => {
 			this.tickTask = undefined;
 		});
@@ -260,6 +278,9 @@ export class PollScheduler {
 	/** Fuehrt hoechstens einen Durchlauf gleichzeitig aus, auch bei vorgezogenen Polls. */
 	private async runTick(): Promise<number> {
 		for (const state of this.states.values()) {
+			if (this.stopped) {
+				break;
+			}
 			if (state.suspended || state.nextDueAt > this.now()) {
 				continue;
 			}
@@ -278,6 +299,9 @@ export class PollScheduler {
 	 * @param vin Fahrgestellnummer.
 	 */
 	public requestVerificationPoll(vin: string): void {
+		if (this.stopped) {
+			return;
+		}
 		const state = this.states.get(vin);
 		if (!state || state.suspended) {
 			return;
@@ -340,9 +364,23 @@ export class PollScheduler {
 		if (state.verificationDueAt !== undefined && this.now() >= state.verificationDueAt) {
 			state.verificationDueAt = undefined;
 		}
-		const result = await this.client.getVehicle(state.vin, this.includeFor(state));
+		let result;
+		try {
+			result = await this.client.getVehicle(state.vin, this.includeFor(state));
+		} catch (error) {
+			if (this.stopped || error instanceof ShutdownError) {
+				return;
+			}
+			throw error;
+		}
+		if (this.stopped) {
+			return;
+		}
 		this.quota.recordResponse(state.vin, result.meta, permission);
 		this.onResponse?.(result.meta, result.ok ? undefined : result.error);
+		if (this.stopped) {
+			return;
+		}
 
 		if (result.ok) {
 			await this.handleSuccess(state, result.data);
@@ -360,6 +398,9 @@ export class PollScheduler {
 	private async handleSuccess(state: VehicleState, response: VehicleResponse): Promise<void> {
 		state.attempts = 0;
 		this.setConnected(true);
+		if (this.stopped) {
+			return;
+		}
 		this.learnParts(state, response);
 
 		const vehicle = response.vehicle as unknown as Record<string, unknown>;
@@ -396,8 +437,17 @@ export class PollScheduler {
 		unchanged: boolean,
 	): Promise<void> {
 		try {
+			if (this.stopped) {
+				return;
+			}
 			await this.onVehicleData(state.vin, response);
+			if (this.stopped) {
+				return;
+			}
 		} catch (error: unknown) {
+			if (this.stopped || error instanceof ShutdownError) {
+				return;
+			}
 			state.pendingWrite = { response, unchanged };
 			state.nextDueAt = this.now() + this.intervals.retryMs;
 			this.log.error(
@@ -638,6 +688,9 @@ export class PollScheduler {
 	 * @param delayMs Wartezeit in Millisekunden.
 	 */
 	private arm(delayMs: number): void {
+		if (this.stopped) {
+			return;
+		}
 		if (this.timer !== undefined) {
 			this.clearTimer(this.timer);
 		}
@@ -661,6 +714,9 @@ export class PollScheduler {
 				this.arm(this.msUntilNextDue());
 			}
 		} catch (error: unknown) {
+			if (this.stopped || error instanceof ShutdownError) {
+				return;
+			}
 			// Ein Fehler hier darf die Schleife nicht anhalten - sonst steht der
 			// Adapter still, bis jemand die Instanz neu startet.
 			this.log.error(this.t('Unexpected error during polling: %s', String(error)));

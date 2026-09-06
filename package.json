@@ -1,6 +1,6 @@
 {
   "name": "iobroker.skoda-public-api",
-  "version": "0.1.6",
+  "version": "0.1.7",
   "description": "Read and control Škoda vehicles via the official MyŠkoda Public API",
   "author": {
     "name": "Thomas Marthy",
@@ -74,7 +74,8 @@
     "release": "release-script",
     "codegen": "node tools/generate-types.mjs && node tools/generate-objectdefs.mjs",
     "check:spec": "node tools/check-spec.mjs",
-    "mock": "ts-node --project tsconfig.json test/mock/cli.ts"
+    "mock": "ts-node --project tsconfig.json test/mock/cli.ts",
+    "test:compact": "mocha test/integration --exit --grep \"Compact group 1\""
   },
   "bugs": {
     "url": "https://github.com/tmarthy/ioBroker.skoda-public-api/issues"

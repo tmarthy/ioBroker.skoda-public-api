@@ -201,6 +201,12 @@ at 2, plus an ioBroker notification from 7 days on and an alert once the key is 
 | Commands do nothing | Check `info.lastCommand.result`. `COALESCED` means the target already matched the last known state — use the `start`/`stop` buttons to force the call. |
 | States stop updating | Look at `<vin>.info.dataAge`. A sleeping vehicle is polled less and less often, on purpose. |
 
+## Compact Mode
+
+The adapter supports ioBroker Compact Mode with independent instances and backend
+languages in a shared process. Compact group assignment is controlled by your
+ioBroker installation. See [verification and shutdown behavior](docs/compact-mode.md).
+
 ## Languages
 
 The adapter configuration and object tree are available in English and German. Logs,
@@ -218,6 +224,10 @@ themselves. The adapter icon is original, brand-neutral project artwork and does
 reproduce the official Škoda logo; it is distributed under this project's MIT license.
 
 ## Changelog
+
+### 0.1.7 (2026-09-06)
+- Added and verified ioBroker Compact Mode support.
+
 ### 0.1.6 (2026-09-06)
 * (Thomas Marthy) limited adapter news to the seven entries supported by the repository builder
 

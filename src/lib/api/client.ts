@@ -12,6 +12,7 @@
  * Jede Meldung, die hier entsteht, ist maskiert (E14): Die VIN steht im URL-Pfad und
  * kommt in `detail` und `instance` jeder Fehlerantwort zurueck.
  */
+import { ShutdownError } from '../lifecycle';
 import {
 	consumesQuotaForStatus,
 	httpApiError,
@@ -207,6 +208,8 @@ export function vehicleErrors(response: VehicleResponse): VehicleError[] {
  * Schluesselablauf unveraendert nach oben.
  */
 export class SkodaApiClient {
+	private readonly requests = new Set<AbortController>();
+	private stopped = false;
 	private readonly apiKey: string;
 	private readonly timeoutMs: number;
 	private readonly sanitizer: Sanitizer;
@@ -224,6 +227,14 @@ export class SkodaApiClient {
 		this.sanitizer = createSanitizer({ apiKey: options.apiKey, secrets: options.secrets });
 	}
 
+	/** Immediately cancels this client's requests, including response bodies. */
+	public abort(): void {
+		this.stopped = true;
+		for (const controller of this.requests) {
+			controller.abort();
+		}
+	}
+
 	/**
 	 * Holt den Zustand eines Fahrzeugs.
 	 *
@@ -233,6 +244,7 @@ export class SkodaApiClient {
 	 * @param vin Fahrgestellnummer.
 	 * @param include Teile, auf die die Antwort beschraenkt werden soll.
 	 * @returns Die Fahrzeugantwort oder ein Fehler, in beiden Faellen mit `meta`.
+	 * @throws {ShutdownError} If this client is stopped before completion.
 	 */
 	public async getVehicle(vin: string, include?: readonly VehiclePart[]): Promise<ApiResult<VehicleResponse>> {
 		const url = this.vehicleUrl(vin);
@@ -241,6 +253,9 @@ export class SkodaApiClient {
 		}
 
 		const raw = await this.send(url, 'GET');
+		if (this.stopped) {
+			throw new ShutdownError();
+		}
 		if (!raw.ok) {
 			return raw;
 		}
@@ -272,6 +287,7 @@ export class SkodaApiClient {
 	 * @param action `start` oder `stop`.
 	 * @param body Koerper fuer die Befehle, die einen brauchen (Klima, Standheizung).
 	 * @returns Leeres Ergebnis oder ein Fehler, in beiden Faellen mit `meta`.
+	 * @throws {ShutdownError} If this client is stopped before completion.
 	 */
 	public async sendCommand(
 		vin: string,
@@ -280,6 +296,9 @@ export class SkodaApiClient {
 		body?: CommandBody,
 	): Promise<ApiResult<void>> {
 		const raw = await this.send(this.vehicleUrl(vin, `/${domain}/${action}`), 'POST', body);
+		if (this.stopped) {
+			throw new ShutdownError();
+		}
 		if (!raw.ok) {
 			return raw;
 		}
@@ -308,57 +327,77 @@ export class SkodaApiClient {
 	 * @returns Rohantwort bei 2xx, sonst der Fehler nach der Fehlertabelle.
 	 */
 	private async send(url: URL, method: 'GET' | 'POST', body?: CommandBody): Promise<ApiResult<HttpPayload>> {
-		const headers: Record<string, string> = {
-			'X-API-Key': this.apiKey,
-			Accept: 'application/json, application/problem+json',
-		};
-		if (body !== undefined) {
-			headers['Content-Type'] = 'application/json';
+		if (this.stopped) {
+			throw new ShutdownError();
 		}
-
-		let response: Response;
+		const controller = new AbortController();
+		this.requests.add(controller);
+		const timeout = setTimeout(() => controller.abort(), this.timeoutMs);
 		try {
-			response = await fetch(url, {
-				method,
-				headers,
-				body: body === undefined ? undefined : JSON.stringify(body),
-				signal: AbortSignal.timeout(this.timeoutMs),
-			});
-		} catch (cause: unknown) {
-			// Ohne Antwort gibt es keine Header und damit keinen Quota-Stand. Ob der
-			// Request gezaehlt wurde, weiss nur der Server.
-			return { ok: false, error: networkApiError(cause, this.sanitizer), meta: { consumedQuota: true } };
-		}
+			const headers: Record<string, string> = {
+				'X-API-Key': this.apiKey,
+				Accept: 'application/json, application/problem+json',
+			};
+			if (body !== undefined) {
+				headers['Content-Type'] = 'application/json';
+			}
 
-		const rateLimit = readRateLimit(response.headers);
-		const apiKeyExpiresAt = readApiKeyExpiry(response.headers);
+			let response: Response;
+			try {
+				response = await fetch(url, {
+					method,
+					headers,
+					body: body === undefined ? undefined : JSON.stringify(body),
+					signal: controller.signal,
+				});
+			} catch (cause: unknown) {
+				if (this.stopped) {
+					throw new ShutdownError();
+				}
+				// Ohne Antwort gibt es keine Header und damit keinen Quota-Stand. Ob der
+				// Request gezaehlt wurde, weiss nur der Server.
+				return { ok: false, error: networkApiError(cause, this.sanitizer), meta: { consumedQuota: true } };
+			}
 
-		let payload: string;
-		try {
-			payload = await response.text();
-		} catch (cause: unknown) {
-			// Header gelesen, Koerper unterwegs abgerissen: Der Request hat gezaehlt.
+			const rateLimit = readRateLimit(response.headers);
+			const apiKeyExpiresAt = readApiKeyExpiry(response.headers);
+
+			let payload: string;
+			try {
+				payload = await response.text();
+			} catch (cause: unknown) {
+				if (this.stopped) {
+					throw new ShutdownError();
+				}
+				// Header gelesen, Koerper unterwegs abgerissen: Der Request hat gezaehlt.
+				return {
+					ok: false,
+					error: networkApiError(cause, this.sanitizer),
+					meta: { rateLimit, apiKeyExpiresAt, consumedQuota: consumesQuotaForStatus(response.status) },
+				};
+			}
+
+			if (this.stopped) {
+				throw new ShutdownError();
+			}
+			if (!response.ok) {
+				const error = httpApiError({
+					status: response.status,
+					body: payload,
+					retryAfterMs: parseRetryAfter(response.headers.get('Retry-After')),
+					sanitizer: this.sanitizer,
+				});
+				return { ok: false, error, meta: { rateLimit, apiKeyExpiresAt, consumedQuota: error.consumesQuota } };
+			}
+
 			return {
-				ok: false,
-				error: networkApiError(cause, this.sanitizer),
+				ok: true,
+				data: { status: response.status, body: payload },
 				meta: { rateLimit, apiKeyExpiresAt, consumedQuota: consumesQuotaForStatus(response.status) },
 			};
+		} finally {
+			clearTimeout(timeout);
+			this.requests.delete(controller);
 		}
-
-		if (!response.ok) {
-			const error = httpApiError({
-				status: response.status,
-				body: payload,
-				retryAfterMs: parseRetryAfter(response.headers.get('Retry-After')),
-				sanitizer: this.sanitizer,
-			});
-			return { ok: false, error, meta: { rateLimit, apiKeyExpiresAt, consumedQuota: error.consumesQuota } };
-		}
-
-		return {
-			ok: true,
-			data: { status: response.status, body: payload },
-			meta: { rateLimit, apiKeyExpiresAt, consumedQuota: consumesQuotaForStatus(response.status) },
-		};
 	}
 }
