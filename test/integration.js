@@ -130,11 +130,6 @@ async function readState(harness, id, timeoutMs = 30000) {
  * @returns {Promise<void>} Nichts.
  */
 async function configure(harness) {
-	const systemConfig = await (harness.objects.getObjectAsync
-		? harness.objects.getObjectAsync('system.config')
-		: harness.objects.getObject('system.config'));
-	const secret = systemConfig && systemConfig.native ? systemConfig.native.secret : '';
-
 	await harness.changeAdapterConfig(ADAPTER, {
 		// `messagebox` steht in io-package.json und landet bei einer echten
 		// Installation ueber `iobroker upload` im Instanzobjekt. Der Testaufbau legt
@@ -142,7 +137,8 @@ async function configure(harness) {
 		// ohne sie wird keine Nachricht zugestellt und der Verbindungstest liefe ins Leere.
 		common: { enabled: true, messagebox: true },
 		native: {
-			apiKey: encrypt(secret, DEFAULT_API_KEY),
+			// @iobroker/testing encrypts fields listed in encryptedNative automatically.
+			apiKey: DEFAULT_API_KEY,
 			vins: [{ vin: DEFAULT_VIN, label: 'Enyaq' }],
 			spin: '',
 			pollIntervalIdle: 15,
