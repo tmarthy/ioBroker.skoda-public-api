@@ -122,7 +122,7 @@
       "zh-cn": "通过官方 MyŠkoda 公共 API 读取和控制 Škoda 车辆"
     },
     "authors": [
-      "Thomas Marthy <261668002+tmarthy@users.noreply.github.com>"
+      "Thomas Marthy <iobroker@marthy.ch>"
     ],
     "keywords": [
       "skoda",

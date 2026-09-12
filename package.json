@@ -4,7 +4,7 @@
   "description": "Read and control Škoda vehicles via the official MyŠkoda Public API",
   "author": {
     "name": "Thomas Marthy",
-    "email": "261668002+tmarthy@users.noreply.github.com"
+    "email": "iobroker@marthy.ch"
   },
   "contributors": [],
   "homepage": "https://github.com/tmarthy/ioBroker.skoda-public-api",
@@ -36,7 +36,7 @@
     "@iobroker/adapter-dev": "^1.5.0",
     "@iobroker/dev-server": "^0.8.0",
     "@iobroker/eslint-config": "^2.3.4",
-    "@iobroker/testing": "^5.3.0",
+    "@iobroker/testing": "^6.2.1",
     "@tsconfig/node22": "^22.0.6",
     "@types/iobroker": "npm:@iobroker/types@^7.2.2",
     "@types/node": "^22.20.1",

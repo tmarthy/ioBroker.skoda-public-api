@@ -268,7 +268,7 @@ reproduce the official Škoda logo; it is distributed under this project's MIT l
 ## License
 MIT License
 
-Copyright (c) 2026 Thomas Marthy <261668002+tmarthy@users.noreply.github.com>
+Copyright (c) 2026 Thomas Marthy <iobroker@marthy.ch>
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
