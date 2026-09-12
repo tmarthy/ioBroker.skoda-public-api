@@ -12,10 +12,10 @@ const { expect } = require('chai');
  */
 module.exports = function defineCompactSuite({ suite, configure, encrypt, getState, setState, readState, waitFor, delay, MockSkodaApi, DEFAULT_API_KEY, DEFAULT_VIN }) {
 	// The js-controller development version used by @iobroker/testing can terminate
-	// its directly launched compact-group controller on Windows before its zero-delay
-	// instance-start timers run. The platform-independent compact lifecycle coverage
-	// remains in the unit suite, while this real controller test runs on Unix hosts.
-	if (process.platform === 'win32') {
+	// its directly launched compact-group controller on macOS and Windows before its
+	// zero-delay instance-start timers run. The platform-independent compact lifecycle
+	// coverage remains in the unit suite, while this real controller test runs on Linux.
+	if (process.platform !== 'linux') {
 		return;
 	}
 	suite('Compact group 1', /** @param {() => any} getHarness Test harness factory. */ getHarness => {
