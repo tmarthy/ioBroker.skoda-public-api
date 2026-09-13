@@ -363,7 +363,13 @@ export class StateWriter {
 			}
 			const profile = entry as Record<string, unknown>;
 			const id = profile.id;
-			if (typeof id !== 'number' && typeof id !== 'string') {
+			// Reject unsafe path components instead of replacing characters: replacement
+			// could merge different profiles into the same object path.
+			if (
+				!(typeof id === 'number' && Number.isInteger(id)) &&
+				!(typeof id === 'string' && id.length > 0 && !/[^a-zA-Z0-9_-]/.test(id))
+			) {
+				this.api.log.warn(this.t('Skipping charging profile with an invalid ID.'));
 				continue;
 			}
 			const base = `${PROFILES_PATH}.${id}`;

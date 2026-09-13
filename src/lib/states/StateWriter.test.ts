@@ -430,7 +430,77 @@ describe('states/StateWriter => Antwort in den Objektbaum', () => {
 		});
 	});
 
+	describe('URL-Rolle', () => {
+		for (const previousRole of [undefined, 'url', 'custom.role']) {
+			it(`verwendet text.url und migriert nur die alte Adapter-Rolle (${previousRole})`, async () => {
+				const id = `${VIN}.renderUrl`;
+				const url = 'https://example.com/car.png';
+				if (previousRole !== undefined) {
+					await adapter.setObjectNotExistsAsync(id, {
+						type: 'state',
+						common: { name: 'My image', type: 'string', role: previousRole, read: true, write: false },
+						native: { retained: true },
+					});
+				}
+				await writer.write(VIN, { vehicle: { renderUrl: url } });
+				expect(adapter.objects.get(id)?.common?.role).to.equal(
+					previousRole === 'custom.role' ? previousRole : 'text.url',
+				);
+				expect(adapter.val(id)).to.equal(url);
+				if (previousRole !== undefined) {
+					expect(adapter.objects.get(id)?.common?.name).to.equal('My image');
+					expect(adapter.objects.get(id)?.native).to.deep.equal({ retained: true });
+				}
+			});
+		}
+	});
+
 	describe('Ladeprofile', () => {
+		it('ueberspringt ungueltige IDs ohne Pfadkollisionen und schreibt gueltige Profile weiter', async () => {
+			const response = fixture('idle');
+			const profiles = response.vehicle.chargingProfiles!.profiles;
+			const template = profiles[0];
+			const validIds = [1, 0, -2, 'home_1-A', 'a_b'];
+			const invalidIds = [
+				'a.b',
+				'a b',
+				'',
+				'a/b',
+				'a\\b',
+				'a*b',
+				'a_b\n',
+				1.5,
+				NaN,
+				Infinity,
+				-Infinity,
+				null,
+				undefined,
+				true,
+				{},
+			];
+			// Exercise malformed runtime responses beyond the generated API type.
+			response.vehicle.chargingProfiles!.profiles = [...invalidIds, ...validIds].map(id => ({
+				...template,
+				id,
+				name: typeof id === 'number' || typeof id === 'string' ? `Profile ${id}` : 'Invalid',
+			})) as typeof profiles;
+
+			await writer.write(VIN, response);
+
+			const prefix = `${VIN}.chargingProfiles.profiles.`;
+			const profileChannels = [...adapter.objects.entries()]
+				.filter(([id, object]) => id.startsWith(prefix) && object.type === 'channel')
+				.map(([id]) => id);
+			expect(profileChannels).to.have.members(validIds.map(id => `${prefix}${id}`));
+			for (const id of validIds) {
+				expect(adapter.val(`${prefix}${id}.name`)).to.equal(`Profile ${id}`);
+			}
+			expect(adapter.warnings).to.have.length(invalidIds.length);
+			for (const warning of adapter.warnings) {
+				expect(warning).to.equal('Skipping charging profile with an invalid ID.');
+			}
+		});
+
 		it('haengt sie an die Profil-ID, nicht an den Index', async () => {
 			await writer.write(VIN, fixture('idle'));
 			expect(adapter.val(`${VIN}.chargingProfiles.profiles.1.name`)).to.equal('Zu Hause');

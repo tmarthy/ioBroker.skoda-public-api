@@ -96,7 +96,7 @@ const exactOverlay: Readonly<Record<string, OverlayEntry>> = {
 	vin: { role: 'text' },
 	name: { role: 'text' },
 	licensePlate: { role: 'text' },
-	renderUrl: { role: 'url' },
+	renderUrl: { role: 'text.url', legacyRoles: ['url'] },
 
 	'status.overall.doorsLocked': {
 		role: 'text',
