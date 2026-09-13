@@ -173,8 +173,7 @@
     "pollBackoffMax": 60,
     "commandReserve": 6,
     "commandTtl": 10,
-    "readParkingPosition": true,
-    "backendLanguage": "system"
+    "readParkingPosition": true
   },
   "objects": [],
   "instanceObjects": [

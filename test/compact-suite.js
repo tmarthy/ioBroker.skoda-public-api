@@ -54,7 +54,6 @@ module.exports = function defineCompactSuite({ suite, configure, encrypt, getSta
 				await save(first._id, first);
 				const second = structuredClone(first);
 				second._id = `system.adapter.${b}`;
-				second.native.backendLanguage = 'en';
 				second.native.vins = [{ vin: secondVin, label: 'Second vehicle' }];
 				const system = await object('system.config');
 				second.native.apiKey = encrypt(system.native.secret, secondKey);
@@ -77,9 +76,9 @@ module.exports = function defineCompactSuite({ suite, configure, encrypt, getSta
 				expect(traces.map(trace => trace.key).sort()).to.deep.equal([DEFAULT_API_KEY, secondKey].sort());
 				// The harness' sendTo callback IDs are shared by both compact instances and
 				// can therefore associate the other instance's reply on slower runners.
-				// Instance-prefixed startup logs verify both local translators without that
-				// test-harness race. The ordinary integration suite covers testConnection.
-				expect(output).to.match(/skoda-public-api\.0 .*1 Fahrzeug\(e\), Abfrageintervalle/);
+				// Instance-prefixed startup logs verify both instances without that
+				// test-harness race. Backend logs are deliberately always English.
+				expect(output).to.match(/skoda-public-api\.0 .*1 vehicle\(s\), polling intervals/);
 				expect(output).to.match(/skoda-public-api\.1 .*1 vehicle\(s\), polling intervals/);
 				await setState(harness, `${a}.${DEFAULT_VIN}.charging.start`, { val: true, ack: false });
 				await waitFor('compact command A', async () => (await getState(harness, `${a}.${DEFAULT_VIN}.info.lastCommand.result`))?.val === 'SENT');

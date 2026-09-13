@@ -55,7 +55,6 @@ into garbage.
 | Command lifetime | 10 min | A queued command that could not be sent within this time is discarded. |
 | S-PIN | — | Only needed for auxiliary heating. Never put it into a state. |
 | Read parking position | on | When off, the position is **not even requested** from the API. |
-| Language for logs and notifications | System | Uses the ioBroker system language or forces English/German. |
 
 There is a **Test connection** button. It sends exactly one request (out of the 20) and
 tells you what is wrong in plain words — a typo in the VIN and a key that does not cover
@@ -203,17 +202,15 @@ at 2, plus an ioBroker notification from 7 days on and an alert once the key is 
 
 ## Compact Mode
 
-The adapter supports ioBroker Compact Mode with independent instances and backend
-languages in a shared process. Compact group assignment is controlled by your
+The adapter supports ioBroker Compact Mode with independent instances in a shared
+process. Compact group assignment is controlled by your
 ioBroker installation. See [verification and shutdown behavior](docs/compact-mode.md).
 
 ## Languages
 
-The adapter configuration and object tree are available in English and German. Logs,
-notifications and connection-test results use the ioBroker system language by default.
-The instance setting **Language for logs and notifications** can override this with
-English or German. Other ioBroker UI languages continue to use English backend text as
-their fallback.
+The adapter configuration and object tree are translated. Backend logs, notifications
+and connection-test results are always in English so they remain useful in support
+requests regardless of the ioBroker system language.
 
 ## Disclaimer
 

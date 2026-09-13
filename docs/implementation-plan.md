@@ -27,7 +27,7 @@ und einen vollständigen lokalen Mock zu Bestandteilen des Produktverhaltens.
 |---|---|
 | `src/main.ts` | ioBroker-Lebenszyklus, Initialisierung und Verdrahtung |
 | `src/lib/config.ts` | Validierung, Defaults und Umrechnung der Instanzkonfiguration |
-| `src/lib/i18n.ts` | Deutsch/Englisch für Backend-Texte |
+| `src/lib/i18n.ts` | englische Backend-Formatierung und mehrsprachige Objektnamen |
 | `src/lib/api/client.ts` | HTTP-Aufrufe, Header-Metadaten und typisierte Ergebnisse |
 | `src/lib/api/errors.ts` | Zuordnung der API-Fehler gemäß Abschnitt 5 |
 | `src/lib/api/sanitize.ts` | Maskierung sensibler Daten vor Log-Ausgaben |
@@ -40,8 +40,8 @@ und einen vollständigen lokalen Mock zu Bestandteilen des Produktverhaltens.
 | `src/lib/notifications/keyExpiry.ts` | Ablaufüberwachung und ioBroker-Notifications |
 | `test/mock/*` | steuerbarer Ersatz für die quota-begrenzte Live-API |
 
-Die Startreihenfolge ist verbindlich: Zuerst werden Konfiguration und Sprache geladen,
-danach die persistenten Quota-Buckets. Erst dann starten CommandQueue und PollScheduler.
+Die Startreihenfolge ist verbindlich: Zuerst wird die Konfiguration geprüft, danach
+werden die persistenten Quota-Buckets geladen. Erst dann starten CommandQueue und PollScheduler.
 So erzeugt eine Neustartschleife kein scheinbar frisches Request-Budget.
 
 ## 3. Verhalten und Invarianten
@@ -88,10 +88,9 @@ So erzeugt eine Neustartschleife kein scheinbar frisches Request-Budget.
 - API-Key und S-PIN sind `encryptedNative` und `protectedNative`.
 - VIN, Schlüssel, S-PIN, Adresse und Positionsdaten dürfen keine Modulgrenze in rohen
   Fehlermeldungen verlassen.
-- Admin-UI, Objektbezeichnungen, Logs, Notifications und Verbindungstest sind auf
-  Deutsch und Englisch verfügbar.
-- Die Instanzsprache ist `system`, `de` oder `en`; andere Systemsprachen fallen
-  für Backend-Texte auf Englisch zurück.
+- Admin-UI und Objektbezeichnungen sind mehrsprachig verfügbar.
+- Logs, Notifications und Ergebnisse des Verbindungstests sind immer Englisch, damit
+  sie unabhängig von der Systemsprache in Support-Anfragen verständlich bleiben.
 
 ## 4. Entwicklung, Tests und Release
 
@@ -126,7 +125,7 @@ Vor einem Release:
 1. offene Changelog-Einträge prüfen
 2. vollständige lokale Prüfung einschließlich Integrationstest ausführen
 3. vollständigen GitHub-Workflow manuell ausführen
-4. `npm pack --dry-run` prüfen; `build/main.js` und `i18n/de.json` müssen enthalten sein
+4. `npm pack --dry-run` prüfen; `build/main.js` und die Admin-Übersetzungen müssen enthalten sein
 5. Version mit `npm run release` vorbereiten
 6. Release-Commit und Tag pushen
 7. npm-Paket und GitHub-Release kontrollieren

@@ -24,10 +24,5 @@
 	"VIN": "VIN",
 	"Vehicles": "Voertuigen",
 	"When switched off the position is not even requested from the API.": "Wanneer uitgeschakeld wordt de positie niet eens opgevraagd bij de API.",
-	"skoda-public-api adapter settings": "Adapterinstellingen voor skoda-public-api",
-	"Language for logs and notifications": "Taal voor logboeken en meldingen",
-	"System language follows ioBroker. The override affects logs, notifications and connection-test results.": "De systeemtaal volgt de instelling van ioBroker. De handmatige keuze geldt voor logboeken, meldingen en resultaten van de verbindingstest.",
-	"System language": "Systeemtaal",
-	"English": "Engels",
-	"German": "Duits"
+	"skoda-public-api adapter settings": "Adapterinstellingen voor skoda-public-api"
 }

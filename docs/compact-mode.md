@@ -8,12 +8,11 @@ adapter instance, and vehicle data, command entries, quota buckets, connection s
 and expiry notification history were already instance fields. Production has no
 `process.exit()` or configuration-dependent process environment overrides.
 
-The remaining changes are confined to lifecycle and translation handling:
+The remaining changes are confined to lifecycle and backend-message handling:
 
-- `createTranslator()` reads the existing backend catalogs into a private closure.
-  Explicit German/English and `system.config.common.language` work independently.
-  Missing entries fall back to English, then the key. `%s` arguments are literal.
-  Complete multilingual object names and their migration logic are unchanged.
+- Backend logs, notifications and connection-test results are always English so they
+  remain useful in support requests. Complete multilingual object names and their
+  migration logic are unchanged.
 - Each HTTP client owns its AbortControllers and timeout handles. `abort()` permanently
   closes admission and cancels requests through response-body consumption. Timeouts
   remain API errors; shutdown is a separate internal cancellation signal. Request
@@ -35,8 +34,8 @@ The remaining changes are confined to lifecycle and translation handling:
   save or the database is unavailable; no exception to the write barrier is made.
 
 No fixed compact group is set in adapter metadata. Shared module data consists only
-of definition tables/catalog constants; language selection, requests, timers and
-other runtime data belong to individual instances. No extended stopTimeout is needed
+of definition tables; requests, timers and other runtime data belong to individual
+instances. No extended stopTimeout is needed
 for HTTP cancellation; database operations remain subject to ioBroker's normal limit.
 
 ## Automated verification
@@ -57,13 +56,13 @@ git diff --check
 It enables `system.compact` in the temporary host configuration and starts the real
 js-controller compact group controller with group argument `1`. Two instance objects
 have `compact`, `runAsCompactMode` and group 1 set explicitly. They use distinct VINs,
-API keys, quotas and German/English backend languages. Test-only HTTP redirection
+API keys and quotas. Test-only HTTP redirection
 routes the two keys to separate mock servers. IPC traces prove that both instances'
 requests, including after restarting the first, originate from the same group PID.
 The `system.adapter.<instance>.compactMode` states are checked as well.
 
-The suite checks object creation, alternating language-specific connection tests,
-commands, the actual 60-second verification poll, stop, absence of subsequent adapter
+The suite checks object creation, English connection-test results, commands, the
+actual 60-second verification poll, stop, absence of subsequent adapter
 state changes/requests, continued commands in the second instance and restart of the
 first. Restart respects persisted quota, so an explicit connection test proves the
 restarted instance's HTTP operation without bypassing the ordinary polling delay.
@@ -96,8 +95,8 @@ Release metadata: 0.1.7, prepared after the existing v0.1.6 tag; no commit or re
 Both compact instances issued requests in the same group PID, including the restarted
 instance. The stopped instance's complete adapter-state snapshot remained unchanged
 while the second executed another command. Object definitions, API schemas/values,
-roles/types, catalogs and complete object-name translation definitions were unchanged;
-the latter were also compared byte-for-byte with the pre-change definitions.
+roles/types and complete object-name translation definitions were unchanged; the
+latter were also compared byte-for-byte with the pre-change definitions.
 
 During simultaneous final group termination, the database client emitted
 `get state error: Connection is closed.` Both instances and the group nevertheless
@@ -115,8 +114,8 @@ On a disposable ioBroker installation with the supported Admin dependency instal
 
 1. Enable Compact Mode for the host using its ioBroker configuration/CLI.
 2. Assign two adapter instances to compact group 1 and enable execution in Compact
-   Mode. Configure separate authorized VIN/key pairs and German/English backend
-   languages. Do not configure a production API redirect.
+   Mode. Configure separate authorized VIN/key pairs. Do not configure a production
+   API redirect.
 3. Confirm both instance logs show `COMPACT`, both `compactMode` states are true, and
    both run in the same compact-group process (not separate fallback processes).
 4. Check vehicle objects, quota and expiry states, ordinary polls, connection-test
@@ -131,9 +130,8 @@ Group 0, live vehicle execution, a full host's group-spawning path, other Node/c
 versions and other operating systems require their own acceptance run. They are not
 implied by a successful local group-1/mock test.
 
-The real compact-group controller suite is skipped on Windows because the development
-js-controller installed by `@iobroker/testing` can run its initial status report before
-its zero-delay instance-start timers there and terminate the otherwise empty group.
-Windows continues to run the complete unit suite, including compact lifecycle and
-isolation coverage, and the ordinary adapter integration tests. The controller-level
-Compact Mode suite remains active on Linux and macOS.
+The real compact-group controller suite runs on Linux. The development js-controller
+installed by `@iobroker/testing` can terminate its directly launched compact-group
+controller on macOS and Windows before its zero-delay instance-start timers run. Both
+platforms continue to run the complete unit suite, including compact lifecycle and
+isolation coverage, and the ordinary adapter integration tests.

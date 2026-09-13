@@ -147,7 +147,6 @@ async function configure(harness) {
 			commandReserve: 6,
 			commandTtl: 10,
 			readParkingPosition: true,
-			backendLanguage: 'de',
 		},
 	});
 	await harness.enableSendTo();
@@ -271,7 +270,7 @@ tests.integration(path.join(__dirname, '..'), {
 				this.timeout(60000);
 				const answer = await new Promise(resolve => harness.sendTo(INSTANCE, 'testConnection', {}, resolve));
 				expect(answer.error, `Fehler statt Ergebnis: ${answer.error}`).to.equal(undefined);
-				expect(answer.result).to.contain('Verbindung steht');
+				expect(answer.result).to.contain('Connection established');
 				expect(answer.result).to.contain('Enyaq');
 			});
 

@@ -22,8 +22,6 @@ declare global {
 			commandTtl: number;
 			/** Parkposition mitlesen. Aus heisst: gar nicht erst anfordern. */
 			readParkingPosition: boolean;
-			/** Sprache fuer Logs, Meldungen und Ergebnisse der Backend-Aktionen. */
-			backendLanguage: 'system' | 'de' | 'en';
 		}
 
 		/**

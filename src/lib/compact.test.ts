@@ -2,8 +2,7 @@ import { rejects } from 'node:assert/strict';
 import { expect } from 'chai';
 import { createServer, type Server } from 'node:http';
 import { once } from 'node:events';
-import { join } from 'node:path';
-import { createTranslator } from './i18n';
+import { translateFallback } from './i18n';
 import { Lifecycle, ShutdownError } from './lifecycle';
 import { SkodaApiClient, type ApiResult } from './api/client';
 import type { VehicleResponse } from './api/types';
@@ -56,22 +55,9 @@ const timers = (): {
 };
 
 describe('Compact mode shutdown and isolation', () => {
-	it('keeps concurrent catalogs independent, with system, English and literal placeholder fallbacks', async () => {
-		const root = join(__dirname, '..', '..');
-		const [de, en, system, unknown] = await Promise.all([
-			createTranslator(root, 'de'),
-			createTranslator(root, 'en'),
-			createTranslator(root, 'system', 'de'),
-			createTranslator(root, '../missing'),
-		]);
-		for (let i = 0; i < 3; i++) {
-			expect(de('No vehicle entered.')).to.equal('Kein Fahrzeug eingetragen.');
-			expect(en('No vehicle entered.')).to.equal('No vehicle entered.');
-			expect(system('No vehicle entered.')).to.equal(de('No vehicle entered.'));
-		}
-		expect(unknown('No vehicle entered.')).to.equal('No vehicle entered.');
-		expect(de('Missing %s %s', '$&', null)).to.equal('Missing $& null');
-		expect(de('toString')).to.equal('toString');
+	it('formats English backend messages without interpreting replacement characters', () => {
+		expect(translateFallback('No vehicle entered.')).to.equal('No vehicle entered.');
+		expect(translateFallback('Missing %s %s', '$&', null)).to.equal('Missing $& null');
 	});
 
 	it('never starts a scheduled poll after stop, even if its cancelled callback is delivered', async () => {

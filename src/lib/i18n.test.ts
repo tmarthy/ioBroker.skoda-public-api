@@ -1,55 +1,15 @@
 import { expect } from 'chai';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { pickTestTarget } from './connectionTest';
-import { readConfig } from './config';
-import { OBJECT_NAME_LANGUAGES, type Translate } from './i18n';
+import { translateFallback } from './i18n';
 
 const root = join(__dirname, '..', '..');
 const readJson = (path: string): Record<string, string> =>
 	JSON.parse(readFileSync(path, 'utf8')) as Record<string, string>;
-const catalogTranslate = (language: (typeof OBJECT_NAME_LANGUAGES)[number]): Translate => {
-	const catalog = readJson(join(root, 'i18n', `${language}.json`));
-	return (key, ...args) => {
-		let text = catalog[key] ?? key;
-		for (const arg of args) {
-			text = text.replace('%s', String(arg));
-		}
-		return text;
-	};
-};
-
-describe('backend i18n', () => {
-	it('ships complete translations with intact placeholders for every supported language', () => {
-		const en = readJson(join(root, 'i18n', 'en.json'));
-		for (const language of OBJECT_NAME_LANGUAGES) {
-			const catalog = readJson(join(root, 'i18n', `${language}.json`));
-			expect(Object.keys(catalog).sort(), language).to.deep.equal(Object.keys(en).sort());
-
-			for (const key of Object.keys(en)) {
-				expect(catalog[key].trim(), `${language}: ${key}`).to.not.be.empty;
-				expect(catalog[key].match(/%s/g) ?? [], `${language}: ${key}`).to.have.lengthOf(
-					en[key].match(/%s/g)?.length ?? 0,
-				);
-				if (language !== 'en' && en[key].trim().split(/\s+/).length > 5) {
-					expect(catalog[key], `${language}: ${key}`).to.not.equal(en[key]);
-				}
-			}
-		}
-	});
-
-	it('returns configuration and UI-action errors in the selected language', () => {
-		const de = catalogTranslate('de');
-		expect(readConfig({}, de).problems[0]).to.contain('Kein API-Schlüssel');
-		expect(pickTestTarget({}, {}, de))
-			.to.have.nested.property('problem')
-			.that.contains('Kein API-Schlüssel');
-
-		const en = catalogTranslate('en');
-		expect(readConfig({}, en).problems[0]).to.contain('No API key');
-		expect(pickTestTarget({}, {}, en))
-			.to.have.nested.property('problem')
-			.that.contains('No API key');
+describe('backend messages', () => {
+	it('keeps messages in English and substitutes all placeholders', () => {
+		expect(translateFallback('No vehicle entered.')).to.equal('No vehicle entered.');
+		expect(translateFallback('Row %s: %s', 2, 'invalid')).to.equal('Row 2: invalid');
 	});
 });
 

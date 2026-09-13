@@ -2,7 +2,6 @@
  * Created with @iobroker/create-adapter v3.1.5
  */
 import * as utils from '@iobroker/adapter-core';
-import { join } from 'node:path';
 import { SkodaApiClient } from './lib/api/client';
 import { createSanitizer } from './lib/api/sanitize';
 import { CommandQueue } from './lib/commands/CommandQueue';
@@ -14,7 +13,7 @@ import { KeyExpiryWatcher } from './lib/notifications/keyExpiry';
 import { PollScheduler } from './lib/scheduler/PollScheduler';
 import { StateWriter } from './lib/states/StateWriter';
 import { Lifecycle, ShutdownError } from './lib/lifecycle';
-import { createTranslator, translateFallback, type Translate } from './lib/i18n';
+import { translateFallback } from './lib/i18n';
 
 /**
  * Der Adapter selbst ist nur die Verdrahtung: Er liest die Konfiguration, baut die
@@ -32,7 +31,7 @@ class SkodaPublicApi extends utils.Adapter {
 	private queue?: CommandQueue;
 	private quota?: VehicleQuotaManager;
 	private keyExpiry?: KeyExpiryWatcher;
-	private t: Translate = translateFallback;
+	private readonly t = translateFallback;
 
 	public constructor(options: Partial<utils.AdapterOptions> = {}) {
 		super({
@@ -50,18 +49,10 @@ class SkodaPublicApi extends utils.Adapter {
 		this.lifecycle.check();
 		const api = this.lifecycle.guard(this);
 		await api.setState('info.connection', false, true);
-		const configuredLanguage = this.config.backendLanguage;
-		const system =
-			configuredLanguage === 'de' || configuredLanguage === 'en'
-				? undefined
-				: await api.getForeignObjectAsync('system.config');
-		const t = await createTranslator(
-			join(__dirname, '..'),
-			configuredLanguage || 'system',
-			system?.common.language,
-		);
 		this.lifecycle.check();
-		this.t = t;
+		// Backend text deliberately stays English so logs copied into support issues
+		// remain understandable regardless of the ioBroker system language.
+		const t = translateFallback;
 
 		const { settings, problems } = readConfig(this.config, t);
 		if (!settings) {

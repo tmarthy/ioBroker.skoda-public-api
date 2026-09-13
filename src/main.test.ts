@@ -8,7 +8,7 @@ import { transpileModule, ModuleKind, ScriptTarget } from 'typescript';
 
 /** Minimal adapter-core port, keeping the real lifecycle wiring under test. */
 class AdapterDouble extends EventEmitter {
-	public config = { backendLanguage: 'en' };
+	public config = {};
 	public writes = 0;
 	public errors: string[] = [];
 	public log = {
