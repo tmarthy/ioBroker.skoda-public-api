@@ -77,6 +77,24 @@ Two additions that are not in the API:
 - `<vin>.chargingProfiles.profiles.<id>.*` — charging profiles by **profile id**, not by
   index. Deleting a profile in the app would otherwise silently shift all the others.
 
+### Refresh button
+
+Each configured vehicle has a `<vin>.refresh` button. Write `true` with `ack: false`
+to request an early poll, for example when your wallbox detects a connected cable:
+
+```javascript
+setState('skoda-public-api.0.<VIN>.refresh', true);
+```
+
+The button resets to `false` with `ack: true` when the trigger is handled; this does
+not confirm that fresh vehicle data has arrived. Requests before or during the same
+poll are combined. The poll includes parking position when enabled and supported.
+The usual quota, command reserve and error delays still apply. Afterwards, automatic
+polling continues with the interval for the reported vehicle state and freshness.
+The shorter active interval applies while charging or climatising, not merely when
+plugged in. This button cannot force Škoda to provide a newer position, and it does
+not schedule an additional verification poll if the position is still old.
+
 ### The `info` states
 
 | State | Meaning |

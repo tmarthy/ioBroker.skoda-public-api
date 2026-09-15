@@ -594,6 +594,12 @@ describe('states/StateWriter => Antwort in den Objektbaum', () => {
 		});
 	});
 
+	it('does not mark a restored refresh button as missing vehicle data', async () => {
+		await adapter.setStateAsync(`${VIN}.refresh`, { val: false, ack: true, q: 0 });
+		await writer.write(VIN, fixture('idle'));
+		expect((await adapter.getStateAsync(`${VIN}.refresh`))?.q).to.equal(0);
+	});
+
 	describe('Unvollstaendige Antworten', () => {
 		it('markiert vorhandene States auch bei einem Fehler im ersten Poll nach Neustart', async () => {
 			await writer.write(VIN, fixture('charging'));

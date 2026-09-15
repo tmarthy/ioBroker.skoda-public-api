@@ -76,6 +76,72 @@ describe('scheduler/PollScheduler => Kadenz unter 20 Requests pro Stunde', () =>
 		await mock.stop();
 	});
 
+	describe('manual refresh', () => {
+		it('coalesces triggers and resumes the regular cadence with parking data', async () => {
+			const scheduler = buildScheduler();
+			await scheduler.tick();
+			clock += MINUTE;
+			mock.loadFixture('charging');
+			scheduler.requestRefresh(DEFAULT_VIN);
+			scheduler.requestRefresh(DEFAULT_VIN);
+			expect(await scheduler.tick()).to.equal(5 * MINUTE);
+			expect(mock.requests).to.have.length(2);
+			expect(scheduler.snapshot()[0].active).to.equal(true);
+			expect(decodeURIComponent(mock.requests[1].path)).to.contain('parkingPosition');
+			await scheduler.tick();
+			expect(mock.requests).to.have.length(2);
+		});
+
+		it('honors disabled parking position on manual polls', async () => {
+			const scheduler = buildScheduler({ readParkingPosition: false });
+			await scheduler.tick();
+			clock += MINUTE;
+			scheduler.requestRefresh(DEFAULT_VIN);
+			await scheduler.tick();
+			expect(mock.requests).to.have.length(2);
+			expect(decodeURIComponent(mock.requests[1].path)).not.to.contain('parkingPosition');
+		});
+
+		it('coalesces triggers during data delivery without an extra poll', async () => {
+			const scheduler = buildScheduler({ onVehicleData: () => scheduler.requestRefresh(DEFAULT_VIN) });
+			expect(await scheduler.tick()).to.equal(15 * MINUTE);
+			await scheduler.tick();
+			expect(mock.requests).to.have.length(1);
+		});
+
+		for (const scenario of ['api-key-expired', 'rate-limit-exceeded', 'server-error', 'not-found'] as const) {
+			it(`preserves the waiting period after ${scenario}`, async () => {
+				mock.scenario = scenario;
+				const scheduler = buildScheduler();
+				await scheduler.tick();
+				const due = scheduler.snapshot()[0].nextDueAt;
+				clock += 1000;
+				scheduler.requestRefresh(DEFAULT_VIN);
+				await scheduler.tick();
+				expect(scheduler.snapshot()[0].nextDueAt).to.equal(due);
+				expect(mock.requests).to.have.length(1);
+			});
+		}
+
+		it('preserves the command reserve and ignores unknown or stopped vehicles', async () => {
+			quota.recordResponse({ rateLimit: { limit: 20, remaining: 3, resetInSeconds: 60 }, consumedQuota: true });
+			const scheduler = buildScheduler();
+			scheduler.requestRefresh(DEFAULT_VIN);
+			await scheduler.tick();
+			const due = scheduler.snapshot()[0].nextDueAt;
+			clock += 1000;
+			scheduler.requestRefresh(DEFAULT_VIN);
+			scheduler.requestRefresh('unknown');
+			await scheduler.tick();
+			expect(scheduler.snapshot()[0].nextDueAt).to.equal(due);
+			expect(mock.requests).to.have.length(0);
+			scheduler.stop();
+			clock += MINUTE;
+			scheduler.requestRefresh(DEFAULT_VIN);
+			expect(scheduler.snapshot()[0].nextDueAt).to.equal(due);
+		});
+	});
+
 	describe('Kadenz', () => {
 		it('fragt sofort und danach im Grundintervall', async () => {
 			const scheduler = buildScheduler();

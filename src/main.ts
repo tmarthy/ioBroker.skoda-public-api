@@ -13,7 +13,7 @@ import { KeyExpiryWatcher } from './lib/notifications/keyExpiry';
 import { PollScheduler } from './lib/scheduler/PollScheduler';
 import { StateWriter } from './lib/states/StateWriter';
 import { Lifecycle, ShutdownError } from './lib/lifecycle';
-import { translateFallback } from './lib/i18n';
+import { translateFallback, translated } from './lib/i18n';
 
 /**
  * Der Adapter selbst ist nur die Verdrahtung: Er liest die Konfiguration, baut die
@@ -28,6 +28,7 @@ class SkodaPublicApi extends utils.Adapter {
 	private readonly clients = new Set<SkodaApiClient>();
 	private cleanup?: Promise<void>;
 	private scheduler?: PollScheduler;
+	private readonly refreshVins = new Set<string>();
 	private queue?: CommandQueue;
 	private quota?: VehicleQuotaManager;
 	private keyExpiry?: KeyExpiryWatcher;
@@ -158,8 +159,25 @@ class SkodaPublicApi extends utils.Adapter {
 		});
 		this.queue.start();
 
-		// Nur die Befehls-States, nicht der ganze Baum: Alles zu abonnieren erzeugt
-		// Last fuer nichts.
+		for (const vin of settings.vins) {
+			await api.setObjectNotExistsAsync(`${vin}.refresh`, {
+				type: 'state',
+				common: {
+					name: translated('Refresh vehicle data', 'Fahrzeugdaten aktualisieren'),
+					type: 'boolean',
+					role: 'button',
+					read: false,
+					write: true,
+					def: false,
+				},
+				native: {},
+			});
+			await api.setStateAsync(`${vin}.refresh`, { val: false, ack: true });
+			this.refreshVins.add(vin);
+		}
+		this.lifecycle.check();
+		// Subscribe only to controls to avoid events for every vehicle measurement.
+		this.subscribeStates('*.refresh');
 		this.subscribeStates('*.enabled');
 		this.subscribeStates('*.start');
 		this.subscribeStates('*.stop');
@@ -273,7 +291,16 @@ class SkodaPublicApi extends utils.Adapter {
 		if (this.lifecycle.stopping || !state || state.ack) {
 			return;
 		}
-		this.run(() => this.queue?.submit(id.slice(`${this.namespace}.`.length), state.val));
+		const path = id.slice(`${this.namespace}.`.length);
+		const vin = path.slice(0, -'.refresh'.length);
+		if (path.endsWith('.refresh') && this.refreshVins.has(vin)) {
+			if (state.val === true) {
+				this.scheduler?.requestRefresh(vin);
+				this.run(() => this.lifecycle.guard(this).setStateAsync(path, { val: false, ack: true }));
+			}
+			return;
+		}
+		this.run(() => this.queue?.submit(path, state.val));
 	}
 
 	/**

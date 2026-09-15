@@ -9,6 +9,12 @@ import { transpileModule, ModuleKind, ScriptTarget } from 'typescript';
 /** Minimal adapter-core port, keeping the real lifecycle wiring under test. */
 class AdapterDouble extends EventEmitter {
 	public config = {};
+	public namespace = 'skoda-public-api.0';
+	public resets: unknown[] = [];
+	public setStateAsync(id: string, state: unknown): Promise<void> {
+		this.resets.push({ id, state });
+		return Promise.resolve();
+	}
 	public writes = 0;
 	public errors: string[] = [];
 	public log = {
@@ -25,7 +31,8 @@ class AdapterDouble extends EventEmitter {
 }
 
 type Instance = AdapterDouble & {
-	scheduler?: { stop: () => void; shutdown: () => Promise<void> };
+	refreshVins: Set<string>;
+	scheduler?: { stop: () => void; shutdown: () => Promise<void>; requestRefresh?: (vin: string) => void };
 	queue?: { stop: () => void; shutdown: () => Promise<void> };
 	quota?: { flush: () => Promise<void> };
 };
@@ -48,6 +55,27 @@ function factory(): () => Instance {
 }
 
 describe('adapter factory lifecycle', () => {
+	it('routes only unacknowledged true refresh triggers for configured vehicles and resets the button', async () => {
+		const instance = factory()();
+		instance.refreshVins.add('VIN');
+		const requested: string[] = [];
+		instance.scheduler = {
+			stop: () => undefined,
+			shutdown: () => Promise.resolve(),
+			requestRefresh: vin => requested.push(vin),
+		};
+		instance.emit('stateChange', 'skoda-public-api.0.VIN.refresh', { val: true, ack: true });
+		instance.emit('stateChange', 'skoda-public-api.0.VIN.refresh', { val: false, ack: false });
+		instance.emit('stateChange', 'skoda-public-api.0.OTHER.refresh', { val: true, ack: false });
+		instance.emit('stateChange', 'skoda-public-api.0.VIN.refresh', { val: true, ack: false });
+		await Promise.resolve();
+		expect(requested).to.deep.equal(['VIN']);
+		expect(instance.resets).to.deep.equal([{ id: 'VIN.refresh', state: { val: false, ack: true } }]);
+		await new Promise<void>(resolve => instance.emit('unload', resolve));
+		instance.emit('stateChange', 'skoda-public-api.0.VIN.refresh', { val: true, ack: false });
+		expect(requested).to.deep.equal(['VIN']);
+	});
+
 	it('drains ready interrupted at an await and calls unload exactly once', async () => {
 		const instance = factory()();
 		let resume!: () => void;

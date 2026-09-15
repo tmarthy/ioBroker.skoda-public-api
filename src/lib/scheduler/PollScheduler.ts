@@ -124,6 +124,8 @@ export interface PollSchedulerOptions {
 
 /** Was der Scheduler ueber ein Fahrzeug weiss. */
 interface VehicleState {
+	inFlight?: boolean;
+	refreshBlockedUntil?: number;
 	vin: string;
 	/** Wann der naechste Poll faellig ist, in Millisekunden seit Epoch. */
 	nextDueAt: number;
@@ -284,9 +286,29 @@ export class PollScheduler {
 			if (state.suspended || state.nextDueAt > this.now()) {
 				continue;
 			}
-			await this.pollOne(state);
+			state.inFlight = true;
+			try {
+				await this.pollOne(state);
+			} finally {
+				state.inFlight = false;
+			}
 		}
 		return this.msUntilNextDue();
+	}
+
+	/**
+	 * Requests one regular poll without entering command mode or bypassing error delays.
+	 * Repeated requests before or during the same poll are coalesced.
+	 *
+	 * @param vin Vehicle identification number.
+	 */
+	public requestRefresh(vin: string): void {
+		const state = this.states.get(vin);
+		if (this.stopped || !state || state.suspended || state.inFlight || state.pendingWrite) {
+			return;
+		}
+		state.nextDueAt = Math.min(state.nextDueAt, Math.max(this.now(), state.refreshBlockedUntil ?? 0));
+		this.wake();
 	}
 
 	/**
@@ -350,6 +372,7 @@ export class PollScheduler {
 			// Kein Fehler, sondern Normalbetrieb: Das Budget gehoert ab hier den
 			// Befehlen (E15). Der Poll kommt wieder, wenn das Fenster sich oeffnet.
 			state.nextDueAt = this.now() + Math.max(MIN_SLEEP_MS, permission.waitMs);
+			state.refreshBlockedUntil = state.nextDueAt;
 			this.log.debug(
 				this.t(
 					'Poll for %s postponed (%s), next attempt in %s s.',
@@ -386,6 +409,7 @@ export class PollScheduler {
 			await this.handleSuccess(state, result.data);
 		} else {
 			this.handleError(state, result.error);
+			state.refreshBlockedUntil = state.nextDueAt;
 		}
 	}
 
@@ -397,6 +421,7 @@ export class PollScheduler {
 	 */
 	private async handleSuccess(state: VehicleState, response: VehicleResponse): Promise<void> {
 		state.attempts = 0;
+		state.refreshBlockedUntil = undefined;
 		this.setConnected(true);
 		if (this.stopped) {
 			return;

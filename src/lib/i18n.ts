@@ -38,6 +38,17 @@ type AdditionalTranslations = readonly [
  * call site so the code is readable there; the other languages are centralized here.
  */
 const OBJECT_NAME_TRANSLATIONS = {
+	'Refresh vehicle data': [
+		'Обновить данные автомобиля',
+		'Atualizar dados do veículo',
+		'Voertuiggegevens vernieuwen',
+		'Actualiser les données du véhicule',
+		'Aggiorna dati del veicolo',
+		'Actualizar datos del vehículo',
+		'Odśwież dane pojazdu',
+		'Оновити дані автомобіля',
+		'刷新车辆数据',
+	],
 	'Active ventilation': [
 		'Активная вентиляция',
 		'Ventilação ativa',

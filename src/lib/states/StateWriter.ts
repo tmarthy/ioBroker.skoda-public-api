@@ -189,6 +189,7 @@ export class StateWriter {
 	private isDataState(vin: string, id: string): boolean {
 		const path = id.slice(vin.length + 1);
 		return (
+			path !== 'refresh' &&
 			!path.startsWith('info.') &&
 			!COMMAND_DEFS.some(def => path === `${def.part}.start` || path === `${def.part}.stop`)
 		);
