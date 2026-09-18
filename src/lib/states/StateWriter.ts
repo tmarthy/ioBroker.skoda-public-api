@@ -505,9 +505,9 @@ export class StateWriter {
 				await this.api.extendObjectAsync(id, {
 					common: {
 						write: true,
-						min: 1,
+						min: 50,
 						max: 100,
-						step: 1,
+						step: 10,
 						...(existing?.common.role === 'value.battery' ? { role: 'level' } : {}),
 					},
 				});

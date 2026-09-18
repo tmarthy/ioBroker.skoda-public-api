@@ -163,10 +163,11 @@ charging target. In the ioBroker JavaScript adapter:
 setState('skoda-public-api.0.<vin>.charging.settings.targetStateOfChargeInPercent', 90, false);
 ```
 
-The adapter accepts integers from 1 to 100, as defined by the API. Vehicles typically
-accept only 50–100 in steps of 10; other values may be rejected by the vehicle.
+The adapter accepts only **50, 60, 70, 80, 90 and 100 percent**, matching the
+10-percent steps in the app. Other values are rejected locally without an API call.
 The same state shows the requested value after writing and is refreshed from vehicle
-polls. Existing read-only objects are automatically made writable on the next poll.
+polls. Existing objects are automatically updated to be writable with a minimum of 50,
+a maximum of 100 and a step of 10 on the first poll after adapter restart.
 `ack = true` after sending means API acceptance; check this state after the verification poll to confirm
 that the car applied the limit. Repeating an already reported or pending accepted target
 is coalesced. Pending limit changes replace each other independently of charging on/off.

@@ -143,8 +143,8 @@ export interface CommandBodyResult {
 export function buildCommandBody(command: ParsedCommand, context: CommandBodyContext): CommandBodyResult {
 	if (command.action === 'limit') {
 		const value = command.desired;
-		if (typeof value !== 'number' || !Number.isInteger(value) || value < 1 || value > 100) {
-			return { problem: 'Charging limit must be an integer between 1 and 100 percent.' };
+		if (typeof value !== 'number' || !Number.isInteger(value) || value < 50 || value > 100 || value % 10 !== 0) {
+			return { problem: 'Charging limit must be 50, 60, 70, 80, 90 or 100 percent.' };
 		}
 		return { body: { targetStateOfChargeInPercent: value } };
 	}

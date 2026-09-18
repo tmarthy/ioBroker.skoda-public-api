@@ -111,7 +111,7 @@ describe('commands/CommandQueue => Soll-Zustand, Coalescing, TTL', () => {
 			expect(response.data.vehicle.charging?.settings?.targetStateOfChargeInPercent).to.equal(90);
 		});
 
-		for (const value of [0, 101, 85.5, NaN, Infinity, '90', true, null]) {
+		for (const value of [0, 1, 40, 49, 51, 55, 85, 99, 101, 110, 85.5, NaN, Infinity, '90', true, null]) {
 			it(`rejects invalid limit ${String(value)} without an API call`, async () => {
 				await queue.submit(`${DEFAULT_VIN}.charging.settings.targetStateOfChargeInPercent`, value);
 				expect(results()).to.deep.equal(['FAILED']);
@@ -120,8 +120,8 @@ describe('commands/CommandQueue => Soll-Zustand, Coalescing, TTL', () => {
 			});
 		}
 
-		it('accepts API-valid integers including values outside typical vehicle steps', async () => {
-			for (const value of [1, 80, 85, 90, 100]) {
+		it('accepts all six charging limits in ten-percent steps', async () => {
+			for (const value of [50, 60, 70, 80, 90, 100]) {
 				await queue.submit(`${DEFAULT_VIN}.charging.settings.targetStateOfChargeInPercent`, value);
 				expect(last().result).to.equal('SENT');
 			}

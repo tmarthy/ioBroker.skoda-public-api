@@ -166,8 +166,8 @@ serverseitiger Buchung entstehen und zählt deshalb ebenfalls konservativ als ve
 ### Zusätzliche Schreiboperationen
 
 Das Ladelimit ist über `charging.settings.targetStateOfChargeInPercent` umgesetzt: ein gemeinsamer
-Lese-/Schreib-State mit automatischer Migration bestehender Objekte, Validierung auf ganze Zahlen
-von 1 bis 100, eigene Coalescing-Gruppe und Verifikations-Poll. Der State entsteht,
+Lese-/Schreib-State mit automatischer Migration bestehender Objekte, Validierung auf 50 bis 100 %
+in 10-Prozent-Schritten, eigene Coalescing-Gruppe und Verifikations-Poll. Der State entsteht,
 sobald das Fahrzeug die Zieleinstellung liefert; API-Ablehnungen werden wie bei
 Start/Stop behandelt.
 

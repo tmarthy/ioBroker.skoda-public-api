@@ -75,8 +75,9 @@ describe('states/StateWriter => Antwort in den Objektbaum', () => {
 		expect(adapter.objects.get(id)?.common).to.include({
 			type: 'number',
 			write: true,
-			min: 1,
+			min: 50,
 			max: 100,
+			step: 10,
 			unit: '%',
 		});
 		expect(adapter.objects.has(`${VIN}.charging.targetStateOfChargeInPercent`)).to.equal(false);
@@ -89,40 +90,43 @@ describe('states/StateWriter => Antwort in den Objektbaum', () => {
 		expect(adapter.states.get(id)).to.include({ val: 90, ack: true });
 	});
 
-	it('migrates the existing read-only setting and preserves user metadata', async () => {
-		const id = `${VIN}.charging.settings.targetStateOfChargeInPercent`;
-		await adapter.setObjectNotExistsAsync(id, {
-			type: 'state',
-			common: {
+	for (const writable of [false, true]) {
+		it(`migrates existing charging limits (write=${writable}) and preserves user metadata`, async () => {
+			const id = `${VIN}.charging.settings.targetStateOfChargeInPercent`;
+			await adapter.setObjectNotExistsAsync(id, {
+				type: 'state',
+				common: {
+					name: 'Mein Ladelimit',
+					type: 'number',
+					read: true,
+					write: writable,
+					step: 1,
+					role: 'value.battery',
+					unit: '%',
+					min: 0,
+				},
+				native: { custom: true },
+			});
+			await writer.write(VIN, fixture('idle'));
+			expect(adapter.objects.get(id)?.common).to.include({
 				name: 'Mein Ladelimit',
-				type: 'number',
-				read: true,
-				write: false,
-				role: 'value.battery',
-				unit: '%',
-				min: 0,
-			},
-			native: { custom: true },
+				write: true,
+				role: 'level',
+				min: 50,
+				max: 100,
+				step: 10,
+			});
+			expect(adapter.objects.get(id)?.native).to.deep.equal({ custom: true });
+			await writer.writeCommandResult(VIN, {
+				name: 'charging.limit',
+				result: 'SENT',
+				timestamp: clock,
+				acknowledge: { path: 'charging.settings.targetStateOfChargeInPercent', value: 90 },
+			});
+			await writer.write(VIN, fixture('idle'));
+			expect(adapter.val(id)).to.equal(fixture('idle').vehicle.charging?.settings?.targetStateOfChargeInPercent);
 		});
-		await writer.write(VIN, fixture('idle'));
-		expect(adapter.objects.get(id)?.common).to.include({
-			name: 'Mein Ladelimit',
-			write: true,
-			role: 'level',
-			min: 1,
-			max: 100,
-			step: 1,
-		});
-		expect(adapter.objects.get(id)?.native).to.deep.equal({ custom: true });
-		await writer.writeCommandResult(VIN, {
-			name: 'charging.limit',
-			result: 'SENT',
-			timestamp: clock,
-			acknowledge: { path: 'charging.settings.targetStateOfChargeInPercent', value: 90 },
-		});
-		await writer.write(VIN, fixture('idle'));
-		expect(adapter.val(id)).to.equal(fixture('idle').vehicle.charging?.settings?.targetStateOfChargeInPercent);
-	});
+	}
 
 	describe('Der Baum spiegelt die Antwort', () => {
 		it('verwendet fuer alle statischen mehrsprachigen Namen genau die elf ioBroker-Sprachen', async () => {

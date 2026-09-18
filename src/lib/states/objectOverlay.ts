@@ -250,7 +250,7 @@ export function resolveCommon(path: string, def: GeneratedStateDef): ioBroker.St
 	}
 
 	if (path === CHARGING_LIMIT_PATH) {
-		Object.assign(common, { write: true, role: 'level', min: 1, max: 100, step: 1 });
+		Object.assign(common, { write: true, role: 'level', min: 50, max: 100, step: 10 });
 	}
 	return common;
 }

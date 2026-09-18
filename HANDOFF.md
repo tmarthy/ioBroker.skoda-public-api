@@ -39,8 +39,7 @@ technische Arbeitsgrundlage in
 
 Der Adapter liest Fahrzeugdaten über die offizielle MyŠkoda Public API und unterstützt
 Start/Stop für Laden, Klimatisierung, Standheizung und Lüftung sowie das Ladelimit
-über `charging.settings.targetStateOfChargeInPercent` (1–100, ganze Zahlen; fahrzeugabhängige
-Einschränkungen). Derselbe Datenpunkt wird bei Polls mit der gemeldeten Einstellung aktualisiert. Die VINs werden in der
+über `charging.settings.targetStateOfChargeInPercent` (50–100 % in 10-Prozent-Schritten). Derselbe Datenpunkt wird bei Polls mit der gemeldeten Einstellung aktualisiert. Die VINs werden in der
 Instanz konfiguriert, weil die API keine Fahrzeugliste anbietet.
 
 Die API erlaubt **20 Requests pro Stunde und VIN**. Für jede VIN führt der Adapter
