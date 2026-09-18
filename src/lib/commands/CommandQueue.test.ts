@@ -92,14 +92,17 @@ describe('commands/CommandQueue => Soll-Zustand, Coalescing, TTL', () => {
 
 	describe('charging limit', () => {
 		it('sends the limit via PUT, acknowledges it and schedules verification', async () => {
-			await queue.submit(`${DEFAULT_VIN}.charging.targetStateOfChargeInPercent`, 90);
+			await queue.submit(`${DEFAULT_VIN}.charging.settings.targetStateOfChargeInPercent`, 90);
 			expect(results()).to.deep.equal(['SENT']);
 			expect(mock.requests[0]).to.include({
 				method: 'PUT',
 				path: `/api/v1/vehicles/${DEFAULT_VIN}/charging/limit`,
 				status: 202,
 			});
-			expect(last().acknowledge).to.deep.equal({ path: 'charging.targetStateOfChargeInPercent', value: 90 });
+			expect(last().acknowledge).to.deep.equal({
+				path: 'charging.settings.targetStateOfChargeInPercent',
+				value: 90,
+			});
 			expect(verified).to.deep.equal([DEFAULT_VIN]);
 			const response = await client.getVehicle(DEFAULT_VIN);
 			if (!response.ok) {
@@ -110,7 +113,7 @@ describe('commands/CommandQueue => Soll-Zustand, Coalescing, TTL', () => {
 
 		for (const value of [0, 101, 85.5, NaN, Infinity, '90', true, null]) {
 			it(`rejects invalid limit ${String(value)} without an API call`, async () => {
-				await queue.submit(`${DEFAULT_VIN}.charging.targetStateOfChargeInPercent`, value);
+				await queue.submit(`${DEFAULT_VIN}.charging.settings.targetStateOfChargeInPercent`, value);
 				expect(results()).to.deep.equal(['FAILED']);
 				expect(mock.requests).to.have.length(0);
 				expect(last().acknowledge).to.equal(undefined);
@@ -119,7 +122,7 @@ describe('commands/CommandQueue => Soll-Zustand, Coalescing, TTL', () => {
 
 		it('accepts API-valid integers including values outside typical vehicle steps', async () => {
 			for (const value of [1, 80, 85, 90, 100]) {
-				await queue.submit(`${DEFAULT_VIN}.charging.targetStateOfChargeInPercent`, value);
+				await queue.submit(`${DEFAULT_VIN}.charging.settings.targetStateOfChargeInPercent`, value);
 				expect(last().result).to.equal('SENT');
 			}
 		});
@@ -131,25 +134,25 @@ describe('commands/CommandQueue => Soll-Zustand, Coalescing, TTL', () => {
 					charging: { isVehicleInSavedLocation: false, settings: { targetStateOfChargeInPercent: 80 } },
 				},
 			});
-			await queue.submit(`${DEFAULT_VIN}.charging.targetStateOfChargeInPercent`, 80);
-			await queue.submit(`${DEFAULT_VIN}.charging.targetStateOfChargeInPercent`, 90);
-			await queue.submit(`${DEFAULT_VIN}.charging.targetStateOfChargeInPercent`, 90);
-			await queue.submit(`${DEFAULT_VIN}.charging.targetStateOfChargeInPercent`, 80);
+			await queue.submit(`${DEFAULT_VIN}.charging.settings.targetStateOfChargeInPercent`, 80);
+			await queue.submit(`${DEFAULT_VIN}.charging.settings.targetStateOfChargeInPercent`, 90);
+			await queue.submit(`${DEFAULT_VIN}.charging.settings.targetStateOfChargeInPercent`, 90);
+			await queue.submit(`${DEFAULT_VIN}.charging.settings.targetStateOfChargeInPercent`, 80);
 			expect(results()).to.deep.equal(['COALESCED', 'SENT', 'COALESCED', 'SENT']);
 		});
 
 		it('keeps an unsupported limit from disabling charging start', async () => {
 			mock.scenario = 'operation-not-supported';
-			await queue.submit(`${DEFAULT_VIN}.charging.targetStateOfChargeInPercent`, 90);
+			await queue.submit(`${DEFAULT_VIN}.charging.settings.targetStateOfChargeInPercent`, 90);
 			mock.scenario = 'ok';
-			await queue.submit(`${DEFAULT_VIN}.charging.targetStateOfChargeInPercent`, 100);
+			await queue.submit(`${DEFAULT_VIN}.charging.settings.targetStateOfChargeInPercent`, 100);
 			await queue.submit(`${DEFAULT_VIN}.charging.enabled`, true);
 			expect(results()).to.deep.equal(['REJECTED_BY_VEHICLE', 'REJECTED_BY_VEHICLE', 'SENT']);
 			expect(mock.requests).to.have.length(2);
 		});
 
 		it('allows retry after confirmation and a subsequent external limit change', async () => {
-			await queue.submit(`${DEFAULT_VIN}.charging.targetStateOfChargeInPercent`, 90);
+			await queue.submit(`${DEFAULT_VIN}.charging.settings.targetStateOfChargeInPercent`, 90);
 			clock += 1000;
 			const charging = {
 				isVehicleInSavedLocation: false,
@@ -168,15 +171,15 @@ describe('commands/CommandQueue => Soll-Zustand, Coalescing, TTL', () => {
 					},
 				},
 			});
-			await queue.submit(`${DEFAULT_VIN}.charging.targetStateOfChargeInPercent`, 90);
+			await queue.submit(`${DEFAULT_VIN}.charging.settings.targetStateOfChargeInPercent`, 90);
 			expect(results()).to.deep.equal(['SENT', 'SENT']);
 		});
 
 		it('queues start/stop independently and replaces only pending limits', async () => {
 			quota.recordResponse({ rateLimit: { limit: 20, remaining: 0, resetInSeconds: 60 }, consumedQuota: false });
-			await queue.submit(`${DEFAULT_VIN}.charging.targetStateOfChargeInPercent`, 90);
+			await queue.submit(`${DEFAULT_VIN}.charging.settings.targetStateOfChargeInPercent`, 90);
 			await queue.submit(`${DEFAULT_VIN}.charging.enabled`, true);
-			await queue.submit(`${DEFAULT_VIN}.charging.targetStateOfChargeInPercent`, 100);
+			await queue.submit(`${DEFAULT_VIN}.charging.settings.targetStateOfChargeInPercent`, 100);
 			expect(queue.pending).to.equal(2);
 			clock += MINUTE;
 			await queue.tick();

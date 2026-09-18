@@ -55,16 +55,8 @@ export interface ParsedCommand {
  */
 export function parseCommandState(relativeId: string, value: unknown): ParsedCommand | undefined {
 	const parts = relativeId.split('.');
-	if (parts.length !== 3) {
-		return undefined;
-	}
-	const [vin, block, leaf] = parts;
-	const def = commandDefForPart(block);
-	if (!def) {
-		return undefined;
-	}
-
-	if (`${block}.${leaf}` === CHARGING_LIMIT_PATH) {
+	const [vin, ...path] = parts;
+	if (path.join('.') === CHARGING_LIMIT_PATH) {
 		return {
 			vin,
 			def: CHARGING_LIMIT_DEF,
@@ -74,6 +66,14 @@ export function parseCommandState(relativeId: string, value: unknown): ParsedCom
 			statePath: CHARGING_LIMIT_PATH,
 			name: 'charging.limit',
 		};
+	}
+	if (parts.length !== 3) {
+		return undefined;
+	}
+	const [, block, leaf] = parts;
+	const def = commandDefForPart(block);
+	if (!def) {
+		return undefined;
 	}
 
 	if (leaf === 'enabled') {

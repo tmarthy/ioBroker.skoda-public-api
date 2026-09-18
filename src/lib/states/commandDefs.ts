@@ -133,4 +133,4 @@ export const CHARGING_LIMIT_DEF: CommandDomainDef = {
 	labelDe: 'Ladelimit',
 };
 
-export const CHARGING_LIMIT_PATH = 'charging.targetStateOfChargeInPercent';
+export const CHARGING_LIMIT_PATH = 'charging.settings.targetStateOfChargeInPercent';

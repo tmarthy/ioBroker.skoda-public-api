@@ -294,7 +294,7 @@ tests.integration(path.join(__dirname, '..'), {
 
 			it('setzt das Ladelimit über den neuen numerischen Datenpunkt', async function () {
 				this.timeout(30000);
-				const id = `${VEHICLE}.charging.targetStateOfChargeInPercent`;
+				const id = `${VEHICLE}.charging.settings.targetStateOfChargeInPercent`;
 				await setState(harness, id, { val: 90, ack: false });
 				await waitFor('die Quittierung des Ladelimits', async () => {
 					const state = await getState(harness, id);

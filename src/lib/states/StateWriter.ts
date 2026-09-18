@@ -499,6 +499,19 @@ export class StateWriter {
 				native: {},
 			});
 			await this.migrateLegacyRole(id, path, common);
+			if (path === CHARGING_LIMIT_PATH) {
+				// Upgrade the existing read-only setting without replacing user metadata.
+				const existing = await this.api.getObjectAsync(id);
+				await this.api.extendObjectAsync(id, {
+					common: {
+						write: true,
+						min: 1,
+						max: 100,
+						step: 1,
+						...(existing?.common.role === 'value.battery' ? { role: 'level' } : {}),
+					},
+				});
+			}
 			await this.migrateStandardName(id, common.name, [generatedStateDefs[path]?.desc ?? path, path]);
 			if (conversion) {
 				const existing = await this.api.getObjectAsync(id);
@@ -672,21 +685,6 @@ export class StateWriter {
 	 * @param vehicle Die Fahrzeugdaten.
 	 */
 	private async writeCommandStates(vin: string, vehicle: Record<string, unknown>): Promise<void> {
-		const charging = vehicle.charging as Record<string, unknown> | undefined;
-		const limit = charging && readPath(charging, 'settings.targetStateOfChargeInPercent');
-		if (typeof limit === 'number') {
-			await this.writeDerived(vin, CHARGING_LIMIT_PATH, limit, {
-				name: translated('Charging limit', 'Ladelimit'),
-				type: 'number',
-				role: 'level',
-				read: true,
-				write: true,
-				unit: '%',
-				min: 1,
-				max: 100,
-				step: 1,
-			});
-		}
 		for (const def of COMMAND_DEFS) {
 			const block = vehicle[def.part];
 			if (typeof block !== 'object' || block === null) {

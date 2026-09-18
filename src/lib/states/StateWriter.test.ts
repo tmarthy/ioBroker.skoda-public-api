@@ -69,9 +69,9 @@ describe('states/StateWriter => Antwort in den Objektbaum', () => {
 		expect(beweis).to.equal(true);
 	});
 
-	it('exposes the charging limit separately from the read-only reported setting', async () => {
+	it('uses the reported charging setting as the writable limit', async () => {
 		await writer.write(VIN, fixture('idle'));
-		const id = `${VIN}.charging.targetStateOfChargeInPercent`;
+		const id = `${VIN}.charging.settings.targetStateOfChargeInPercent`;
 		expect(adapter.objects.get(id)?.common).to.include({
 			type: 'number',
 			write: true,
@@ -79,17 +79,49 @@ describe('states/StateWriter => Antwort in den Objektbaum', () => {
 			max: 100,
 			unit: '%',
 		});
-		expect(adapter.val(id)).to.equal(adapter.val(`${VIN}.charging.settings.targetStateOfChargeInPercent`));
-		expect(adapter.objects.get(`${VIN}.charging.settings.targetStateOfChargeInPercent`)?.common).to.include({
-			write: false,
-		});
+		expect(adapter.objects.has(`${VIN}.charging.targetStateOfChargeInPercent`)).to.equal(false);
 		await writer.writeCommandResult(VIN, {
 			name: 'charging.limit',
 			result: 'SENT',
 			timestamp: clock,
-			acknowledge: { path: 'charging.targetStateOfChargeInPercent', value: 90 },
+			acknowledge: { path: 'charging.settings.targetStateOfChargeInPercent', value: 90 },
 		});
 		expect(adapter.states.get(id)).to.include({ val: 90, ack: true });
+	});
+
+	it('migrates the existing read-only setting and preserves user metadata', async () => {
+		const id = `${VIN}.charging.settings.targetStateOfChargeInPercent`;
+		await adapter.setObjectNotExistsAsync(id, {
+			type: 'state',
+			common: {
+				name: 'Mein Ladelimit',
+				type: 'number',
+				read: true,
+				write: false,
+				role: 'value.battery',
+				unit: '%',
+				min: 0,
+			},
+			native: { custom: true },
+		});
+		await writer.write(VIN, fixture('idle'));
+		expect(adapter.objects.get(id)?.common).to.include({
+			name: 'Mein Ladelimit',
+			write: true,
+			role: 'level',
+			min: 1,
+			max: 100,
+			step: 1,
+		});
+		expect(adapter.objects.get(id)?.native).to.deep.equal({ custom: true });
+		await writer.writeCommandResult(VIN, {
+			name: 'charging.limit',
+			result: 'SENT',
+			timestamp: clock,
+			acknowledge: { path: 'charging.settings.targetStateOfChargeInPercent', value: 90 },
+		});
+		await writer.write(VIN, fixture('idle'));
+		expect(adapter.val(id)).to.equal(fixture('idle').vehicle.charging?.settings?.targetStateOfChargeInPercent);
 	});
 
 	describe('Der Baum spiegelt die Antwort', () => {
@@ -209,7 +241,6 @@ describe('states/StateWriter => Antwort in den Objektbaum', () => {
 				'state charging.status.remainingTimeToFullyChargedInMinutes',
 				'state charging.status.state',
 				'state charging.stop',
-				'state charging.targetStateOfChargeInPercent',
 				'state chargingProfiles.carCapturedTimestamp',
 				'state chargingProfiles.profiles.1.name',
 				'state chargingProfiles.profiles.1.preferredChargingTimesJson',

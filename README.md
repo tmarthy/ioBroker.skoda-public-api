@@ -155,19 +155,19 @@ switch write can retry. Expiry does not automatically resend the command.
 ### Charging limit
 
 Write a number with `ack = false` to
-`skoda-public-api.0.<vin>.charging.targetStateOfChargeInPercent` to set the maximum
+`skoda-public-api.0.<vin>.charging.settings.targetStateOfChargeInPercent` to set the maximum
 charge level, for example 80, 90 or 100. The state appears when the vehicle reports a
 charging target. In the ioBroker JavaScript adapter:
 
 ```js
-setState('skoda-public-api.0.<vin>.charging.targetStateOfChargeInPercent', 90, false);
+setState('skoda-public-api.0.<vin>.charging.settings.targetStateOfChargeInPercent', 90, false);
 ```
 
 The adapter accepts integers from 1 to 100, as defined by the API. Vehicles typically
 accept only 50–100 in steps of 10; other values may be rejected by the vehicle.
-`charging.settings.targetStateOfChargeInPercent` remains the read-only reported value.
-The writable target is also refreshed from vehicle polls. `ack = true` after sending
-means API acceptance; check the reported setting after the verification poll to confirm
+The same state shows the requested value after writing and is refreshed from vehicle
+polls. Existing read-only objects are automatically made writable on the next poll.
+`ack = true` after sending means API acceptance; check this state after the verification poll to confirm
 that the car applied the limit. Repeating an already reported or pending accepted target
 is coalesced. Pending limit changes replace each other independently of charging on/off.
 Invalid inputs fail locally without consuming API quota; outcomes are recorded in

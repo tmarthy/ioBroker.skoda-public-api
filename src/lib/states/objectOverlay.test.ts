@@ -66,11 +66,11 @@ describe('objectOverlay => resolveCommon', () => {
 		expect((unlabelled.states as Record<string, string>).AC).to.equal('AC');
 	});
 
-	it('markiert jeden gespiegelten Zustand als nur lesbar', () => {
+	it('macht nur das globale Ladelimit unter den gespiegelten Zustaenden beschreibbar', () => {
 		for (const [path, def] of Object.entries(generatedStateDefs)) {
 			const common = resolveCommon(path, def);
 			expect(common.read, path).to.equal(true);
-			expect(common.write, path).to.equal(false);
+			expect(common.write, path).to.equal(path === 'charging.settings.targetStateOfChargeInPercent');
 		}
 	});
 

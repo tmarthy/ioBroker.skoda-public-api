@@ -4,6 +4,20 @@ import { buildCommandBody, parseCommandState } from './commandMap';
 const VIN = 'TMBJB9NY5RF999999';
 
 describe('commands/commandMap => Zustands-ID zu Befehl', () => {
+	it('accepts only the unified charging-limit path', () => {
+		expect(parseCommandState(`${VIN}.charging.settings.targetStateOfChargeInPercent`, 90)).to.include({
+			action: 'limit',
+			desired: 90,
+		});
+		for (const path of [
+			'charging.targetStateOfChargeInPercent',
+			'chargingProfiles.profiles.1.targetStateOfChargeInPercent',
+			'charging.settings.targetStateOfChargeInPercent.extra',
+		]) {
+			expect(parseCommandState(`${VIN}.${path}`, 90)).to.equal(undefined);
+		}
+	});
+
 	describe('Soll-Schalter', () => {
 		it('macht aus true ein start und aus false ein stop', () => {
 			const start = parseCommandState(`${VIN}.charging.enabled`, true);
