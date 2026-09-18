@@ -70,4 +70,4 @@ export const VEHICLE_PARTS = [
 export const COMMAND_DOMAINS = ['charging', 'air-conditioning', 'auxiliary-heating', 'active-ventilation'] as const;
 
 export type CommandDomain = (typeof COMMAND_DOMAINS)[number];
-export type CommandAction = 'start' | 'stop';
+export type CommandAction = 'start' | 'stop' | 'limit';

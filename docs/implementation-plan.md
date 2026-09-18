@@ -165,7 +165,13 @@ serverseitiger Buchung entstehen und zählt deshalb ebenfalls konservativ als ve
 
 ### Zusätzliche Schreiboperationen
 
-Ladelimit, Lademodus und Ladeprofile benötigen vor der Umsetzung ein eigenes
+Das Ladelimit ist über `charging.targetStateOfChargeInPercent` umgesetzt: ein eigener
+Soll-State neben der unveränderten Lesedarstellung, Validierung auf ganze Zahlen
+von 1 bis 100, eigene Coalescing-Gruppe und Verifikations-Poll. Der State entsteht,
+sobald das Fahrzeug die Zieleinstellung liefert; API-Ablehnungen werden wie bei
+Start/Stop behandelt.
+
+Lademodus und Ladeprofile benötigen vor der Umsetzung ein eigenes
 State-Modell. Dabei sind mindestens zu klären:
 
 - Soll-States und Validierungsregeln

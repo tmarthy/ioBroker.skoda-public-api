@@ -17,10 +17,16 @@ import type {
 	StartAirConditioningConfiguration,
 	StartAuxiliaryHeatingConfiguration,
 } from '../api/types';
-import { commandDefForPart, type CommandDomainDef } from '../states/commandDefs';
+import {
+	CHARGING_LIMIT_DEF,
+	CHARGING_LIMIT_PATH,
+	commandDefForPart,
+	type CommandDomainDef,
+} from '../states/commandDefs';
 
-/** Koerper der beiden Befehle, die einen brauchen. */
-export type CommandBody = StartAirConditioningConfiguration | StartAuxiliaryHeatingConfiguration;
+/** Request bodies shared with the HTTP client. */
+export type { CommandBody } from '../api/client';
+import type { CommandBody } from '../api/client';
 
 /** Ein Schreibvorgang, der als Befehl verstanden wurde. */
 export interface ParsedCommand {
@@ -28,10 +34,10 @@ export interface ParsedCommand {
 	vin: string;
 	/** Domaene samt Antwortblock und Ist-Werten. */
 	def: CommandDomainDef;
-	/** `start` oder `stop`. */
+	/** `start`, `stop` or the numeric `limit` setting. */
 	action: CommandAction;
 	/** Der Zustand, den der Nutzer haben will. */
-	desired: boolean;
+	desired: boolean | number;
 	/** True, wenn der Befehl ueber den Soll-Schalter kam und nicht ueber einen Knopf. */
 	viaSwitch: boolean;
 	/** Pfad des ausloesenden Zustands unterhalb des Geraeteknotens. */
@@ -56,6 +62,18 @@ export function parseCommandState(relativeId: string, value: unknown): ParsedCom
 	const def = commandDefForPart(block);
 	if (!def) {
 		return undefined;
+	}
+
+	if (`${block}.${leaf}` === CHARGING_LIMIT_PATH) {
+		return {
+			vin,
+			def: CHARGING_LIMIT_DEF,
+			action: 'limit',
+			desired: typeof value === 'number' ? value : NaN,
+			viaSwitch: true,
+			statePath: CHARGING_LIMIT_PATH,
+			name: 'charging.limit',
+		};
 	}
 
 	if (leaf === 'enabled') {
@@ -115,14 +133,21 @@ export interface CommandBodyResult {
 /**
  * Baut den Koerper eines Befehls aus den zuletzt gepollten Daten.
  *
- * Nur `air-conditioning/start` und `auxiliary-heating/start` haben ueberhaupt einen;
- * alle anderen Endpunkte nehmen keinen entgegen.
+ * `charging/limit`, `air-conditioning/start` und `auxiliary-heating/start`
+ * benoetigen einen Request-Koerper.
  *
  * @param command Der Befehl.
  * @param context Gepufferter Block und S-PIN.
  * @returns Der Koerper, oder die Beanstandung.
  */
 export function buildCommandBody(command: ParsedCommand, context: CommandBodyContext): CommandBodyResult {
+	if (command.action === 'limit') {
+		const value = command.desired;
+		if (typeof value !== 'number' || !Number.isInteger(value) || value < 1 || value > 100) {
+			return { problem: 'Charging limit must be an integer between 1 and 100 percent.' };
+		}
+		return { body: { targetStateOfChargeInPercent: value } };
+	}
 	if (command.action !== 'start') {
 		return {};
 	}

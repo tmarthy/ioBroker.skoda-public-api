@@ -152,10 +152,29 @@ newer than the accepted command ends this waiting phase. Without confirmation it
 at most the configured command lifetime (10 minutes by default), after which a new
 switch write can retry. Expiry does not automatically resend the command.
 
-The current Public API also advertises supported operations in `<vin>.operations` and
-offers endpoints for charging limit, charging mode and charging-profile updates. The
-adapter mirrors the operation list but does not expose these three setting operations
-as writable states yet; the on/off commands listed above are supported.
+### Charging limit
+
+Write a number with `ack = false` to
+`skoda-public-api.0.<vin>.charging.targetStateOfChargeInPercent` to set the maximum
+charge level, for example 80, 90 or 100. The state appears when the vehicle reports a
+charging target. In the ioBroker JavaScript adapter:
+
+```js
+setState('skoda-public-api.0.<vin>.charging.targetStateOfChargeInPercent', 90, false);
+```
+
+The adapter accepts integers from 1 to 100, as defined by the API. Vehicles typically
+accept only 50–100 in steps of 10; other values may be rejected by the vehicle.
+`charging.settings.targetStateOfChargeInPercent` remains the read-only reported value.
+The writable target is also refreshed from vehicle polls. `ack = true` after sending
+means API acceptance; check the reported setting after the verification poll to confirm
+that the car applied the limit. Repeating an already reported or pending accepted target
+is coalesced. Pending limit changes replace each other independently of charging on/off.
+Invalid inputs fail locally without consuming API quota; outcomes are recorded in
+`info.lastCommand`. A rejected value is not retried automatically.
+
+The Public API also advertises supported operations in `<vin>.operations`. Charging
+mode and charging-profile updates are not yet exposed as writable states.
 
 `info.lastCommand.result` is one of:
 
@@ -239,6 +258,10 @@ themselves. The adapter icon is original, brand-neutral project artwork and does
 reproduce the official Škoda logo; it is distributed under this project's MIT license.
 
 ## Changelog
+
+### Unreleased
+
+- Add a writable charging limit with input validation, quota handling and verification polling.
 
 ### 0.1.9 (2026-09-06)
 - Used ioBroker-managed request timers and removed news for the skipped npm version 0.1.7.

@@ -23,7 +23,13 @@ import type { ApiMeta, ApiResult, CommandBody } from '../api/client';
 import type { CommandAction, CommandDomain, VehicleResponse } from '../api/types';
 import { newestCapturedAt } from '../api/vehicleData';
 import type { VehicleQuota } from '../quota/VehicleQuotaManager';
-import { COMMAND_DEFS, type CommandDomainDef, type CommandReport, type CommandResult } from '../states/commandDefs';
+import {
+	CHARGING_LIMIT_DEF,
+	COMMAND_DEFS,
+	type CommandDomainDef,
+	type CommandReport,
+	type CommandResult,
+} from '../states/commandDefs';
 import { buildCommandBody, parseCommandState, type ParsedCommand } from './commandMap';
 import { translateFallback, type Translate } from '../i18n';
 
@@ -136,9 +142,12 @@ export class CommandQueue {
 	/** Domaenen, die das Fahrzeug dauerhaft nicht kann (422 operation-not-supported). */
 	private readonly unsupported = new Set<string>();
 	/** Sollwerte der Requests, die gerade unterwegs sind. */
-	private readonly inFlight = new Map<string, boolean>();
+	private readonly inFlight = new Map<string, boolean | number>();
 	/** Akzeptierte Sollwerte, die noch kein Poll bestaetigt hat. */
-	private readonly awaitingState = new Map<string, { desired: boolean; sentAt: number; expiresAt: number }>();
+	private readonly awaitingState = new Map<
+		string,
+		{ desired: boolean | number; sentAt: number; expiresAt: number }
+	>();
 
 	/** Admitted submissions, including immediate reports outside the send chain. */
 	private readonly submissions = new Set<Promise<void>>();
@@ -213,7 +222,7 @@ export class CommandQueue {
 		}
 		const vehicle = response.vehicle as unknown as Record<string, unknown>;
 		const blocks = this.blocks.get(vin) ?? new Map<string, Record<string, unknown>>();
-		for (const def of COMMAND_DEFS) {
+		for (const def of [...COMMAND_DEFS, CHARGING_LIMIT_DEF]) {
 			const block = vehicle[def.part];
 			if (block !== null && typeof block === 'object') {
 				const typedBlock = block as Record<string, unknown>;
@@ -225,7 +234,7 @@ export class CommandQueue {
 					expected &&
 					captured !== undefined &&
 					captured > expected.sentAt &&
-					this.activeFromBlock(def, typedBlock) === expected.desired
+					this.valueFromBlock(def, typedBlock) === expected.desired
 				) {
 					this.awaitingState.delete(key);
 				}
@@ -269,6 +278,13 @@ export class CommandQueue {
 			return;
 		}
 
+		const validation = buildCommandBody(command, { spin: this.spin });
+		if (command.action === 'limit' && validation.problem) {
+			this.log.warn(validation.problem);
+			await this.report(command, 'FAILED');
+			return;
+		}
+
 		const key = this.keyOf(command);
 
 		if (this.unsupported.has(key)) {
@@ -295,14 +311,21 @@ export class CommandQueue {
 		const alreadyDesired =
 			unsettledDesired !== undefined
 				? unsettledDesired === command.desired
-				: this.isActive(command) === command.desired;
+				: this.currentValue(command) === command.desired;
 		if (command.viaSwitch && alreadyDesired) {
 			if (this.entries.delete(key)) {
 				this.log.debug(
 					this.t('%s: Pending command dropped because the target state is already reached.', command.name),
 				);
 			}
-			await this.report(command, 'COALESCED');
+			await this.report(
+				command,
+				'COALESCED',
+				undefined,
+				command.action === 'limit' && !this.inFlight.has(key)
+					? { path: command.statePath, value: command.desired }
+					: undefined,
+			);
 			return;
 		}
 
@@ -647,14 +670,14 @@ export class CommandQueue {
 	 * Der Ist-Zustand einer Domaene aus dem letzten Poll.
 	 *
 	 * @param command Der Befehl.
-	 * @returns True oder false, oder undefined solange nichts gepollt wurde.
+	 * @returns Reported boolean or numeric target, or undefined before the first poll.
 	 */
-	private isActive(command: ParsedCommand): boolean | undefined {
+	private currentValue(command: ParsedCommand): boolean | number | undefined {
 		const block = this.blocks.get(command.vin)?.get(command.def.part);
 		if (!block) {
 			return undefined;
 		}
-		return this.activeFromBlock(command.def, block);
+		return this.valueFromBlock(command.def, block);
 	}
 
 	/**
@@ -662,15 +685,18 @@ export class CommandQueue {
 	 *
 	 * @param def Domaene samt Pfad und aktiven Werten.
 	 * @param block Der Antwortblock dieser Domaene.
-	 * @returns True oder false, oder undefined bei unvollstaendigen Daten.
+	 * @returns Reported boolean or numeric target, or undefined for incomplete data.
 	 */
-	private activeFromBlock(def: CommandDomainDef, block: Record<string, unknown>): boolean | undefined {
+	private valueFromBlock(def: CommandDomainDef, block: Record<string, unknown>): boolean | number | undefined {
 		let current: unknown = block;
 		for (const part of def.statePath.split('.')) {
 			if (typeof current !== 'object' || current === null) {
 				return undefined;
 			}
 			current = (current as Record<string, unknown>)[part];
+		}
+		if (def.numeric) {
+			return typeof current === 'number' ? current : undefined;
 		}
 		return typeof current === 'string' ? def.activeStates.includes(current) : undefined;
 	}
@@ -682,7 +708,7 @@ export class CommandQueue {
 	 * @returns Der Schluessel.
 	 */
 	private keyOf(command: ParsedCommand | { vin: string; def: CommandDomainDef }): string {
-		return `${command.vin}|${command.def.part}`;
+		return `${command.vin}|${command.def.part}${command.def.numeric ? '|limit' : ''}`;
 	}
 
 	/**

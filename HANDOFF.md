@@ -31,14 +31,16 @@ technische Arbeitsgrundlage in
 3. **Review von PR #6592 bearbeiten.** `W4001` verschwindet erst mit der Aufnahme in
    `latest`. Die Hinweise zu `process.env`, altem Changelog und Compact Mode sind zu
    bewerten, sofern sie im erneuten Check noch erscheinen.
-4. **Schreibzugriffe für Ladelimit, Lademodus und Ladeprofile entwerfen.** Die API und
+4. **Schreibzugriffe für Lademodus und Ladeprofile entwerfen.** Die API und
    die generierten Typen enthalten diese Operationen bereits; der Adapter spiegelt
    derzeit nur `vehicle.operations` und bietet dafür noch keine schreibbaren States.
 
 ## Funktionsumfang
 
 Der Adapter liest Fahrzeugdaten über die offizielle MyŠkoda Public API und unterstützt
-Start/Stop für Laden, Klimatisierung, Standheizung und Lüftung. Die VINs werden in der
+Start/Stop für Laden, Klimatisierung, Standheizung und Lüftung sowie das Ladelimit
+über `charging.targetStateOfChargeInPercent` (1–100, ganze Zahlen; fahrzeugabhängige
+Einschränkungen). Die gemeldete Einstellung bleibt unter `charging.settings` lesbar. Die VINs werden in der
 Instanz konfiguriert, weil die API keine Fahrzeugliste anbietet.
 
 Die API erlaubt **20 Requests pro Stunde und VIN**. Für jede VIN führt der Adapter

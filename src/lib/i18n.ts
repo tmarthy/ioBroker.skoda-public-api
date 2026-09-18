@@ -38,6 +38,17 @@ type AdditionalTranslations = readonly [
  * call site so the code is readable there; the other languages are centralized here.
  */
 const OBJECT_NAME_TRANSLATIONS = {
+	'Charging limit': [
+		'Лимит зарядки',
+		'Limite de carregamento',
+		'Laadlimiet',
+		'Limite de charge',
+		'Limite di ricarica',
+		'Límite de carga',
+		'Limit ładowania',
+		'Ліміт заряджання',
+		'充电上限',
+	],
 	'Refresh vehicle data': [
 		'Обновить данные автомобиля',
 		'Atualizar dados do veículo',

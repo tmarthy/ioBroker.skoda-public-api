@@ -449,7 +449,7 @@ export class MockSkodaApi {
 			return;
 		}
 
-		const match = /^\/api\/v1\/vehicles\/([^/]+)(?:\/([^/]+)\/(start|stop))?$/.exec(url.pathname);
+		const match = /^\/api\/v1\/vehicles\/([^/]+)(?:\/([^/]+)\/(start|stop|limit))?$/.exec(url.pathname);
 		if (!match) {
 			this.sendProblem(res, req, PROBLEMS['not-found'], url.pathname);
 			return;
@@ -473,7 +473,7 @@ export class MockSkodaApi {
 		}
 
 		if (domain && action) {
-			this.handleCommand(req, res, url, domain, action);
+			void this.handleCommand(req, res, url, domain, action);
 			return;
 		}
 		if (req.method !== 'GET') {
@@ -602,7 +602,44 @@ export class MockSkodaApi {
 		this.send(res, req, 200, body, { consumesQuota: true });
 	}
 
-	private handleCommand(req: IncomingMessage, res: ServerResponse, url: URL, domain: string, action: string): void {
+	private async handleCommand(
+		req: IncomingMessage,
+		res: ServerResponse,
+		url: URL,
+		domain: string,
+		action: string,
+	): Promise<void> {
+		if (domain === 'charging' && action === 'limit' && req.method === 'PUT') {
+			let body = '';
+			for await (const chunk of req) {
+				body += String(chunk);
+			}
+			let target: unknown;
+			try {
+				target = JSON.parse(body).targetStateOfChargeInPercent;
+			} catch {
+				/* Invalid JSON is rejected below. */
+			}
+			if (typeof target !== 'number' || !Number.isInteger(target) || target < 1 || target > 100) {
+				this.send(res, req, 400, {}, { consumesQuota: true });
+				return;
+			}
+			if (!this.vehicle.charging?.settings) {
+				this.sendProblem(res, req, PROBLEMS['operation-not-supported'], url.pathname);
+				return;
+			}
+			const apply = (): void => {
+				this.vehicle.charging.settings.targetStateOfChargeInPercent = target;
+				this.vehicle.charging.carCapturedTimestamp = new Date(this.options.now()).toISOString();
+			};
+			if (this.options.commandLatencyMs > 0) {
+				this.pendingEffects.push({ dueAt: this.options.now() + this.options.commandLatencyMs, apply });
+			} else {
+				apply();
+			}
+			this.send(res, req, 202, undefined, { consumesQuota: true });
+			return;
+		}
 		if (req.method !== 'POST') {
 			this.sendProblem(res, req, PROBLEMS['not-found'], url.pathname);
 			return;

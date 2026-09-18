@@ -16,6 +16,8 @@ import type { ObjectNameKey } from '../i18n';
 
 /** Was eine steuerbare Domaene ausmacht. */
 export interface CommandDomainDef {
+	/** Numeric target setting, independently queued from start/stop. */
+	numeric?: boolean;
 	/** Domaene im Endpunktpfad, z.B. `air-conditioning`. */
 	domain: CommandDomain;
 	/** Block der Antwort und damit Kanal im Objektbaum, z.B. `airConditioning`. */
@@ -107,7 +109,7 @@ export interface CommandReport {
 	 * `ack: true` heisst hier **an die API uebergeben**, nicht "das Auto hat es getan" -
 	 * mehr weiss der Adapter wegen `202` ohne Status-Endpunkt nicht (E6).
 	 */
-	acknowledge?: { path: string; value: boolean };
+	acknowledge?: { path: string; value: boolean | number };
 }
 
 /**
@@ -119,3 +121,16 @@ export interface CommandReport {
 export function commandDefForPart(part: string): CommandDomainDef | undefined {
 	return COMMAND_DEFS.find(def => def.part === part);
 }
+
+/** Charging limit uses the reported setting for deduplication and verification. */
+export const CHARGING_LIMIT_DEF: CommandDomainDef = {
+	domain: 'charging',
+	part: 'charging',
+	statePath: 'settings.targetStateOfChargeInPercent',
+	activeStates: [],
+	numeric: true,
+	label: 'Charging limit',
+	labelDe: 'Ladelimit',
+};
+
+export const CHARGING_LIMIT_PATH = 'charging.targetStateOfChargeInPercent';

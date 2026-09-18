@@ -23,6 +23,7 @@ import {
 } from './errors';
 import { createSanitizer, type Sanitizer } from './sanitize';
 import type {
+	ChargingLimit,
 	CommandAction,
 	CommandDomain,
 	StartAirConditioningConfiguration,
@@ -71,8 +72,8 @@ export interface ApiMeta {
 /** Ergebnis eines Requests: Nutzdaten oder Fehler, in beiden Faellen mit `meta`. */
 export type ApiResult<T> = { ok: true; data: T; meta: ApiMeta } | { ok: false; error: ApiError; meta: ApiMeta };
 
-/** Koerper der beiden Befehle, die einen brauchen. */
-export type CommandBody = StartAirConditioningConfiguration | StartAuxiliaryHeatingConfiguration;
+/** Request bodies for climate commands and charging limits. */
+export type CommandBody = StartAirConditioningConfiguration | StartAuxiliaryHeatingConfiguration | ChargingLimit;
 
 /** Was der Client zum Arbeiten braucht. */
 export interface SkodaApiClientOptions {
@@ -294,7 +295,7 @@ export class SkodaApiClient {
 	 *
 	 * @param vin Fahrgestellnummer.
 	 * @param domain Die Domaene, z.B. `charging`.
-	 * @param action `start` oder `stop`.
+	 * @param action `start`, `stop` or `limit` (PUT).
 	 * @param body Koerper fuer die Befehle, die einen brauchen (Klima, Standheizung).
 	 * @returns Leeres Ergebnis oder ein Fehler, in beiden Faellen mit `meta`.
 	 * @throws {ShutdownError} If this client is stopped before completion.
@@ -305,7 +306,11 @@ export class SkodaApiClient {
 		action: CommandAction,
 		body?: CommandBody,
 	): Promise<ApiResult<void>> {
-		const raw = await this.send(this.vehicleUrl(vin, `/${domain}/${action}`), 'POST', body);
+		const raw = await this.send(
+			this.vehicleUrl(vin, `/${domain}/${action}`),
+			action === 'limit' ? 'PUT' : 'POST',
+			body,
+		);
 		if (this.stopped) {
 			throw new ShutdownError();
 		}
@@ -336,7 +341,7 @@ export class SkodaApiClient {
 	 * @param body Koerper, wird als JSON gesendet.
 	 * @returns Rohantwort bei 2xx, sonst der Fehler nach der Fehlertabelle.
 	 */
-	private async send(url: URL, method: 'GET' | 'POST', body?: CommandBody): Promise<ApiResult<HttpPayload>> {
+	private async send(url: URL, method: 'GET' | 'POST' | 'PUT', body?: CommandBody): Promise<ApiResult<HttpPayload>> {
 		if (this.stopped) {
 			throw new ShutdownError();
 		}

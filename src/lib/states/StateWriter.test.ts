@@ -69,6 +69,29 @@ describe('states/StateWriter => Antwort in den Objektbaum', () => {
 		expect(beweis).to.equal(true);
 	});
 
+	it('exposes the charging limit separately from the read-only reported setting', async () => {
+		await writer.write(VIN, fixture('idle'));
+		const id = `${VIN}.charging.targetStateOfChargeInPercent`;
+		expect(adapter.objects.get(id)?.common).to.include({
+			type: 'number',
+			write: true,
+			min: 1,
+			max: 100,
+			unit: '%',
+		});
+		expect(adapter.val(id)).to.equal(adapter.val(`${VIN}.charging.settings.targetStateOfChargeInPercent`));
+		expect(adapter.objects.get(`${VIN}.charging.settings.targetStateOfChargeInPercent`)?.common).to.include({
+			write: false,
+		});
+		await writer.writeCommandResult(VIN, {
+			name: 'charging.limit',
+			result: 'SENT',
+			timestamp: clock,
+			acknowledge: { path: 'charging.targetStateOfChargeInPercent', value: 90 },
+		});
+		expect(adapter.states.get(id)).to.include({ val: 90, ack: true });
+	});
+
 	describe('Der Baum spiegelt die Antwort', () => {
 		it('verwendet fuer alle statischen mehrsprachigen Namen genau die elf ioBroker-Sprachen', async () => {
 			await writer.write(VIN, fixture('synth-idle'));
@@ -186,6 +209,7 @@ describe('states/StateWriter => Antwort in den Objektbaum', () => {
 				'state charging.status.remainingTimeToFullyChargedInMinutes',
 				'state charging.status.state',
 				'state charging.stop',
+				'state charging.targetStateOfChargeInPercent',
 				'state chargingProfiles.carCapturedTimestamp',
 				'state chargingProfiles.profiles.1.name',
 				'state chargingProfiles.profiles.1.preferredChargingTimesJson',

@@ -23,7 +23,7 @@ import { vehicleErrors } from '../api/client';
 import { newestCapturedAt } from '../api/vehicleData';
 import { partFromErrorType } from '../api/parts';
 import type { VehicleResponse } from '../api/types';
-import { COMMAND_DEFS, COMMAND_RESULTS, type CommandReport } from './commandDefs';
+import { CHARGING_LIMIT_PATH, COMMAND_DEFS, COMMAND_RESULTS, type CommandReport } from './commandDefs';
 import { generatedChannels, generatedStateDefs } from './objectDefs.generated';
 import { displayConversions, legacyRoleMigration, resolveCommon } from './objectOverlay';
 import { localizedObjectName } from './objectNames';
@@ -672,6 +672,21 @@ export class StateWriter {
 	 * @param vehicle Die Fahrzeugdaten.
 	 */
 	private async writeCommandStates(vin: string, vehicle: Record<string, unknown>): Promise<void> {
+		const charging = vehicle.charging as Record<string, unknown> | undefined;
+		const limit = charging && readPath(charging, 'settings.targetStateOfChargeInPercent');
+		if (typeof limit === 'number') {
+			await this.writeDerived(vin, CHARGING_LIMIT_PATH, limit, {
+				name: translated('Charging limit', 'Ladelimit'),
+				type: 'number',
+				role: 'level',
+				read: true,
+				write: true,
+				unit: '%',
+				min: 1,
+				max: 100,
+				step: 1,
+			});
+		}
 		for (const def of COMMAND_DEFS) {
 			const block = vehicle[def.part];
 			if (typeof block !== 'object' || block === null) {

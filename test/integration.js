@@ -292,6 +292,18 @@ tests.integration(path.join(__dirname, '..'), {
 				expect(mock.vehicleState.charging.status.state).to.equal('CHARGING');
 			});
 
+			it('setzt das Ladelimit über den neuen numerischen Datenpunkt', async function () {
+				this.timeout(30000);
+				const id = `${VEHICLE}.charging.targetStateOfChargeInPercent`;
+				await setState(harness, id, { val: 90, ack: false });
+				await waitFor('die Quittierung des Ladelimits', async () => {
+					const state = await getState(harness, id);
+					return state?.val === 90 && state.ack === true;
+				});
+				expect(mock.vehicleState.charging.settings.targetStateOfChargeInPercent).to.equal(90);
+				expect(mock.requests.some(request => request.method === 'PUT' && request.path.endsWith('/charging/limit'))).to.equal(true);
+			});
+
 			it('liest den Ist-Zustand mit dem Verifikations-Poll nach', async function () {
 				this.timeout(90000);
 				await waitFor(
@@ -303,6 +315,7 @@ tests.integration(path.join(__dirname, '..'), {
 					85000,
 				);
 				expect(mock.requests.filter(request => request.method === 'GET')).to.have.length(3);
+				expect((await readState(harness, `${VEHICLE}.charging.settings.targetStateOfChargeInPercent`)).val).to.equal(90);
 			});
 		});
 
