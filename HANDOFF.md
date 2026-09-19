@@ -10,28 +10,28 @@ technische Arbeitsgrundlage in
 
 - Das öffentliche Repository ist
   [`tmarthy/ioBroker.skoda-public-api`](https://github.com/tmarthy/ioBroker.skoda-public-api).
-- Auf npm und als GitHub-Release ist Version `0.1.0` veröffentlicht. Sie umfasst
-  deutsch- und englischsprachige
-  Backend-Texte, Benachrichtigungen, Verbindungstests und Objektnamen sowie korrigierte
-  ioBroker-Rollen für String-States.
+- Auf npm ist Version `0.1.9` veröffentlicht (geprüft am 19. September 2026).
+  `package.json` und `io-package.json` stehen ebenfalls auf `0.1.9`.
+  Der Entwicklungsstand enthält zusätzlich unter anderem den manuellen Refresh
+  und das schreibbare Ladelimit; unveröffentlichte Änderungen stehen im README-Changelog.
 - Der Antrag auf Aufnahme in ioBroker `latest` ist als
   [`ioBroker.repositories#6592`](https://github.com/ioBroker/ioBroker.repositories/pull/6592)
-  offen.
+  weiterhin offen (geprüft am 19. September 2026).
+- `bluefox` und `tmarthy` sind als npm-Maintainer eingetragen (am selben Tag geprüft).
+  Die frühere Aufgabe, `bluefox` hinzuzufügen, ist damit erledigt.
 - npm Trusted Publishing ist für Tags über `.github/workflows/test-and-release.yml`
   eingerichtet. `NPM_TRUSTED_PUBLISHING=true` aktiviert den Deploy-Job.
 
 ## Offene Themen in empfohlener Reihenfolge
 
-1. **Neuen Objekt-Export erzeugen und an PR #6592 anhängen.** Der vorhandene Export
-   enthält elf inzwischen korrigierte Rollenfehler. Anschließend im PR `RE-CHECK!`
-   kommentieren.
-2. **`bluefox` als npm-Owner hinzufügen.** `npm owner ls
-   iobroker.skoda-public-api` nennt aktuell nur `tmarthy`; dadurch bleibt Checker-Fehler
-   `E2001` offen.
-3. **Review von PR #6592 bearbeiten.** `W4001` verschwindet erst mit der Aufnahme in
-   `latest`. Die Hinweise zu `process.env`, altem Changelog und Compact Mode sind zu
-   bewerten, sofern sie im erneuten Check noch erscheinen.
-4. **Schreibzugriffe für Lademodus und Ladeprofile entwerfen.** Die API und
+1. **Aktuellen Review- und Checker-Stand von PR #6592 prüfen.** Frühere Hinweise zu
+   Objektrollen, npm-Ownern, `process.env`, Changelog und Compact Mode nicht ungeprüft
+   als offene Fehler übernehmen. Entsprechende Korrekturen bzw. Unterstützung sind
+   inzwischen vorhanden. Bei Bedarf einen aktuellen Objekt-Export bereitstellen und
+   einen erneuten Check anfordern; der aktuelle Kommentarverlauf wurde hier nicht geprüft.
+2. **Nächstes Release vorbereiten.** Unveröffentlichte Änderungen prüfen, insbesondere
+   manuelles Refresh und Ladelimit, und die unten beschriebene Release-Prüfung ausführen.
+3. **Schreibzugriffe für Lademodus und Ladeprofile entwerfen.** Die API und
    die generierten Typen enthalten diese Operationen bereits; der Adapter spiegelt
    derzeit nur `vehicle.operations` und bietet dafür noch keine schreibbaren States.
 
@@ -39,8 +39,14 @@ technische Arbeitsgrundlage in
 
 Der Adapter liest Fahrzeugdaten über die offizielle MyŠkoda Public API und unterstützt
 Start/Stop für Laden, Klimatisierung, Standheizung und Lüftung sowie das Ladelimit
-über `charging.settings.targetStateOfChargeInPercent` (50–100 % in 10-Prozent-Schritten). Derselbe Datenpunkt wird bei Polls mit der gemeldeten Einstellung aktualisiert. Die VINs werden in der
-Instanz konfiguriert, weil die API keine Fahrzeugliste anbietet.
+über `charging.settings.targetStateOfChargeInPercent` (50–100 % in 10-Prozent-Schritten).
+Derselbe Datenpunkt wird bei Polls mit der gemeldeten Einstellung aktualisiert. Die VINs
+werden in der Instanz konfiguriert, weil die API keine Fahrzeugliste anbietet.
+
+Die `*.enabled`-Schalter akzeptieren ausschließlich Boolean `true` und `false`.
+Andere Werte werden ohne API-Aufruf, Quittierung oder Änderung wartender Befehle
+ignoriert. `<vin>.refresh` fordert einen vorgezogenen Poll an; Quota, Befehlsreserve
+und Fehlerwartezeiten gelten dabei weiterhin.
 
 Die API erlaubt **20 Requests pro Stunde und VIN**. Für jede VIN führt der Adapter
 deshalb einen eigenen, persistenten Quota-Bucket unter `<vin>.rateLimit.*`. Polls
@@ -57,10 +63,9 @@ letzten Wert mit schlechtem Quality-Flag. Besondere Darstellungen sind:
 - `parkingPosition.position`: `lat;lon` für Karten und Geofencing
 - Ladeprofile unter `chargingProfiles.profiles.<id>` statt nach Listenindex
 
-Konfiguration und Objektbaum sind auf Deutsch und Englisch verfügbar. Logs,
-Benachrichtigungen und Ergebnisse des Verbindungstests verwenden standardmäßig die
-ioBroker-Systemsprache; die Instanz kann Deutsch oder Englisch erzwingen. Andere
-Admin-Sprachen verwenden englische Backend-Texte als Fallback.
+Konfiguration und adapterdefinierte Objektnamen sind in allen elf unterstützten
+ioBroker-Sprachen verfügbar. Logs, Benachrichtigungen und Ergebnisse des
+Verbindungstests sind immer auf Englisch. Eine Backend-Sprachauswahl gibt es nicht.
 
 ## Architektur
 
@@ -82,7 +87,7 @@ src/main.ts
 | Quota | `src/lib/quota/QuotaManager.ts`, `VehicleQuotaManager.ts`, `AdapterQuotaStore.ts` |
 | Polling und Befehle | `src/lib/scheduler/PollScheduler.ts`, `src/lib/commands/CommandQueue.ts` |
 | States und Metadaten | `src/lib/states/StateWriter.ts`, `objectOverlay.ts`, `objectNames.ts` |
-| Übersetzungen | `admin/i18n/*.json`, `i18n/de.json`, `i18n/en.json`, `src/lib/i18n.ts` |
+| Übersetzungen | `admin/i18n/*/translations.json`, `src/lib/i18n.ts`, `src/lib/states/objectNames.ts` |
 | Entwicklungs-API | `test/mock/server.ts`, `test/fixtures/*.json` |
 | Tests | Tests neben den Modulen, `test/package`, `test/integration.js` |
 
@@ -118,18 +123,20 @@ Admin-UI gibt es bewusst keine frei konfigurierbare API-Basis-URL.
 
 Nach Änderungen an `src/` oder `admin/` benötigt der dev-server ein neu gebautes Paket
 und einen Upload der Adapterdateien. `build/` bleibt unversioniert, muss aber im
-npm-Paket enthalten sein; deshalb darf `.npmignore` nicht entfernt werden.
+npm-Paket enthalten sein. Die `files`-Liste in `package.json` steuert den Paketinhalt;
+eine `.npmignore` wird dafür nicht verwendet. Vor dem Packen den Build ausführen.
 
 ## CI und Release
 
-Normale Pushes und Pull Requests führen nur die Mindestprüfung aus:
+Pushes auf `main`, Versions-Tags, Pull Requests und manuelle Läufe führen folgende
+Prüfungen aus:
 
 - TypeScript und ESLint auf Ubuntu mit Node 24
-- Adaptertest auf Ubuntu mit Node 22
+- anschließend Adaptertests auf Ubuntu, Windows und macOS mit Node 22, 24 und 26
 
-Tags `v*` und manuelle Läufe führen die vollständige Matrix auf Ubuntu, Windows und
-macOS mit Node 22 und 24 aus. Reine Markdown- und `docs/`-Änderungen starten keinen
-Workflow. Der wöchentliche Spec-Wächter läuft montags und kann manuell gestartet
+Bei Branch-Pushes überspringt der Pfadfilter reine Markdown-, `docs/`- und
+`.vscode/`-Änderungen; für Pull Requests gilt dieser Filter nicht.
+Der wöchentliche Spec-Wächter läuft montags und kann manuell gestartet
 werden. Dependabot prüft npm-Abhängigkeiten am 8. und GitHub Actions am 22. jedes
 Monats.
 
@@ -146,8 +153,9 @@ npm run check:spec
 ```
 
 `npm run check:spec` greift auf die Live-Spec zu. Bei einer Abweichung zuerst die neue
-Spec prüfen, dann `npm run codegen` ausführen und die generierten Typen sowie
-Objektdefinitionen gemeinsam aktualisieren.
+Spec prüfen, die lokale Kopie mit `node tools/check-spec.mjs --update` aktualisieren
+und dann `npm run codegen` ausführen. Spec, generierte Typen und Objektdefinitionen
+gemeinsam prüfen und versionieren.
 
 ## Betriebsrelevante Hinweise
 

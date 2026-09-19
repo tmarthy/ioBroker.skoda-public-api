@@ -141,6 +141,10 @@ Each domain the vehicle supports gets three states, for example under `<vin>.cha
 - `start` and `stop` (buttons) **force** the call. They are the way out when the polled
   data is ten minutes old and no longer true.
 
+The `enabled` switches accept only Boolean `true` and `false`. Other values, including
+strings such as `"true"`, numbers and `null`, are ignored without an API request or
+acknowledgement. They do not replace pending commands or update `info.lastCommand`.
+
 **`ack = true` means "handed over to the API", not "the car did it".** The API answers a
 command with `202 Accepted` and offers no endpoint that reports the outcome; the adapter
 schedules a verification poll 60 seconds later, and only that poll shows what actually
@@ -263,6 +267,7 @@ reproduce the official Škoda logo; it is distributed under this project's MIT l
 ### Unreleased
 
 - Add a writable charging limit with input validation, quota handling and verification polling.
+- Ignore non-boolean on/off switch writes instead of interpreting them as stop commands.
 
 ### 0.1.9 (2026-09-06)
 - Used ioBroker-managed request timers and removed news for the skipped npm version 0.1.7.

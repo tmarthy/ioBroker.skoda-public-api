@@ -77,7 +77,11 @@ export function parseCommandState(relativeId: string, value: unknown): ParsedCom
 	}
 
 	if (leaf === 'enabled') {
-		const desired = value === true;
+		// Invalid writes must never be interpreted as a request to stop the vehicle function.
+		if (typeof value !== 'boolean') {
+			return undefined;
+		}
+		const desired = value;
 		return {
 			vin,
 			def,

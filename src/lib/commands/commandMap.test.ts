@@ -19,6 +19,14 @@ describe('commands/commandMap => Zustands-ID zu Befehl', () => {
 	});
 
 	describe('Soll-Schalter', () => {
+		it('rejects non-boolean values in every command domain', () => {
+			for (const domain of ['charging', 'airConditioning', 'auxiliaryHeating', 'activeVentilation']) {
+				for (const value of ['true', 'false', '', 1, 0, NaN, null, undefined, {}, []]) {
+					expect(parseCommandState(`${VIN}.${domain}.enabled`, value)).to.equal(undefined);
+				}
+			}
+		});
+
 		it('macht aus true ein start und aus false ein stop', () => {
 			const start = parseCommandState(`${VIN}.charging.enabled`, true);
 			expect(start).to.include({ vin: VIN, action: 'start', desired: true, viaSwitch: true });

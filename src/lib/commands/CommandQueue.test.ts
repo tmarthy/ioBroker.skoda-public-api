@@ -90,6 +90,36 @@ describe('commands/CommandQueue => Soll-Zustand, Coalescing, TTL', () => {
 		await mock.stop();
 	});
 
+	describe('invalid switch writes', () => {
+		it('does not send, acknowledge, schedule verification or consume quota', async () => {
+			const before = quota.snapshot();
+			for (const domain of ['charging', 'airConditioning', 'auxiliaryHeating', 'activeVentilation']) {
+				for (const value of ['true', 'false', '', 1, 0, NaN, null, undefined, {}, []]) {
+					await queue.submit(`${DEFAULT_VIN}.${domain}.enabled`, value);
+				}
+			}
+			expect(mock.requests).to.have.length(0);
+			expect(reports).to.have.length(0);
+			expect(verified).to.have.length(0);
+			expect(queue.pending).to.equal(0);
+			expect(quota.snapshot()).to.deep.equal(before);
+		});
+
+		it('preserves a valid queued start when an invalid value is written afterwards', async () => {
+			quota.recordResponse({ rateLimit: { limit: 20, remaining: 0, resetInSeconds: 60 }, consumedQuota: false });
+			await queue.submit(`${DEFAULT_VIN}.charging.enabled`, true);
+			await queue.submit(`${DEFAULT_VIN}.charging.enabled`, 'true');
+			await queue.submit(`${DEFAULT_VIN}.charging.enabled`, null);
+			expect(results()).to.deep.equal(['QUEUED']);
+			expect(queue.pending).to.equal(1);
+			clock += 61_000;
+			await queue.tick();
+			expect(results()).to.deep.equal(['QUEUED', 'SENT']);
+			expect(mock.requests).to.have.length(1);
+			expect(mock.requests[0].path).to.equal(`/api/v1/vehicles/${DEFAULT_VIN}/charging/start`);
+		});
+	});
+
 	describe('charging limit', () => {
 		it('sends the limit via PUT, acknowledges it and schedules verification', async () => {
 			await queue.submit(`${DEFAULT_VIN}.charging.settings.targetStateOfChargeInPercent`, 90);
