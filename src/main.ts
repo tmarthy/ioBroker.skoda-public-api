@@ -182,6 +182,8 @@ class SkodaPublicApi extends utils.Adapter {
 		this.subscribeStates('*.start');
 		this.subscribeStates('*.stop');
 		this.subscribeStates('*.charging.settings.targetStateOfChargeInPercent');
+		this.subscribeStates('*.charging.settings.preferredChargeMode');
+		this.subscribeStates('*.chargingProfiles.profiles.*.configurationJson');
 
 		this.log.info(
 			t(

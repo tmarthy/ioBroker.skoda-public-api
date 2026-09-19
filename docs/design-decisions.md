@@ -23,9 +23,9 @@ Quelle: <https://public.api.connect.skoda-auto.cz/docs>, eingecheckte Spec unter
 | Push/Webhooks | keine |
 
 Nicht in der API enthalten und daher unmöglich: Ver-/Entriegeln, Hupe/Lichthupe,
-Setzen des Ladestroms und automatische Key-Rotation. Ziel-SoC, Lademodus und
-Ladeprofile sind inzwischen API-Funktionen, werden vom Adapter aber noch nicht als
-Schreib-States angeboten.
+Setzen eines beliebigen Ladestroms in Ampere und automatische Key-Rotation. Ziel-SoC,
+Lademodus und vollständige Ladeprofile sind als Schreib-States verfügbar. In einem
+Ladeprofil kann `maxChargingCurrent` auf `REDUCED` oder `MAXIMUM` gesetzt werden.
 
 ## Entscheidungen
 
@@ -183,9 +183,12 @@ Fehlt `auxiliaryHeating` in der Antwort, wird kein `auxiliaryHeating.start` ange
 `chargingProfiles.profiles.<id>.name` und `.targetStateOfChargeInPercent` als States;
 `.timersJson` und `.preferredChargingTimesJson` als JSON-States.
 **Begründung:** Index-basiert (`profiles.0`) zeigt nach dem Löschen eines Profils in
-der App still auf ein anderes Profil. Die tieferen Ebenen sind read-only und ändern
-sich alle paar Monate — ein Objektbaum bringt dort keinen Nutzen, kostet aber
-dutzende nie aufgeräumte Objekte.
+der App still auf ein anderes Profil. Die bisherigen Detailzustände bleiben read-only.
+`.configurationJson` bietet zusätzlich das vollständige Profil zum atomaren Ändern,
+da die API das ganze Profil ersetzt. Es gibt keine impliziten Teilupdates. Strikte
+Validierung und ein Vergleich mit dem zuletzt gepollten Profil verhindern ungültige
+Requests und das Überschreiben zwischenzeitlich erkannter Änderungen. Ohne serverseitige
+Versionsprüfung lassen sich noch nicht gepollte App-Änderungen nicht erkennen.
 
 ## Bekannte Restrisiken
 

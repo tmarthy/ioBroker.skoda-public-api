@@ -69,5 +69,5 @@ export const VEHICLE_PARTS = [
 /** Die vier steuerbaren Domänen (je ein start-/stop-Endpunkt). */
 export const COMMAND_DOMAINS = ['charging', 'air-conditioning', 'auxiliary-heating', 'active-ventilation'] as const;
 
-export type CommandDomain = (typeof COMMAND_DOMAINS)[number];
-export type CommandAction = 'start' | 'stop' | 'limit';
+export type CommandDomain = (typeof COMMAND_DOMAINS)[number] | 'charging-profiles';
+export type CommandAction = 'start' | 'stop' | 'limit' | 'mode' | 'profile';

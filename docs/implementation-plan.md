@@ -171,15 +171,20 @@ in 10-Prozent-Schritten, eigene Coalescing-Gruppe und Verifikations-Poll. Der St
 sobald das Fahrzeug die Zieleinstellung liefert; API-Ablehnungen werden wie bei
 Start/Stop behandelt.
 
-Lademodus und Ladeprofile benötigen vor der Umsetzung ein eigenes
-State-Modell. Dabei sind mindestens zu klären:
+Der Lademodus verwendet den bestehenden State `charging.settings.preferredChargeMode`.
+Schreibwerte müssen bekannte Modi sein und in den zuletzt gelesenen
+`availableChargeModes` vorkommen. Bestehende Objekte werden schreibbar migriert.
 
-- Soll-States und Validierungsregeln
-- Fähigkeitserkennung über `vehicle.operations`
-- Quota-Kosten und Coalescing je Operation
-- sichere Behandlung vollständiger Ladeprofil-Payloads
-- Rückmeldung und Verifikation ohne Operationsstatus
-- Migration und Dokumentation der neuen Objekte
+Ladeprofile erhalten je numerischer Profil-ID einen zusätzlichen JSON-State
+`chargingProfiles.profiles.<id>.configurationJson`. Vollständige Profil-Payloads werden
+validiert; es gibt kein implizites Zusammenführen von Teilobjekten und keine Neuanlage.
+Ein zwischenzeitlicher Poll mit geändertem, entferntem oder fehlendem Profil verwirft
+wartende Updates. Nicht gepollte Änderungen durch andere Clients bleiben ein Restrisiko.
+
+Modus und jedes Profil haben eigene Coalescing-Gruppen. Quota, TTL, Fehlerbehandlung,
+API-Quittierung und Verifikations-Polls laufen über dieselbe Queue wie die übrigen
+Befehle. Mock- und Integrationstests prüfen die neuen Schreibpfade; ein Praxistest
+mit passenden Fahrzeugfunktionen steht noch aus.
 
 ### Laufende Wartung
 

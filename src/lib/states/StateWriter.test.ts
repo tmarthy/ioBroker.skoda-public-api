@@ -69,6 +69,31 @@ describe('states/StateWriter => Antwort in den Objektbaum', () => {
 		expect(beweis).to.equal(true);
 	});
 
+	it('migrates charging mode and exposes a complete writable profile without changing user names', async () => {
+		const modeId = `${VIN}.charging.settings.preferredChargeMode`;
+		await adapter.setObjectNotExistsAsync(modeId, {
+			type: 'state',
+			common: { name: 'My mode', type: 'string', role: 'text', read: true, write: false },
+			native: {},
+		});
+		const response = fixture('idle');
+		await writer.write(VIN, response);
+		expect(adapter.objects.get(modeId)?.common).to.include({ name: 'My mode', write: true });
+		const id = `${VIN}.chargingProfiles.profiles.1.configurationJson`;
+		expect(adapter.objects.get(id)?.common).to.include({ type: 'string', role: 'json', read: true, write: true });
+		expect(JSON.parse(String(adapter.val(id)))).to.deep.equal(response.vehicle.chargingProfiles!.profiles[0]);
+		await writer.writeCommandResult(VIN, {
+			name: 'charging.mode',
+			result: 'SENT',
+			timestamp: clock,
+			acknowledge: { path: 'charging.settings.preferredChargeMode', value: 'TIMER' },
+		});
+		expect(adapter.states.get(modeId)).to.include({ val: 'TIMER', ack: true });
+		response.vehicle.chargingProfiles!.profiles = [];
+		await writer.write(VIN, response);
+		expect(adapter.quality(id)).to.equal(QUALITY_NOT_GOOD);
+	});
+
 	it('uses the reported charging setting as the writable limit', async () => {
 		await writer.write(VIN, fixture('idle'));
 		const id = `${VIN}.charging.settings.targetStateOfChargeInPercent`;
@@ -246,6 +271,7 @@ describe('states/StateWriter => Antwort in den Objektbaum', () => {
 				'state charging.status.state',
 				'state charging.stop',
 				'state chargingProfiles.carCapturedTimestamp',
+				'state chargingProfiles.profiles.1.configurationJson',
 				'state chargingProfiles.profiles.1.name',
 				'state chargingProfiles.profiles.1.preferredChargingTimesJson',
 				'state chargingProfiles.profiles.1.settingsJson',

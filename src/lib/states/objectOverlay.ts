@@ -9,7 +9,8 @@
  * Aufloesungsreihenfolge: Anzeigeumrechnung > exakter Pfad > Endungsregel > Generat.
  */
 import type { GeneratedStateDef } from './objectDefs.generated';
-import { CHARGING_LIMIT_PATH } from './commandDefs';
+import { CHARGING_LIMIT_PATH, CHARGING_MODE_PATH } from './commandDefs';
+import { CHARGE_MODES } from '../commands/chargingControls';
 import { localizedObjectName } from './objectNames';
 
 /** Handgepflegte Zusatzangaben zu einem Zustand, die die OpenAPI-Spec nicht hergibt. */
@@ -209,7 +210,7 @@ function defaultRole(def: GeneratedStateDef): string {
 
 /**
  * Fuehrt Generat und Overlay zu einem ioBroker-`common` zusammen.
- * Mirrored states are read-only except for the writable charging limit.
+ * Mirrored states are read-only except for explicitly supported charging settings.
  *
  * @param path Punktpfad relativ zum Geraeteknoten, z.B. `charging.status.state`.
  * @param def Die aus der Spec erzeugte Zustandsdefinition.
@@ -251,6 +252,9 @@ export function resolveCommon(path: string, def: GeneratedStateDef): ioBroker.St
 
 	if (path === CHARGING_LIMIT_PATH) {
 		Object.assign(common, { write: true, role: 'level', min: 50, max: 100, step: 10 });
+	}
+	if (path === CHARGING_MODE_PATH) {
+		Object.assign(common, { write: true, states: Object.fromEntries(CHARGE_MODES.map(mode => [mode, mode])) });
 	}
 	return common;
 }

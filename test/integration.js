@@ -178,6 +178,7 @@ tests.integration(path.join(__dirname, '..'), {
 				this.timeout(120000);
 				harness = getHarness();
 				mock = new MockSkodaApi();
+				mock.vehicleState.charging.settings.availableChargeModes = ['MANUAL', 'TIMER'];
 				baseUrl = await mock.start();
 				await configure(harness);
 
@@ -304,6 +305,26 @@ tests.integration(path.join(__dirname, '..'), {
 				expect(mock.requests.some(request => request.method === 'PUT' && request.path.endsWith('/charging/limit'))).to.equal(true);
 			});
 
+			it('sets charging mode and a complete profile through subscribed writable states', async function () {
+				this.timeout(30000);
+				const modeId = `${VEHICLE}.charging.settings.preferredChargeMode`;
+				await setState(harness, modeId, { val: 'TIMER', ack: false });
+				await waitFor('mode acceptance', async () => {
+					const state = await getState(harness, modeId);
+					return state?.val === 'TIMER' && state.ack === true;
+				});
+				expect(mock.vehicleState.charging.settings.preferredChargeMode).to.equal('TIMER');
+				const profileId = `${VEHICLE}.chargingProfiles.profiles.1.configurationJson`;
+				const profile = JSON.parse((await readState(harness, profileId)).val);
+				profile.name = 'Updated through ioBroker';
+				await setState(harness, profileId, { val: JSON.stringify(profile), ack: false });
+				await waitFor('profile acceptance', async () => {
+					const state = await getState(harness, profileId);
+					return state?.ack === true && JSON.parse(state.val).name === profile.name;
+				});
+				expect(mock.vehicleState.chargingProfiles.profiles[0]).to.deep.equal(profile);
+			});
+
 			it('liest den Ist-Zustand mit dem Verifikations-Poll nach', async function () {
 				this.timeout(90000);
 				await waitFor(
@@ -316,6 +337,8 @@ tests.integration(path.join(__dirname, '..'), {
 				);
 				expect(mock.requests.filter(request => request.method === 'GET')).to.have.length(3);
 				expect((await readState(harness, `${VEHICLE}.charging.settings.targetStateOfChargeInPercent`)).val).to.equal(90);
+				expect((await readState(harness, `${VEHICLE}.charging.settings.preferredChargeMode`)).val).to.equal('TIMER');
+				expect((await readState(harness, `${VEHICLE}.chargingProfiles.profiles.1.name`)).val).to.equal('Updated through ioBroker');
 			});
 		});
 

@@ -25,12 +25,15 @@ import { newestCapturedAt } from '../api/vehicleData';
 import type { VehicleQuota } from '../quota/VehicleQuotaManager';
 import {
 	CHARGING_LIMIT_DEF,
+	CHARGING_MODE_DEF,
+	chargingProfileDef,
 	COMMAND_DEFS,
 	type CommandDomainDef,
 	type CommandReport,
 	type CommandResult,
 } from '../states/commandDefs';
 import { buildCommandBody, parseCommandState, type ParsedCommand } from './commandMap';
+import { canonicalJson, findProfile, isProfileId, isRecord } from './chargingControls';
 import { translateFallback, type Translate } from '../i18n';
 
 /** Der Ausschnitt des Clients, den die Queue braucht. */
@@ -142,11 +145,11 @@ export class CommandQueue {
 	/** Domaenen, die das Fahrzeug dauerhaft nicht kann (422 operation-not-supported). */
 	private readonly unsupported = new Set<string>();
 	/** Sollwerte der Requests, die gerade unterwegs sind. */
-	private readonly inFlight = new Map<string, boolean | number>();
+	private readonly inFlight = new Map<string, boolean | number | string>();
 	/** Akzeptierte Sollwerte, die noch kein Poll bestaetigt hat. */
 	private readonly awaitingState = new Map<
 		string,
-		{ desired: boolean | number; sentAt: number; expiresAt: number }
+		{ desired: boolean | number | string; sentAt: number; expiresAt: number }
 	>();
 
 	/** Admitted submissions, including immediate reports outside the send chain. */
@@ -222,7 +225,17 @@ export class CommandQueue {
 		}
 		const vehicle = response.vehicle as unknown as Record<string, unknown>;
 		const blocks = this.blocks.get(vin) ?? new Map<string, Record<string, unknown>>();
-		for (const def of [...COMMAND_DEFS, CHARGING_LIMIT_DEF]) {
+		// An omitted or removed profile must not remain a writable cached snapshot.
+		blocks.delete('chargingProfiles');
+		const profileBlock = vehicle.chargingProfiles;
+		const profiles = isRecord(profileBlock) && Array.isArray(profileBlock.profiles) ? profileBlock.profiles : [];
+		const profileDefs = profiles
+			.filter(profile => isRecord(profile) && isProfileId(profile.id))
+			.map(profile => chargingProfileDef(profile.id as number));
+		if (isRecord(profileBlock)) {
+			blocks.set('chargingProfiles', profileBlock);
+		}
+		for (const def of [...COMMAND_DEFS, CHARGING_LIMIT_DEF, CHARGING_MODE_DEF, ...profileDefs]) {
 			const block = vehicle[def.part];
 			if (block !== null && typeof block === 'object') {
 				const typedBlock = block as Record<string, unknown>;
@@ -278,11 +291,16 @@ export class CommandQueue {
 			return;
 		}
 
-		const validation = buildCommandBody(command, { spin: this.spin });
-		if (command.action === 'limit' && validation.problem) {
+		const block = this.blocks.get(command.vin)?.get(command.def.part);
+		const validation = buildCommandBody(command, { spin: this.spin, block });
+		if ((command.action === 'limit' || command.def.setting) && validation.problem) {
 			this.log.warn(validation.problem);
 			await this.report(command, 'FAILED');
 			return;
+		}
+
+		if (command.action === 'profile') {
+			command.profileBase = canonicalJson(findProfile(block, command.def.profileId!));
 		}
 
 		const key = this.keyOf(command);
@@ -299,19 +317,25 @@ export class CommandQueue {
 		// Ist-Zustand zu alt fuer die Idempotenz. In diesem Fenster gilt der zuletzt
 		// gesendete Sollwert: derselbe Wunsch ist redundant, ein Gegenwunsch muss warten.
 		const waiting = this.awaitingState.get(key);
+		let ignoreReported = false;
 		if (waiting && this.now() >= waiting.expiresAt) {
 			this.awaitingState.delete(key);
 			const block = this.blocks.get(command.vin)?.get(command.def.part);
 			// Ohne neuere Daten ist der Ist unbekannt, nicht wieder der Wert vor dem POST.
 			if (!block || (newestCapturedAt(block) ?? -Infinity) <= waiting.sentAt) {
-				this.blocks.get(command.vin)?.delete(command.def.part);
+				if (command.def.setting) {
+					// Retain the profile snapshot / advertised modes needed to validate a retry.
+					ignoreReported = true;
+				} else {
+					this.blocks.get(command.vin)?.delete(command.def.part);
+				}
 			}
 		}
 		const unsettledDesired = this.inFlight.get(key) ?? this.awaitingState.get(key)?.desired;
 		const alreadyDesired =
 			unsettledDesired !== undefined
 				? unsettledDesired === command.desired
-				: this.currentValue(command) === command.desired;
+				: !ignoreReported && this.currentValue(command) === command.desired;
 		if (command.viaSwitch && alreadyDesired) {
 			if (this.entries.delete(key)) {
 				this.log.debug(
@@ -322,7 +346,7 @@ export class CommandQueue {
 				command,
 				'COALESCED',
 				undefined,
-				command.action === 'limit' && !this.inFlight.has(key)
+				(command.action === 'limit' || command.def.setting) && !this.inFlight.has(key)
 					? { path: command.statePath, value: command.desired }
 					: undefined,
 			);
@@ -672,7 +696,7 @@ export class CommandQueue {
 	 * @param command Der Befehl.
 	 * @returns Reported boolean or numeric target, or undefined before the first poll.
 	 */
-	private currentValue(command: ParsedCommand): boolean | number | undefined {
+	private currentValue(command: ParsedCommand): boolean | number | string | undefined {
 		const block = this.blocks.get(command.vin)?.get(command.def.part);
 		if (!block) {
 			return undefined;
@@ -687,13 +711,23 @@ export class CommandQueue {
 	 * @param block Der Antwortblock dieser Domaene.
 	 * @returns Reported boolean or numeric target, or undefined for incomplete data.
 	 */
-	private valueFromBlock(def: CommandDomainDef, block: Record<string, unknown>): boolean | number | undefined {
+	private valueFromBlock(
+		def: CommandDomainDef,
+		block: Record<string, unknown>,
+	): boolean | number | string | undefined {
+		if (def.setting === 'profile') {
+			const profile = findProfile(block, def.profileId!);
+			return profile ? canonicalJson(profile) : undefined;
+		}
 		let current: unknown = block;
 		for (const part of def.statePath.split('.')) {
 			if (typeof current !== 'object' || current === null) {
 				return undefined;
 			}
 			current = (current as Record<string, unknown>)[part];
+		}
+		if (def.setting === 'mode') {
+			return typeof current === 'string' ? current : undefined;
 		}
 		if (def.numeric) {
 			return typeof current === 'number' ? current : undefined;
@@ -708,7 +742,7 @@ export class CommandQueue {
 	 * @returns Der Schluessel.
 	 */
 	private keyOf(command: ParsedCommand | { vin: string; def: CommandDomainDef }): string {
-		return `${command.vin}|${command.def.part}${command.def.numeric ? '|limit' : ''}`;
+		return `${command.vin}|${command.def.part}${command.def.numeric ? '|limit' : command.def.setting ? `|${command.def.setting}|${command.def.profileId ?? ''}` : ''}`;
 	}
 
 	/**

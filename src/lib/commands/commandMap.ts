@@ -20,9 +20,13 @@ import type {
 import {
 	CHARGING_LIMIT_DEF,
 	CHARGING_LIMIT_PATH,
+	CHARGING_MODE_DEF,
+	CHARGING_MODE_PATH,
+	chargingProfileDef,
 	commandDefForPart,
 	type CommandDomainDef,
 } from '../states/commandDefs';
+import { canonicalJson, CHARGE_MODES, findProfile, isChargingProfile, isProfileId } from './chargingControls';
 
 /** Request bodies shared with the HTTP client. */
 export type { CommandBody } from '../api/client';
@@ -37,7 +41,9 @@ export interface ParsedCommand {
 	/** `start`, `stop` or the numeric `limit` setting. */
 	action: CommandAction;
 	/** Der Zustand, den der Nutzer haben will. */
-	desired: boolean | number;
+	desired: boolean | number | string;
+	/** Reported profile at admission, to detect conflicting polls while queued. */
+	profileBase?: string;
 	/** True, wenn der Befehl ueber den Soll-Schalter kam und nicht ueber einen Knopf. */
 	viaSwitch: boolean;
 	/** Pfad des ausloesenden Zustands unterhalb des Geraeteknotens. */
@@ -56,6 +62,45 @@ export interface ParsedCommand {
 export function parseCommandState(relativeId: string, value: unknown): ParsedCommand | undefined {
 	const parts = relativeId.split('.');
 	const [vin, ...path] = parts;
+	if (path.join('.') === CHARGING_MODE_PATH) {
+		return {
+			vin,
+			def: CHARGING_MODE_DEF,
+			action: 'mode',
+			desired: typeof value === 'string' ? value : '',
+			viaSwitch: true,
+			statePath: CHARGING_MODE_PATH,
+			name: 'charging.mode',
+		};
+	}
+	if (
+		path.length === 4 &&
+		path[0] === 'chargingProfiles' &&
+		path[1] === 'profiles' &&
+		path[3] === 'configurationJson'
+	) {
+		const id = Number(path[2]);
+		if (!isProfileId(id) || String(id) !== path[2]) {
+			return undefined;
+		}
+		let desired = '';
+		if (typeof value === 'string') {
+			try {
+				desired = canonicalJson(JSON.parse(value));
+			} catch {
+				// Invalid input is reported locally without sending a request.
+			}
+		}
+		return {
+			vin,
+			def: chargingProfileDef(id),
+			action: 'profile',
+			desired,
+			viaSwitch: true,
+			statePath: path.join('.'),
+			name: `chargingProfiles.${id}.update`,
+		};
+	}
 	if (path.join('.') === CHARGING_LIMIT_PATH) {
 		return {
 			vin,
@@ -145,6 +190,41 @@ export interface CommandBodyResult {
  * @returns Der Koerper, oder die Beanstandung.
  */
 export function buildCommandBody(command: ParsedCommand, context: CommandBodyContext): CommandBodyResult {
+	if (command.action === 'mode') {
+		const value = command.desired;
+		if (typeof value !== 'string' || !CHARGE_MODES.some(mode => mode === value)) {
+			return { problem: 'Unknown charging mode.' };
+		}
+		const settings = context.block?.settings as Record<string, unknown> | undefined;
+		if (!Array.isArray(settings?.availableChargeModes) || !settings.availableChargeModes.includes(value)) {
+			return {
+				problem: 'Charging mode is not advertised as available by the vehicle. Refresh vehicle data first.',
+			};
+		}
+		return { body: { chargeMode: value } };
+	}
+	if (command.action === 'profile') {
+		let profile: unknown;
+		try {
+			profile = JSON.parse(String(command.desired));
+		} catch {
+			return { problem: 'Charging profile must be a complete valid JSON object.' };
+		}
+		if (!isChargingProfile(profile) || profile.id !== command.def.profileId) {
+			return { problem: 'Invalid charging profile fields or mismatching profile ID.' };
+		}
+		const current = findProfile(context.block, profile.id);
+		if (!current || !isChargingProfile(current)) {
+			return { problem: 'A complete existing charging profile must be polled before updating it.' };
+		}
+		if (command.profileBase !== undefined && canonicalJson(current) !== command.profileBase) {
+			return {
+				problem:
+					'Charging profile changed while this update was waiting. Read the profile again before retrying.',
+			};
+		}
+		return { body: profile };
+	}
 	if (command.action === 'limit') {
 		const value = command.desired;
 		if (typeof value !== 'number' || !Number.isInteger(value) || value < 50 || value > 100 || value % 10 !== 0) {

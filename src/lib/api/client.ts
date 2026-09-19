@@ -24,6 +24,8 @@ import {
 import { createSanitizer, type Sanitizer } from './sanitize';
 import type {
 	ChargingLimit,
+	ChargeMode,
+	ChargingProfile,
 	CommandAction,
 	CommandDomain,
 	StartAirConditioningConfiguration,
@@ -73,7 +75,12 @@ export interface ApiMeta {
 export type ApiResult<T> = { ok: true; data: T; meta: ApiMeta } | { ok: false; error: ApiError; meta: ApiMeta };
 
 /** Request bodies for climate commands and charging limits. */
-export type CommandBody = StartAirConditioningConfiguration | StartAuxiliaryHeatingConfiguration | ChargingLimit;
+export type CommandBody =
+	| StartAirConditioningConfiguration
+	| StartAuxiliaryHeatingConfiguration
+	| ChargingLimit
+	| ChargeMode
+	| ChargingProfile;
 
 /** Was der Client zum Arbeiten braucht. */
 export interface SkodaApiClientOptions {
@@ -295,7 +302,7 @@ export class SkodaApiClient {
 	 *
 	 * @param vin Fahrgestellnummer.
 	 * @param domain Die Domaene, z.B. `charging`.
-	 * @param action `start`, `stop` or `limit` (PUT).
+	 * @param action Start/stop (POST) or a charging setting/profile (PUT).
 	 * @param body Koerper fuer die Befehle, die einen brauchen (Klima, Standheizung).
 	 * @returns Leeres Ergebnis oder ein Fehler, in beiden Faellen mit `meta`.
 	 * @throws {ShutdownError} If this client is stopped before completion.
@@ -306,9 +313,19 @@ export class SkodaApiClient {
 		action: CommandAction,
 		body?: CommandBody,
 	): Promise<ApiResult<void>> {
+		if (
+			action === 'profile' &&
+			(domain !== 'charging-profiles' || !body || !('id' in body) || !Number.isSafeInteger(body.id))
+		) {
+			throw new Error('A profile command requires a safe integer profile ID.');
+		}
+		const suffix =
+			action === 'profile' && body && 'id' in body
+				? `/charging-profiles/${encodeURIComponent(String(body.id))}`
+				: `/${domain}/${action}`;
 		const raw = await this.send(
-			this.vehicleUrl(vin, `/${domain}/${action}`),
-			action === 'limit' ? 'PUT' : 'POST',
+			this.vehicleUrl(vin, suffix),
+			action === 'start' || action === 'stop' ? 'POST' : 'PUT',
 			body,
 		);
 		if (this.stopped) {

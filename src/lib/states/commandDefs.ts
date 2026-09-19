@@ -16,6 +16,10 @@ import type { ObjectNameKey } from '../i18n';
 
 /** Was eine steuerbare Domaene ausmacht. */
 export interface CommandDomainDef {
+	/** Additional independently queued charging settings. */
+	setting?: 'mode' | 'profile';
+	/** Profile identity for an atomic profile update. */
+	profileId?: number;
 	/** Numeric target setting, independently queued from start/stop. */
 	numeric?: boolean;
 	/** Domaene im Endpunktpfad, z.B. `air-conditioning`. */
@@ -109,7 +113,7 @@ export interface CommandReport {
 	 * `ack: true` heisst hier **an die API uebergeben**, nicht "das Auto hat es getan" -
 	 * mehr weiss der Adapter wegen `202` ohne Status-Endpunkt nicht (E6).
 	 */
-	acknowledge?: { path: string; value: boolean | number };
+	acknowledge?: { path: string; value: boolean | number | string };
 }
 
 /**
@@ -134,3 +138,32 @@ export const CHARGING_LIMIT_DEF: CommandDomainDef = {
 };
 
 export const CHARGING_LIMIT_PATH = 'charging.settings.targetStateOfChargeInPercent';
+
+export const CHARGING_MODE_PATH = 'charging.settings.preferredChargeMode';
+export const CHARGING_MODE_DEF: CommandDomainDef = {
+	domain: 'charging',
+	part: 'charging',
+	statePath: 'settings.preferredChargeMode',
+	activeStates: [],
+	setting: 'mode',
+	label: 'Charging on/off',
+	labelDe: 'Laden ein/aus',
+};
+
+/**
+ * Independent queue identity for each complete charging profile.
+ *
+ * @param id Profile ID.
+ */
+export function chargingProfileDef(id: number): CommandDomainDef {
+	return {
+		domain: 'charging-profiles',
+		part: 'chargingProfiles',
+		statePath: 'profiles',
+		activeStates: [],
+		setting: 'profile',
+		profileId: id,
+		label: 'Charging profile settings',
+		labelDe: 'Einstellungen des Ladeprofils',
+	};
+}

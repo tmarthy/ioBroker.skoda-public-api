@@ -449,7 +449,7 @@ export class MockSkodaApi {
 			return;
 		}
 
-		const match = /^\/api\/v1\/vehicles\/([^/]+)(?:\/([^/]+)\/(start|stop|limit))?$/.exec(url.pathname);
+		const match = /^\/api\/v1\/vehicles\/([^/]+)(?:\/([^/]+)\/(start|stop|limit|mode|-?\d+))?$/.exec(url.pathname);
 		if (!match) {
 			this.sendProblem(res, req, PROBLEMS['not-found'], url.pathname);
 			return;
@@ -609,6 +609,53 @@ export class MockSkodaApi {
 		domain: string,
 		action: string,
 	): Promise<void> {
+		if (req.method === 'PUT' && ((domain === 'charging' && action === 'mode') || domain === 'charging-profiles')) {
+			let raw = '';
+			for await (const chunk of req) {
+				raw += String(chunk);
+			}
+			let body: any;
+			try {
+				body = JSON.parse(raw);
+			} catch {
+				this.send(res, req, 400, {}, { consumesQuota: true });
+				return;
+			}
+			let apply: () => void;
+			if (domain === 'charging') {
+				if (!this.vehicle.charging?.settings?.availableChargeModes?.includes(body?.chargeMode)) {
+					this.send(res, req, 400, {}, { consumesQuota: true });
+					return;
+				}
+				apply = () => {
+					this.vehicle.charging.settings.preferredChargeMode = body.chargeMode;
+					this.vehicle.charging.carCapturedTimestamp = new Date(this.options.now()).toISOString();
+				};
+			} else {
+				const index = this.vehicle.chargingProfiles?.profiles.findIndex(
+					(profile: any) => profile.id === Number(action),
+				);
+				if (index === undefined || index < 0) {
+					this.sendProblem(res, req, PROBLEMS['not-found'], url.pathname);
+					return;
+				}
+				if (body?.id !== Number(action)) {
+					this.send(res, req, 412, {}, { consumesQuota: true });
+					return;
+				}
+				apply = () => {
+					this.vehicle.chargingProfiles.profiles[index] = body;
+					this.vehicle.chargingProfiles.carCapturedTimestamp = new Date(this.options.now()).toISOString();
+				};
+			}
+			if (this.options.commandLatencyMs > 0) {
+				this.pendingEffects.push({ dueAt: this.options.now() + this.options.commandLatencyMs, apply });
+			} else {
+				apply();
+			}
+			this.send(res, req, 202, undefined, { consumesQuota: true });
+			return;
+		}
 		if (domain === 'charging' && action === 'limit' && req.method === 'PUT') {
 			let body = '';
 			for await (const chunk of req) {

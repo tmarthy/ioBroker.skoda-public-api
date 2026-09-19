@@ -120,6 +120,192 @@ describe('commands/CommandQueue => Soll-Zustand, Coalescing, TTL', () => {
 		});
 	});
 
+	describe('charging mode and complete profiles', () => {
+		const modePath = `${DEFAULT_VIN}.charging.settings.preferredChargeMode`;
+		const profilePath = (id = 1): string => `${DEFAULT_VIN}.chargingProfiles.profiles.${id}.configurationJson`;
+		const currentProfile = (): any => structuredClone(mock.vehicleState.chargingProfiles.profiles[0]);
+		const queueWindow = (): void => {
+			quota.recordResponse({ rateLimit: { limit: 20, remaining: 0, resetInSeconds: 60 }, consumedQuota: false });
+		};
+
+		beforeEach(async () => {
+			mock.vehicleState.charging.settings.availableChargeModes = ['MANUAL', 'TIMER'];
+			await feedPoll();
+			mock.requests.length = 0;
+		});
+
+		it('sends mode with PUT and coalesces repeats until a newer poll confirms it', async () => {
+			await queue.submit(modePath, 'TIMER');
+			await queue.submit(modePath, 'TIMER');
+			expect(results()).to.deep.equal(['SENT', 'COALESCED']);
+			expect(mock.requests).to.have.length(1);
+			expect(mock.requests[0]).to.include({
+				method: 'PUT',
+				path: `/api/v1/vehicles/${DEFAULT_VIN}/charging/mode`,
+			});
+			expect(mock.vehicleState.charging.settings.preferredChargeMode).to.equal('TIMER');
+			expect(verified).to.deep.equal([DEFAULT_VIN]);
+			expect(last().acknowledge).to.deep.equal({ path: 'charging.settings.preferredChargeMode', value: 'TIMER' });
+			clock += 1000;
+			mock.vehicleState.charging.carCapturedTimestamp = new Date(clock).toISOString();
+			await feedPoll();
+			mock.vehicleState.charging.settings.preferredChargeMode = 'MANUAL';
+			clock += 1000;
+			mock.vehicleState.charging.carCapturedTimestamp = new Date(clock).toISOString();
+			await feedPoll();
+			await queue.submit(modePath, 'TIMER');
+			expect(last().result).to.equal('SENT');
+		});
+
+		it('rejects unsupported modes and invalid profiles locally without altering pending commands', async () => {
+			queueWindow();
+			await queue.submit(modePath, 'TIMER');
+			for (const value of ['UNKNOWN', 'ONLY_OWN_CURRENT', 'timer', true, null, 1]) {
+				await queue.submit(modePath, value);
+				expect(last().result).to.equal('FAILED');
+			}
+			for (const value of ['{', '{}', 'null', JSON.stringify({ ...currentProfile(), id: 2 })]) {
+				await queue.submit(profilePath(), value);
+				expect(last().result).to.equal('FAILED');
+			}
+			expect(mock.requests).to.have.length(0);
+			expect(queue.pending).to.equal(1);
+			expect(verified).to.have.length(0);
+			expect(last().acknowledge).to.equal(undefined);
+		});
+
+		it('sends the complete profile, retaining unchanged settings, timers and additional fields', async () => {
+			const profile = currentProfile();
+			profile.name = 'New name';
+			profile.futureField = { value: 42 };
+			await queue.submit(profilePath(), JSON.stringify(profile));
+			expect(last().result).to.equal('SENT');
+			expect(mock.requests[0]).to.include({
+				method: 'PUT',
+				path: `/api/v1/vehicles/${DEFAULT_VIN}/charging-profiles/1`,
+			});
+			expect(mock.vehicleState.chargingProfiles.profiles[0]).to.deep.equal(profile);
+			expect(JSON.parse(String(last().acknowledge?.value))).to.deep.equal(profile);
+			expect(verified).to.deep.equal([DEFAULT_VIN]);
+			await queue.submit(profilePath(), JSON.stringify(Object.fromEntries(Object.entries(profile).reverse())));
+			expect(last().result).to.equal('COALESCED');
+			expect(mock.requests).to.have.length(1);
+		});
+
+		it('coalesces an unchanged profile from the last poll', async () => {
+			await queue.submit(profilePath(), JSON.stringify(currentProfile()));
+			expect(results()).to.deep.equal(['COALESCED']);
+			expect(mock.requests).to.have.length(0);
+		});
+
+		it('queues each profile independently of mode, limit and start/stop, replacing only the same profile', async () => {
+			const first = currentProfile();
+			const second = { ...structuredClone(first), id: 2 };
+			mock.vehicleState.chargingProfiles.profiles.push(second);
+			await feedPoll();
+			mock.requests.length = 0;
+			queueWindow();
+			await queue.submit(profilePath(), JSON.stringify({ ...first, name: 'First' }));
+			await queue.submit(profilePath(2), JSON.stringify({ ...second, name: 'Second' }));
+			await queue.submit(profilePath(), JSON.stringify({ ...first, name: 'Replacement' }));
+			await queue.submit(modePath, 'TIMER');
+			await queue.submit(`${DEFAULT_VIN}.charging.settings.targetStateOfChargeInPercent`, 90);
+			await queue.submit(`${DEFAULT_VIN}.charging.enabled`, true);
+			expect(queue.pending).to.equal(5);
+			clock += 61_000;
+			await queue.tick();
+			expect(mock.requests).to.have.length(5);
+			expect(mock.vehicleState.chargingProfiles.profiles.map((p: any) => p.name)).to.deep.equal([
+				'Replacement',
+				'Second',
+			]);
+			expect(mock.vehicleState.charging.settings.preferredChargeMode).to.equal('TIMER');
+			expect(mock.vehicleState.charging.settings.targetStateOfChargeInPercent).to.equal(90);
+		});
+
+		for (const change of ['changed', 'removed', 'omitted'] as const) {
+			it(`rejects a queued profile when it is ${change} in a subsequent poll`, async () => {
+				const profile = currentProfile();
+				queueWindow();
+				await queue.submit(profilePath(), JSON.stringify({ ...profile, name: 'Requested' }));
+				const response = { vehicle: structuredClone(mock.vehicleState) };
+				if (change === 'changed') {
+					response.vehicle.chargingProfiles.profiles[0].settings.maxChargingCurrent = 'MAXIMUM';
+				} else if (change === 'removed') {
+					response.vehicle.chargingProfiles.profiles = [];
+				} else {
+					delete response.vehicle.chargingProfiles;
+				}
+				queue.updateFromResponse(DEFAULT_VIN, response);
+				clock += 61_000;
+				await queue.tick();
+				expect(results()).to.deep.equal(['QUEUED', 'FAILED']);
+				expect(mock.requests).to.have.length(0);
+				expect(queue.pending).to.equal(0);
+			});
+		}
+
+		it('revalidates mode availability before spending quota', async () => {
+			queueWindow();
+			await queue.submit(modePath, 'TIMER');
+			const response = { vehicle: structuredClone(mock.vehicleState) };
+			response.vehicle.charging.settings.availableChargeModes = ['MANUAL'];
+			queue.updateFromResponse(DEFAULT_VIN, response);
+			clock += 61_000;
+			await queue.tick();
+			expect(results()).to.deep.equal(['QUEUED', 'FAILED']);
+			expect(mock.requests).to.have.length(0);
+		});
+
+		it('rejects an unknown profile and requires a successful poll after restart', async () => {
+			await queue.submit(profilePath(2), JSON.stringify({ ...currentProfile(), id: 2 }));
+			expect(last().result).to.equal('FAILED');
+			queue.stop();
+			queue = buildQueue();
+			await queue.submit(modePath, 'TIMER');
+			await queue.submit(profilePath(), JSON.stringify(currentProfile()));
+			expect(results()).to.deep.equal(['FAILED', 'FAILED', 'FAILED']);
+			expect(mock.requests).to.have.length(0);
+		});
+
+		it('allows manual retries after confirmation expiry without discarding profile validation data', async () => {
+			const profile = { ...currentProfile(), name: 'Pending name' };
+			await queue.submit(profilePath(), JSON.stringify(profile));
+			await queue.submit(modePath, 'TIMER');
+			clock += 11 * MINUTE;
+			// No confirming poll has refreshed the originally reported snapshots.
+			await queue.submit(profilePath(), JSON.stringify(profile));
+			await queue.submit(modePath, 'TIMER');
+			expect(results()).to.deep.equal(['SENT', 'SENT', 'SENT', 'SENT']);
+			expect(mock.requests).to.have.length(4);
+		});
+
+		it('confirms a profile with a newer timestamp and accepts a later change back to an earlier target', async () => {
+			const profile = { ...currentProfile(), name: 'Confirmed name' };
+			await queue.submit(profilePath(), JSON.stringify(profile));
+			clock += 1000;
+			mock.vehicleState.chargingProfiles.carCapturedTimestamp = new Date(clock).toISOString();
+			await feedPoll();
+			mock.vehicleState.chargingProfiles.profiles[0].name = 'Changed in app';
+			clock += 1000;
+			mock.vehicleState.chargingProfiles.carCapturedTimestamp = new Date(clock).toISOString();
+			await feedPoll();
+			await queue.submit(profilePath(), JSON.stringify(profile));
+			expect(results()).to.deep.equal(['SENT', 'SENT']);
+		});
+
+		it('keeps a rejected mode independent of supported start/stop and profile operations', async () => {
+			mock.scenario = 'operation-not-supported';
+			await queue.submit(modePath, 'TIMER');
+			expect(last().result).to.equal('REJECTED_BY_VEHICLE');
+			expect(last().acknowledge).to.equal(undefined);
+			mock.scenario = 'ok';
+			await queue.submit(`${DEFAULT_VIN}.charging.enabled`, true);
+			await queue.submit(profilePath(), JSON.stringify({ ...currentProfile(), name: 'Still supported' }));
+			expect(results()).to.deep.equal(['REJECTED_BY_VEHICLE', 'SENT', 'SENT']);
+		});
+	});
+
 	describe('charging limit', () => {
 		it('sends the limit via PUT, acknowledges it and schedules verification', async () => {
 			await queue.submit(`${DEFAULT_VIN}.charging.settings.targetStateOfChargeInPercent`, 90);

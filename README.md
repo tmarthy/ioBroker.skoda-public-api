@@ -70,12 +70,13 @@ The object tree under `<vin>` mirrors the API response 1:1. Objects are created 
 for parts the vehicle actually delivers** — a battery-electric Enyaq has no
 `fuelStatus`, so no such states appear. Nothing is ever deleted automatically.
 
-Two additions that are not in the API:
+Adapter-specific representations:
 
 - `<vin>.parkingPosition.position` — `lat;lon` in one state, for VIS maps and geofence
   adapters.
 - `<vin>.chargingProfiles.profiles.<id>.*` — charging profiles by **profile id**, not by
   index. Deleting a profile in the app would otherwise silently shift all the others.
+  `configurationJson` exposes the full profile for atomic read/write updates.
 
 ### Refresh button
 
@@ -178,8 +179,59 @@ is coalesced. Pending limit changes replace each other independently of charging
 Invalid inputs fail locally without consuming API quota; outcomes are recorded in
 `info.lastCommand`. A rejected value is not retried automatically.
 
-The Public API also advertises supported operations in `<vin>.operations`. Charging
-mode and charging-profile updates are not yet exposed as writable states.
+### Charging mode
+
+Write a string with `ack: false` to `<vin>.charging.settings.preferredChargeMode`:
+
+```js
+setState('skoda-public-api.0.<VIN>.charging.settings.preferredChargeMode', 'TIMER', false);
+```
+
+The adapter accepts `MANUAL`, `TIMER`, `TIMER_CHARGING_WITH_CLIMATISATION`,
+`PREFERRED_CHARGING_TIMES`, `ONLY_OWN_CURRENT`, `IMMEDIATE_DISCHARGING` and
+`HOME_STORAGE_CHARGING` **only when the vehicle lists that mode in
+`charging.settings.availableChargeModes`**. A successful poll is required after
+startup. Unknown, unavailable or non-string values fail locally without spending
+quota. The existing mode state becomes writable on the first poll after the upgrade.
+
+### Charging profiles
+
+Each complete profile with a safe integer ID gets a writable JSON string state:
+`<vin>.chargingProfiles.profiles.<id>.configurationJson`. It contains the full profile,
+including `id`, `name`, `settings`, `timers` and `preferredChargingTimes`.
+Read this state, change the desired fields, and write the complete JSON back:
+
+```js
+const id = 'skoda-public-api.0.<VIN>.chargingProfiles.profiles.1.configurationJson';
+const state = getState(id);
+if (state && state.ack && state.q === 0) {
+    const profile = JSON.parse(state.val);
+    profile.settings.maxChargingCurrent = 'REDUCED';
+    setState(id, JSON.stringify(profile), false);
+}
+```
+
+The API replaces the **whole profile**. Preserve every field you are not changing,
+including additional fields supplied by the API; do not send a partial settings object.
+The adapter validates required fields, numeric IDs, percentages (0–100), supported
+setting values, Boolean flags, unique timer IDs, weekdays and times (`HH:mm`).
+Enabled timers also need a time and the applicable weekday selection. Times use the
+vehicle's local time. The profile ID must match the state path and a complete profile
+from the latest poll. This control updates existing profiles; it does not create or
+delete them. The other profile states remain read-only views.
+
+If a subsequent poll changes, removes or omits the profile before a queued update is
+sent, the update fails locally. Read the latest profile and submit your changes again.
+Changes made in the app after the last poll can still race with a write: the API has
+no conditional-update mechanism, so avoid editing the same profile concurrently.
+
+Mode, charging limit, start/stop and each profile have independent queue entries.
+New writes replace pending updates for the same setting or profile; identical reported
+or pending accepted values are coalesced. Invalid input leaves pending valid commands
+untouched and reports `FAILED` without an acknowledgement. `ack: true` means API
+acceptance; the verification poll checks the reported mode/profile afterwards, subject
+to the usual quota. A confirmation timeout does not automatically resend an update.
+The Public API also advertises supported operations in `<vin>.operations`.
 
 `info.lastCommand.result` is one of:
 
@@ -205,8 +257,9 @@ What this API cannot give you, no matter how it is configured:
 - **No second-by-second monitoring.** 20 requests per hour is one every three minutes,
   and that is the whole budget.
 - **No immediate notification when charging ends.** You learn about it at the next poll.
-- **No current modulation.** The API can set a target state of charge and a charging
-  mode, but it cannot set charging current, so surplus charging remains on/off only.
+- **No current modulation in amperes.** The API can set a target state of charge,
+  a charging mode and a profile's `REDUCED`/`MAXIMUM` preset. It cannot continuously
+  adjust amperage, so the surplus-charging example uses on/off control.
 
 ## PV surplus charging
 
@@ -218,9 +271,10 @@ every PV setup has different state IDs and meter semantics.
 
 Two things decide whether this works for you:
 
-- **Set the AC charging current in the MyŠkoda app to `REDUCED`.** The API cannot set
-  it. At `MAXIMUM` the vehicle pulls whatever the wallbox offers, and a small surplus
-  cannot cover it.
+- **Set the AC charging current to `REDUCED` in the MyŠkoda app or in the applicable
+  charging profile.** Profile updates support `settings.maxChargingCurrent`; there is
+  no dedicated command for the global current setting or arbitrary amperage. At
+  `MAXIMUM` the vehicle pulls whatever the wallbox offers, and a small surplus cannot cover it.
 - **Measure what your vehicle actually draws** (`charging.status.chargePowerInKw`) and
   set your thresholds from that number, not from the label on the wallbox.
 
@@ -268,6 +322,7 @@ reproduce the official Škoda logo; it is distributed under this project's MIT l
 
 - Add a writable charging limit with input validation, quota handling and verification polling.
 - Ignore non-boolean on/off switch writes instead of interpreting them as stop commands.
+- Add writable charging mode and complete charging-profile JSON controls with validation, independent queues and verification polling.
 
 ### 0.1.9 (2026-09-06)
 - Used ioBroker-managed request timers and removed news for the skipped npm version 0.1.7.

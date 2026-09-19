@@ -1,3 +1,4 @@
+import { canonicalJson, isChargingProfile } from '../commands/chargingControls';
 /**
  * StateWriter - traegt die Antwort der API in den ioBroker-Objektbaum ein.
  *
@@ -23,7 +24,13 @@ import { vehicleErrors } from '../api/client';
 import { newestCapturedAt } from '../api/vehicleData';
 import { partFromErrorType } from '../api/parts';
 import type { VehicleResponse } from '../api/types';
-import { CHARGING_LIMIT_PATH, COMMAND_DEFS, COMMAND_RESULTS, type CommandReport } from './commandDefs';
+import {
+	CHARGING_LIMIT_PATH,
+	CHARGING_MODE_PATH,
+	COMMAND_DEFS,
+	COMMAND_RESULTS,
+	type CommandReport,
+} from './commandDefs';
 import { generatedChannels, generatedStateDefs } from './objectDefs.generated';
 import { displayConversions, legacyRoleMigration, resolveCommon } from './objectOverlay';
 import { localizedObjectName } from './objectNames';
@@ -377,6 +384,16 @@ export class StateWriter {
 			const settings = (profile.settings ?? {}) as Record<string, unknown>;
 			await this.ensureChannel(vin, base, typeof profile.name === 'string' ? profile.name : `Profile ${id}`);
 
+			if (isChargingProfile(profile)) {
+				await this.writeDerived(vin, `${base}.configurationJson`, canonicalJson(profile), {
+					name: translated('Charging profile settings', 'Einstellungen des Ladeprofils'),
+					type: 'string',
+					role: 'json',
+					read: true,
+					write: true,
+				});
+			}
+
 			// Die Profilebene steht nicht im Generat - die Spec kennt dort eine Liste,
 			// keine benannten Pfade. Das `common` entsteht deshalb aus einer
 			// synthetischen Definition; die Endungsregeln des Overlays greifen wie
@@ -499,6 +516,9 @@ export class StateWriter {
 				native: {},
 			});
 			await this.migrateLegacyRole(id, path, common);
+			if (path === CHARGING_MODE_PATH) {
+				await this.api.extendObjectAsync(id, { common: { write: true, states: common.states } });
+			}
 			if (path === CHARGING_LIMIT_PATH) {
 				// Upgrade the existing read-only setting without replacing user metadata.
 				const existing = await this.api.getObjectAsync(id);

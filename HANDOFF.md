@@ -30,10 +30,11 @@ technische Arbeitsgrundlage in
    inzwischen vorhanden. Bei Bedarf einen aktuellen Objekt-Export bereitstellen und
    einen erneuten Check anfordern; der aktuelle Kommentarverlauf wurde hier nicht geprüft.
 2. **Nächstes Release vorbereiten.** Unveröffentlichte Änderungen prüfen, insbesondere
-   manuelles Refresh und Ladelimit, und die unten beschriebene Release-Prüfung ausführen.
-3. **Schreibzugriffe für Lademodus und Ladeprofile entwerfen.** Die API und
-   die generierten Typen enthalten diese Operationen bereits; der Adapter spiegelt
-   derzeit nur `vehicle.operations` und bietet dafür noch keine schreibbaren States.
+   manuelles Refresh, Ladelimit, Lademodus und Ladeprofile, und die unten beschriebene
+   Release-Prüfung ausführen.
+3. **Lademodus und Ladeprofile am Fahrzeug prüfen.** Die Schreibzugriffe sind mit
+   Mock- und Integrationstests abgedeckt; die neue Steuerung benötigt noch einen
+   Praxistest mit einem passenden Fahrzeug und dessen verfügbaren Modi/Profilen.
 
 ## Funktionsumfang
 
@@ -42,6 +43,15 @@ Start/Stop für Laden, Klimatisierung, Standheizung und Lüftung sowie das Ladel
 über `charging.settings.targetStateOfChargeInPercent` (50–100 % in 10-Prozent-Schritten).
 Derselbe Datenpunkt wird bei Polls mit der gemeldeten Einstellung aktualisiert. Die VINs
 werden in der Instanz konfiguriert, weil die API keine Fahrzeugliste anbietet.
+
+`charging.settings.preferredChargeMode` ist für die vom Fahrzeug gemeldeten Modi
+schreibbar. `chargingProfiles.profiles.<id>.configurationJson` enthält ein vollständiges
+Profil zum Lesen, Ändern und Zurückschreiben. Teilobjekte werden nicht zusammengeführt;
+unveränderte Felder müssen erhalten bleiben. Profile werden vor dem Senden validiert
+und jeweils unabhängig von anderen Profilen, Modus, Ladelimit und Start/Stop eingereiht.
+Ändert oder entfernt ein Poll das Profil während der Wartezeit, wird der Schreibzugriff
+lokal abgebrochen. Gleichzeitige App-Änderungen nach dem letzten Poll können weiterhin
+kollidieren, weil die API keine bedingten Updates unterstützt.
 
 Die `*.enabled`-Schalter akzeptieren ausschließlich Boolean `true` und `false`.
 Andere Werte werden ohne API-Aufruf, Quittierung oder Änderung wartender Befehle
@@ -179,7 +189,7 @@ gemeinsam prüfen und versionieren.
 
 - automatische Ermittlung von VINs
 - Ver- und Entriegeln, Hupe oder Lichthupe
-- Setzen des Ladestroms
+- Setzen eines beliebigen Ladestroms in Ampere (Profil-Presets `REDUCED`/`MAXIMUM` sind möglich)
 - automatische Erneuerung des API-Schlüssels
 - PV-Regelung; dafür gibt es `examples/pv-surplus-charging.js`
 - Sentry oder andere externe Fehlertelemetrie
