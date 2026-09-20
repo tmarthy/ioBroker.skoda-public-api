@@ -488,7 +488,7 @@ reproduce the official Škoda logo; it is distributed under this project's MIT l
 
 ### Unreleased
 
-- Use a catalogued ioBroker role for editable profile names and complete the instance-object name translations.
+- Use a catalogued ioBroker role for editable profile names, complete the instance-object name translations, and fill missing translations on existing `info.connection` objects at startup.
 
 ### 0.1.10 (2026-09-20)
 

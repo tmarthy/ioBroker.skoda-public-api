@@ -14,6 +14,7 @@ import { KeyExpiryWatcher } from './lib/notifications/keyExpiry';
 import { PollScheduler } from './lib/scheduler/PollScheduler';
 import { StateWriter } from './lib/states/StateWriter';
 import { Lifecycle, ShutdownError } from './lib/lifecycle';
+import { completeConnectionName } from './lib/instanceMetadata';
 import { translateFallback, translated } from './lib/i18n';
 
 /**
@@ -52,6 +53,7 @@ class SkodaPublicApi extends utils.Adapter {
 		this.lifecycle.check();
 		const api = this.lifecycle.guard(this);
 		await api.setState('info.connection', false, true);
+		await completeConnectionName(api);
 		this.lifecycle.check();
 		// Backend text deliberately stays English so logs copied into support issues
 		// remain understandable regardless of the ioBroker system language.

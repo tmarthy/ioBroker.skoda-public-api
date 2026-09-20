@@ -38,6 +38,17 @@ type AdditionalTranslations = readonly [
  * call site so the code is readable there; the other languages are centralized here.
  */
 const OBJECT_NAME_TRANSLATIONS = {
+	'Device or service connected': [
+		'Устройство или служба подключены',
+		'Dispositivo ou serviço ligado',
+		'Apparaat of dienst verbonden',
+		'Appareil ou service connecté',
+		'Dispositivo o servizio connesso',
+		'Dispositivo o servicio conectado',
+		'Urządzenie lub usługa połączone',
+		'Пристрій або служба підключені',
+		'设备或服务已连接',
+	],
 	'Edit charging profile': [
 		'Редактировать профиль зарядки',
 		'Editar perfil de carregamento',

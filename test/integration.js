@@ -181,6 +181,11 @@ tests.integration(path.join(__dirname, '..'), {
 				mock.vehicleState.charging.settings.availableChargeModes = ['MANUAL', 'TIMER'];
 				baseUrl = await mock.start();
 				await configure(harness);
+				const connectionId = `${INSTANCE}.info.connection`;
+				const connection = harness.objects.getObjectAsync ? await harness.objects.getObjectAsync(connectionId) : await harness.objects.getObject(connectionId);
+				connection.common.name = { en: 'Device or service connected', de: 'Gerät oder Dienst verbunden' };
+				if (harness.objects.setObjectAsync) { await harness.objects.setObjectAsync(connectionId, connection); }
+				else { await harness.objects.setObject(connectionId, connection); }
 				const system = harness.objects.getObjectAsync ? await harness.objects.getObjectAsync('system.config') : await harness.objects.getObject('system.config');
 				system.common.language = 'de';
 				if (harness.objects.setObjectAsync) { await harness.objects.setObjectAsync('system.config', system); }
@@ -235,6 +240,8 @@ tests.integration(path.join(__dirname, '..'), {
 				expect(odometer.val).to.be.a('number');
 				const chargingState = await readState(harness, `${VEHICLE}.charging.status.state`);
 				expect(chargingState.val).to.equal('CONNECT_CABLE');
+				const connectionObject = harness.objects.getObjectAsync ? await harness.objects.getObjectAsync(`${INSTANCE}.info.connection`) : await harness.objects.getObject(`${INSTANCE}.info.connection`);
+				expect(Object.keys(connectionObject.common.name)).to.have.members(['en', 'de', 'ru', 'pt', 'nl', 'fr', 'it', 'es', 'pl', 'uk', 'zh-cn']);
 				// Der zusaetzliche Zustand aus E7, den die API selbst nicht liefert.
 				const position = await readState(harness, `${VEHICLE}.parkingPosition.position`);
 				expect(position.val).to.match(/^-?\d+(\.\d+)?;-?\d+(\.\d+)?$/);

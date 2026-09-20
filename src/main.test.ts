@@ -28,6 +28,9 @@ class AdapterDouble extends EventEmitter {
 		this.writes++;
 		return this.readyWrite;
 	}
+	public getObjectAsync(): Promise<null> {
+		return Promise.resolve(null);
+	}
 }
 
 type Instance = AdapterDouble & {
