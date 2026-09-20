@@ -294,13 +294,14 @@ export class CommandQueue {
 	 *
 	 * @param relativeId ID ohne Namensraum, z.B. `TMBJB9NY5RF999999.charging.enabled`.
 	 * @param value Der geschriebene Wert.
+	 * @param profileBase Original editor snapshot for conflict detection.
 	 * @returns Nichts; das Ergebnis geht ueber `onReport` hinaus.
 	 */
-	public submit(relativeId: string, value: unknown): Promise<void> {
+	public submit(relativeId: string, value: unknown, profileBase?: string): Promise<void> {
 		if (this.stopped) {
 			return Promise.resolve();
 		}
-		const task = this.runSubmit(relativeId, value);
+		const task = this.runSubmit(relativeId, value, profileBase);
 		this.submissions.add(task);
 		void task.then(
 			() => this.submissions.delete(task),
@@ -314,8 +315,9 @@ export class CommandQueue {
 	 *
 	 * @param relativeId Relative command state ID.
 	 * @param value Requested state value.
+	 * @param profileBase Original editor snapshot for conflict detection.
 	 */
-	private async runSubmit(relativeId: string, value: unknown): Promise<void> {
+	private async runSubmit(relativeId: string, value: unknown, profileBase?: string): Promise<void> {
 		if (this.stopped) {
 			return;
 		}
@@ -325,6 +327,9 @@ export class CommandQueue {
 			return;
 		}
 
+		if (command.action === 'profile') {
+			command.profileBase = profileBase;
+		}
 		const block = this.blocks.get(command.vin)?.get(command.def.part);
 		const validation = buildCommandBody(command, { spin: this.spin, block });
 		if ((command.action === 'limit' || command.def.setting) && validation.problem) {
@@ -338,6 +343,17 @@ export class CommandQueue {
 		}
 
 		const key = this.keyOf(command);
+		const pendingEntry = this.entries.get(key);
+		const awaiting = this.awaitingState.get(key);
+		const pendingProfile =
+			(pendingEntry && pendingEntry.expiresAt > this.now() ? pendingEntry.command.desired : undefined) ??
+			this.inFlight.get(key) ??
+			(awaiting && awaiting.expiresAt > this.now() ? awaiting.desired : undefined);
+		if (profileBase !== undefined && pendingProfile !== undefined && pendingProfile !== command.desired) {
+			this.log.warn('Another profile update is pending. Wait for fresh vehicle data before applying this draft.');
+			await this.report(command, 'FAILED');
+			return;
+		}
 
 		if (this.unsupported.has(key)) {
 			this.log.warn(this.t('%s: The vehicle does not support this command.', command.name));

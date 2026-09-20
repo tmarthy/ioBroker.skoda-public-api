@@ -290,6 +290,53 @@ quota. The existing mode state becomes writable on the first poll after the upgr
 
 ### Charging profiles
 
+#### Edit individual fields and apply together
+
+After a successful poll, each complete profile has a local editor at
+`<vin>.chargingProfiles.profiles.<id>.edit`:
+
+1. Change `name` or available fields under `settings`, such as
+   `settings.targetStateOfChargeInPercent` and `settings.maxChargingCurrent`.
+2. Adjust existing timers under `timers.<timerId>` (`enabled`, `type`, `time`,
+   `oneOffDay`, and individual `recurringOn.MONDAY` … `SUNDAY` switches), or existing
+   windows under `preferredChargingTimes.<windowId>` (`enabled`, `startTime`, `endTime`).
+3. Write Boolean `true` with `ack: false` to `edit.apply` (**Apply profile changes**).
+   The adapter validates and submits the complete profile through the existing queue.
+
+Several edits produce **one profile update**, not one request per field. Staging,
+resetting and validating use no vehicle API requests. There is no additional read
+before applying, no new polling and no automatic apply or resend. Existing quota,
+retry and verification rules still apply to the submitted command. An unchanged
+apply sends nothing; repeating the same accepted target is coalesced by the queue.
+
+For example, in the ioBroker JavaScript adapter:
+
+```js
+const edit = 'skoda-public-api.0.<VIN>.chargingProfiles.profiles.1.edit';
+await setStateAsync(`${edit}.name`, 'Home', false);
+await setStateAsync(`${edit}.settings.targetStateOfChargeInPercent`, 90, false);
+await setStateAsync(`${edit}.apply`, true, false);
+```
+
+`edit.reset` (**Reset profile draft**) discards local changes and uses the latest
+already-polled profile. `edit.dirty` indicates changes relative to the draft's base;
+it stays true after submission until a poll reports the target or you reset it.
+`edit.conflict` indicates a changed or unavailable base profile; `edit.message`
+explains validation and submission. A field's `ack: true` means **stored locally**,
+not sent or executed. Command outcomes remain in `info.lastCommand` and
+`info.commandConfirmation.chargingProfiles.<id>`.
+
+Polls preserve edited drafts. If the profile changes while you edit, apply is blocked:
+reset and reapply your changes to the new base. A different pending/in-flight profile
+update also blocks an editor submission until resolved or expired. Drafts are not
+restored after an adapter restart: the first valid poll initializes them again, and
+stored editor values cannot be submitted before that poll. Missing/failed profiles
+cannot be applied. Optional settings appear only when supplied by the vehicle;
+timer/window IDs and unknown API fields are preserved, and entries cannot be created
+or deleted here. Existing states for removed fields may remain, but are ignored.
+
+#### Update complete JSON directly
+
 Each complete profile with a safe integer ID gets a writable JSON string state:
 `<vin>.chargingProfiles.profiles.<id>.configurationJson`. It contains the full profile,
 including `id`, `name`, `settings`, `timers` and `preferredChargingTimes`.
@@ -312,7 +359,8 @@ setting values, Boolean flags, unique timer IDs, weekdays and times (`HH:mm`).
 Enabled timers also need a time and the applicable weekday selection. Times use the
 vehicle's local time. The profile ID must match the state path and a complete profile
 from the latest poll. This control updates existing profiles; it does not create or
-delete them. The other profile states remain read-only views.
+delete them. The existing profile detail states remain read-only views; use the
+separate `edit` area below for staged changes.
 
 If a subsequent poll changes, removes or omits the profile before a queued update is
 sent, the update fails locally. Read the latest profile and submit your changes again.
@@ -420,6 +468,7 @@ reproduce the official Škoda logo; it is distributed under this project's MIT l
 - Add writable charging mode and complete charging-profile JSON controls with validation, independent queues and verification polling.
 - Expose per-vehicle polling diagnostics: next due time, persistent last successful poll and the current waiting reason.
 - Expose per-control command confirmation and local timeouts using existing polls only, without additional API requests.
+- Add local charging-profile editors with individual fields, weekday switches, apply/reset buttons and conflict detection; batch changes into one profile update.
 
 ### 0.1.9 (2026-09-06)
 - Used ioBroker-managed request timers and removed news for the skipped npm version 0.1.7.

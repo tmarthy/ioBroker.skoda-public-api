@@ -4,6 +4,7 @@
 import * as utils from '@iobroker/adapter-core';
 import { SkodaApiClient } from './lib/api/client';
 import { createSanitizer } from './lib/api/sanitize';
+import { ProfileEditor } from './lib/commands/ProfileEditor';
 import { CommandQueue } from './lib/commands/CommandQueue';
 import { readConfig } from './lib/config';
 import { pickTestTarget, testConnection } from './lib/connectionTest';
@@ -30,6 +31,7 @@ class SkodaPublicApi extends utils.Adapter {
 	private scheduler?: PollScheduler;
 	private readonly refreshVins = new Set<string>();
 	private queue?: CommandQueue;
+	private profileEditor?: ProfileEditor;
 	private quota?: VehicleQuotaManager;
 	private keyExpiry?: KeyExpiryWatcher;
 	private readonly t = translateFallback;
@@ -122,6 +124,7 @@ class SkodaPublicApi extends utils.Adapter {
 				// Zieltemperatur fuer den Koerper von `air-conditioning/start`.
 				this.lifecycle.check();
 				this.queue?.updateFromResponse(vin, response);
+				await this.profileEditor?.observe(vin, response);
 			},
 			log: this.log,
 			t,
@@ -164,6 +167,7 @@ class SkodaPublicApi extends utils.Adapter {
 			clearTimer: handle => this.clearTimeout(handle as ioBroker.Timeout),
 		});
 		this.queue.start();
+		this.profileEditor = new ProfileEditor(api, (id, value, base) => this.queue!.submit(id, value, base));
 
 		for (const vin of settings.vins) {
 			await api.setObjectNotExistsAsync(`${vin}.refresh`, {
@@ -190,6 +194,7 @@ class SkodaPublicApi extends utils.Adapter {
 		this.subscribeStates('*.charging.settings.targetStateOfChargeInPercent');
 		this.subscribeStates('*.charging.settings.preferredChargeMode');
 		this.subscribeStates('*.chargingProfiles.profiles.*.configurationJson');
+		this.subscribeStates('*.chargingProfiles.profiles.*.edit.*');
 
 		this.log.info(
 			t(
@@ -307,6 +312,10 @@ class SkodaPublicApi extends utils.Adapter {
 				this.scheduler?.requestRefresh(vin);
 				this.run(() => this.lifecycle.guard(this).setStateAsync(path, { val: false, ack: true }));
 			}
+			return;
+		}
+		if (/^[^.]+\.chargingProfiles\.profiles\.-?\d+\.edit\./.test(path)) {
+			this.run(() => this.profileEditor?.handle(path, state.val));
 			return;
 		}
 		this.run(() => this.queue?.submit(path, state.val));

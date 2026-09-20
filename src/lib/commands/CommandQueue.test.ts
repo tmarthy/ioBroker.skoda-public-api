@@ -1,4 +1,5 @@
 import { expect } from 'chai';
+import { canonicalJson } from './chargingControls';
 import { DEFAULT_API_KEY, DEFAULT_VIN, MockSkodaApi } from '../../../test/mock/server';
 import { SkodaApiClient, type ApiResult } from '../api/client';
 import type { CommandAction, CommandDomain, VehicleResponse } from '../api/types';
@@ -325,6 +326,39 @@ describe('commands/CommandQueue => Soll-Zustand, Coalescing, TTL', () => {
 			mock.vehicleState.charging.settings.availableChargeModes = ['MANUAL', 'TIMER'];
 			await feedPoll();
 			mock.requests.length = 0;
+		});
+
+		it('rejects an editor snapshot that changed before admission without consuming quota', async () => {
+			const original = currentProfile();
+			mock.vehicleState.chargingProfiles.profiles[0].name = 'Changed externally';
+			await feedPoll();
+			mock.requests.length = 0;
+			await queue.submit(profilePath(), JSON.stringify({ ...original, name: 'Draft' }), canonicalJson(original));
+			expect(results()).to.deep.equal(['FAILED']);
+			expect(mock.requests).to.have.length(0);
+		});
+
+		it('prevents an editor from overwriting an unresolved profile command and coalesces repeated apply', async () => {
+			const original = currentProfile();
+			const target = JSON.stringify({ ...original, name: 'Draft' });
+			await queue.submit(profilePath(), target, canonicalJson(original));
+			await queue.submit(profilePath(), target, canonicalJson(original));
+			await queue.submit(
+				profilePath(),
+				JSON.stringify({ ...original, name: 'Another draft' }),
+				canonicalJson(original),
+			);
+			expect(results()).to.deep.equal(['SENT', 'COALESCED', 'FAILED']);
+			expect(mock.requests).to.have.length(1);
+		});
+
+		it('allows a changed editor target after an unresolved command expires', async () => {
+			const original = currentProfile();
+			await queue.submit(profilePath(), JSON.stringify({ ...original, name: 'First' }), canonicalJson(original));
+			clock += 11 * MINUTE;
+			await queue.submit(profilePath(), JSON.stringify({ ...original, name: 'Retry' }), canonicalJson(original));
+			expect(results()).to.deep.equal(['SENT', 'SENT']);
+			expect(mock.requests).to.have.length(2);
 		});
 
 		it('sends mode with PUT and coalesces repeats until a newer poll confirms it', async () => {

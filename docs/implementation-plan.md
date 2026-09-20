@@ -201,6 +201,16 @@ API-Quittierung und Verifikations-Polls laufen über dieselbe Queue wie die übr
 Befehle. Mock- und Integrationstests prüfen die neuen Schreibpfade; ein Praxistest
 mit passenden Fahrzeugfunktionen steht noch aus.
 
+### Komfortable Profilbearbeitung
+
+Umgesetzt: lokaler `edit`-Bereich mit Einzelfeldern für Name, vorhandene Einstellungen,
+Timer und Zeitfenster; Wochentage als Schalter. `apply` sendet das vollständige Profil
+über die Queue, `reset` verwirft den Entwurf ohne Request. Ausgangssnapshot und laufende
+Profilbefehle werden vor Versand geprüft. `dirty`, `conflict` und `message` machen den
+Bearbeitungsstand sichtbar. Polls erhalten geänderte Entwürfe; nach Neustart beginnt die
+Bearbeitung mit neuen Fahrzeugdaten. Unit- und Integrationstests sichern die Bündelung
+mehrerer Änderungen und unveränderte API-Aufrufzahlen ab.
+
 ### Laufende Wartung
 
 - Änderungen der OpenAPI-`v0`-Spec prüfen und Codegen anpassen

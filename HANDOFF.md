@@ -211,3 +211,16 @@ gemeinsam prüfen und versionieren.
 - automatische Erneuerung des API-Schlüssels
 - PV-Regelung; dafür gibt es `examples/pv-surplus-charging.js`
 - Sentry oder andere externe Fehlertelemetrie
+
+## Lokale Profilbearbeitung
+
+- `ProfileEditor` stellt unter `chargingProfiles.profiles.<id>.edit` Einzelfelder,
+  Wochentagsschalter sowie `apply`/`reset` bereit. Eingaben und Polls werden serialisiert.
+- Feldänderungen bleiben lokal; Apply nutzt die bestehende Queue mit vollständigem Profil
+  und ursprünglichem Snapshot. Keine zusätzlichen Lese- oder Verifikationsrequests.
+- `dirty`, `conflict`, `message` beschreiben den Entwurf; ACK bedeutet lokal gespeichert.
+  Befehlsstatus und Bestätigung bleiben in `info.lastCommand`/`info.commandConfirmation`.
+- Bei Neustart werden Entwürfe erst aus dem nächsten gültigen Poll neu aufgebaut.
+  Geänderte/fehlende Profile und abweichende laufende Profilbefehle blockieren Apply.
+- Tests prüfen unter anderem Konflikte, Timer-IDs, Validierung, unbekannte Felder,
+  Neustart und mehrere Feldänderungen mit genau einem PUT im Integrationstest.

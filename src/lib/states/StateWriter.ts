@@ -378,6 +378,7 @@ export class StateWriter {
 		return (
 			path !== 'refresh' &&
 			!path.startsWith('info.') &&
+			!/^chargingProfiles\.profiles\.-?\d+\.edit\./.test(path) &&
 			!COMMAND_DEFS.some(def => path === `${def.part}.start` || path === `${def.part}.stop`)
 		);
 	}

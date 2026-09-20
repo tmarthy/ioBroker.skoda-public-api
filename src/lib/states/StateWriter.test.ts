@@ -70,6 +70,14 @@ describe('states/StateWriter => Antwort in den Objektbaum', () => {
 		expect(beweis).to.equal(true);
 	});
 
+	it('does not mark persisted local profile drafts as stale vehicle measurements', async () => {
+		const id = `${VIN}.chargingProfiles.profiles.1.edit.name`;
+		await adapter.setStateAsync(id, { val: 'Local draft', ack: true, q: 0 });
+		await writer.write(VIN, fixture('charging'));
+		expect(adapter.quality(id)).to.equal(0);
+		expect(adapter.val(id)).to.equal('Local draft');
+	});
+
 	describe('command confirmation', () => {
 		const accepted = (): CommandConfirmation => ({
 			channel: 'charging',

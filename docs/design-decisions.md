@@ -205,6 +205,23 @@ Validierung und ein Vergleich mit dem zuletzt gepollten Profil verhindern ungül
 Requests und das Überschreiben zwischenzeitlich erkannter Änderungen. Ohne serverseitige
 Versionsprüfung lassen sich noch nicht gepollte App-Änderungen nicht erkennen.
 
+### E17 — Profilentwürfe lokal bearbeiten, explizit gemeinsam senden
+`chargingProfiles.profiles.<id>.edit.*` trennt lokale Eingaben von den gelesenen
+Fahrzeugdaten. Vorhandene Einstellungen, Timer und Zeitfenster werden über stabile IDs
+bearbeitet; unbekannte API-Felder bleiben erhalten. `apply` übergibt genau ein vollständiges
+Profil an die vorhandene Queue, `reset` verwendet ausschließlich den letzten Poll.
+Einzelfeldänderungen und Reset erzeugen keine Requests. ACK im Editor bedeutet nur lokal
+übernommen; Befehlsannahme und Fahrzeugbestätigung stehen weiterhin in den Diagnose-States.
+
+Entwürfe behalten ihre Ausgangsversion. Änderungen aus späteren Polls blockieren Apply;
+die Queue prüft dieselbe Ausgangsversion nochmals bei Aufnahme und Versand. Ein abweichendes
+noch laufendes Profilupdate darf durch den Editor nicht überschrieben werden. Wiederholtes
+Apply desselben Ziels verwendet das bestehende Coalescing. Abgelaufene Befehle sperren keine
+manuellen Wiederholungen. Entwürfe werden nach Neustart erst mit einem erfolgreichen Poll
+neu initialisiert, nie automatisch wiederhergestellt oder gesendet. Die vorhandenen
+JSON-Befehle bleiben kompatibel. Nicht gepollte App-Änderungen bleiben wegen fehlender
+serverseitiger Versionsprüfung weiterhin ein Restrisiko.
+
 ## Bekannte Restrisiken
 
 1. **Bang-Bang bleibt ein Kompromiss.** Die Wirksamkeit des Überschussladens

@@ -325,7 +325,7 @@ tests.integration(path.join(__dirname, '..'), {
 				expect(mock.requests.some(request => request.method === 'PUT' && request.path.endsWith('/charging/limit'))).to.equal(true);
 			});
 
-			it('sets charging mode and a complete profile through subscribed writable states', async function () {
+			it('sets charging mode and applies staged profile fields with a single PUT', async function () {
 				this.timeout(30000);
 				const modeId = `${VEHICLE}.charging.settings.preferredChargeMode`;
 				await setState(harness, modeId, { val: 'TIMER', ack: false });
@@ -337,12 +337,26 @@ tests.integration(path.join(__dirname, '..'), {
 				const profileId = `${VEHICLE}.chargingProfiles.profiles.1.configurationJson`;
 				const profile = JSON.parse((await readState(harness, profileId)).val);
 				profile.name = 'Updated through ioBroker';
-				await setState(harness, profileId, { val: JSON.stringify(profile), ack: false });
+				const editRoot = `${VEHICLE}.chargingProfiles.profiles.1.edit`;
+				const beforeEdit = mock.requests.length;
+				profile.settings.targetStateOfChargeInPercent = 90;
+				profile.timers[0].time = '08:15';
+				for (const [field, value] of [['name', profile.name], ['settings.targetStateOfChargeInPercent', 90], ['timers.1.time', '08:15']]) {
+					await setState(harness, `${editRoot}.${field}`, { val: value, ack: false });
+					await waitFor(`staged ${field}`, async () => {
+						const state = await getState(harness, `${editRoot}.${field}`);
+						return state?.ack === true && state.val === value;
+					});
+				}
+				expect(mock.requests).to.have.length(beforeEdit);
+				expect((await readState(harness, `${editRoot}.dirty`)).val).to.equal(true);
+				await setState(harness, `${editRoot}.apply`, { val: true, ack: false });
 				await waitFor('profile acceptance', async () => {
 					const state = await getState(harness, profileId);
 					return state?.ack === true && JSON.parse(state.val).name === profile.name;
 				});
 				expect(mock.vehicleState.chargingProfiles.profiles[0]).to.deep.equal(profile);
+				expect(mock.requests).to.have.length(beforeEdit + 1);
 				// Simulate newly captured vehicle data for the already scheduled verification poll.
 				const captured = new Date(Date.now() + 5).toISOString();
 				mock.vehicleState.charging.carCapturedTimestamp = captured;
@@ -369,6 +383,7 @@ tests.integration(path.join(__dirname, '..'), {
 					return true;
 				});
 				expect((await readState(harness, `${VEHICLE}.info.lastCommand.result`)).val).to.equal('SENT');
+				await waitFor('profile draft matches vehicle', async () => (await getState(harness, `${VEHICLE}.chargingProfiles.profiles.1.edit.dirty`))?.val === false);
 				expect(mock.requests).to.have.length(7); // Same baseline: 3 GETs, 1 POST and 3 PUTs.
 				expect(mock.requests.filter(request => request.method === 'GET')).to.have.length(3);
 				expect((await readState(harness, `${VEHICLE}.charging.settings.targetStateOfChargeInPercent`)).val).to.equal(90);
