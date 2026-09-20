@@ -10,10 +10,11 @@ technische Arbeitsgrundlage in
 
 - Das öffentliche Repository ist
   [`tmarthy/ioBroker.skoda-public-api`](https://github.com/tmarthy/ioBroker.skoda-public-api).
-- Auf npm ist Version `0.1.9` veröffentlicht (geprüft am 19. September 2026).
-  `package.json` und `io-package.json` stehen ebenfalls auf `0.1.9`.
-  Der Entwicklungsstand enthält zusätzlich unter anderem den manuellen Refresh
-  und das schreibbare Ladelimit; unveröffentlichte Änderungen stehen im README-Changelog.
+- Version `0.1.10` ist in `package.json`, `package-lock.json`, `io-package.json`,
+  den ioBroker-News und im README-Changelog vorbereitet. Der Tag `v0.1.10` löst
+  nach dem Push die CI-Matrix und bei Erfolg npm Trusted Publishing sowie den
+  GitHub-Release aus. Bis zum erfolgreichen Workflow bleibt `0.1.9` die zuletzt
+  bestätigte npm-Veröffentlichung.
 - Der Antrag auf Aufnahme in ioBroker `latest` ist als
   [`ioBroker.repositories#6592`](https://github.com/ioBroker/ioBroker.repositories/pull/6592)
   weiterhin offen (geprüft am 19. September 2026).

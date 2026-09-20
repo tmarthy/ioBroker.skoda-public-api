@@ -1,8 +1,21 @@
 {
   "common": {
     "name": "skoda-public-api",
-    "version": "0.1.9",
+    "version": "0.1.10",
     "news": {
+      "0.1.10": {
+        "en": "Added writable charging limit, mode and profiles, convenient profile editing, polling diagnostics and visible command confirmation.",
+        "de": "Schreibbares Ladelimit, Lademodus und Ladeprofile, komfortable Profilbearbeitung, Abfragediagnose und sichtbare Befehlsbestätigung ergänzt.",
+        "ru": "Добавлены управление лимитом, режимом и профилями зарядки, удобное редактирование профилей, диагностика опроса и подтверждение команд.",
+        "pt": "Adicionados limite, modo e perfis de carregamento editáveis, edição cómoda de perfis, diagnóstico de consultas e confirmação de comandos.",
+        "nl": "Schrijfbare laadlimiet, laadmodus en laadprofielen, eenvoudige profielbewerking, opvraagdiagnostiek en opdrachtbevestiging toegevoegd.",
+        "fr": "Ajout de la limite, du mode et des profils de recharge modifiables, de l’édition des profils, du diagnostic des interrogations et de la confirmation des commandes.",
+        "it": "Aggiunti limite, modalità e profili di ricarica modificabili, modifica dei profili, diagnostica delle letture e conferma dei comandi.",
+        "es": "Se añadieron límite, modo y perfiles de carga editables, edición cómoda de perfiles, diagnósticos de consultas y confirmación de comandos.",
+        "pl": "Dodano zapisywalny limit, tryb i profile ładowania, wygodną edycję profili, diagnostykę odczytów i potwierdzenie poleceń.",
+        "uk": "Додано керування лімітом, режимом і профілями заряджання, зручне редагування профілів, діагностику опитування та підтвердження команд.",
+        "zh-cn": "新增可写的充电限制、模式和配置、便捷的配置编辑、查询诊断及命令确认。"
+      },
       "0.1.9": {
         "en": "Used ioBroker-managed request timers and removed news for the skipped npm version 0.1.7.",
         "de": "ioBroker-verwaltete Request-Timer verwendet und den News-Eintrag für die übersprungene npm-Version 0.1.7 entfernt.",
@@ -80,19 +93,6 @@
         "pl": "Uzupełniono brakujące tłumaczenia interfejsu administratora dla wszystkich obsługiwanych języków",
         "uk": "Додано відсутні переклади інтерфейсу адміністратора для всіх підтримуваних мов",
         "zh-cn": "补全了所有受支持语言中缺失的管理界面翻译"
-      },
-      "0.1.2": {
-        "en": "Resolved repository checker warnings for CI test discovery, environment access, changelog archiving, and npm packaging",
-        "de": "Repository-Checker-Warnungen für CI-Testerkennung, Umgebungszugriff, Changelog-Archivierung und npm-Paketierung behoben",
-        "ru": "Устранены предупреждения проверки репозитория для обнаружения CI-тестов, доступа к окружению, архива журнала изменений и упаковки npm",
-        "pt": "Resolvidos avisos do verificador do repositório sobre testes de CI, acesso ao ambiente, arquivo do changelog e pacote npm",
-        "nl": "Repositorychecker-waarschuwingen opgelost voor CI-testdetectie, omgevingstoegang, changelogarchivering en npm-pakkettering",
-        "fr": "Résolution des avertissements du vérificateur concernant les tests CI, l’accès à l’environnement, l’archivage du changelog et le paquet npm",
-        "it": "Risolti gli avvisi del controllo repository relativi ai test CI, all’accesso all’ambiente, all’archiviazione del changelog e al pacchetto npm",
-        "es": "Resueltos los avisos del verificador sobre pruebas de CI, acceso al entorno, archivo del historial y empaquetado npm",
-        "pl": "Usunięto ostrzeżenia kontroli repozytorium dotyczące testów CI, dostępu do środowiska, archiwizacji zmian i pakowania npm",
-        "uk": "Усунено попередження перевірки репозиторію щодо CI-тестів, доступу до середовища, архіву змін і пакування npm",
-        "zh-cn": "解决了有关 CI 测试发现、环境访问、变更日志归档和 npm 打包的仓库检查警告"
       }
     },
     "titleLang": {

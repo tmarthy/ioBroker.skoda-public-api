@@ -486,7 +486,7 @@ reproduce the official Škoda logo; it is distributed under this project's MIT l
 
 ## Changelog
 
-### Unreleased
+### 0.1.10 (2026-09-20)
 
 - Add a writable charging limit with input validation, quota handling and verification polling.
 - Ignore non-boolean on/off switch writes instead of interpreting them as stop commands.

@@ -130,9 +130,9 @@ npm run mock
 SKODA_API_BASE_URL=http://127.0.0.1:8099 npx iobroker-dev-server run default
 ```
 
-Normale Pushes und Pull Requests führen TypeScript, ESLint und einen Ubuntu-Test mit
-Node 22 aus. Tags und manuelle Workflow-Läufe prüfen Ubuntu, Windows und macOS mit
-Node 22 und 24. Ein Versions-Tag veröffentlicht über npm Trusted Publishing und erzeugt
+Pushes, Pull Requests und Tags führen TypeScript, ESLint und die Adaptertests
+unter Ubuntu, Windows und macOS mit Node 22, 24 und 26 aus. Ein Versions-Tag
+veröffentlicht nach erfolgreicher Matrix über npm Trusted Publishing und erzeugt
 den GitHub-Release.
 
 Vor einem Release:
