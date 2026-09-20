@@ -335,9 +335,9 @@ cannot be applied. Optional settings appear only when supplied by the vehicle;
 timer/window IDs and unknown API fields are preserved, and entries cannot be created
 or deleted here.
 
-Editor fields use configuration roles where they are unique within a channel
-(`switch.setting`, `level.setting.battery`, `level.setting.battery.min`, `text.setting`).
-Repeated text fields use the generic `text` role and weekday switches use `switch`,
+Boolean and numeric editor fields use configuration roles where they are unique within a channel
+(`switch.setting`, `level.setting.battery`, `level.setting.battery.min`).
+Text fields use the generic `text` role and weekday switches use `switch`,
 so detailed roles never occur twice in the same channel. These are still local drafts;
 only Apply submits them. Field names and help texts support all ioBroker languages;
 selection labels, editor messages and polling/confirmation status labels use the
@@ -485,6 +485,10 @@ themselves. The adapter icon is original, brand-neutral project artwork and does
 reproduce the official Škoda logo; it is distributed under this project's MIT license.
 
 ## Changelog
+
+### Unreleased
+
+- Use a catalogued ioBroker role for editable profile names and complete the instance-object name translations.
 
 ### 0.1.10 (2026-09-20)
 

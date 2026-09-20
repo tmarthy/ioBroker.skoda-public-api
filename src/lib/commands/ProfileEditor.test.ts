@@ -154,6 +154,7 @@ describe('commands/ProfileEditor => local drafts and explicit apply', () => {
 		expect(common('settings.minBatteryStateOfCharge.minimumBatteryStateOfChargeInPercent').role).to.equal(
 			'level.setting.battery.min',
 		);
+		expect(common('name').role).to.equal('text');
 		expect(common('timers.1.time').role).to.equal('text');
 		expect(common('apply')).to.include({ role: 'button', read: false, write: true });
 		expect(common('timers.1.time').name).to.have.property('de', 'Abfahrtszeit');

@@ -11,6 +11,14 @@ describe('io-package metadata', () => {
 		const ioPackage = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'io-package.json'), 'utf8'));
 		assert.ok(Object.keys(ioPackage.common.news).length <= 7);
 	});
+
+	it('provides all supported languages for instance object names', () => {
+		const ioPackage = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'io-package.json'), 'utf8'));
+		const languages = ['en', 'de', 'ru', 'pt', 'nl', 'fr', 'it', 'es', 'pl', 'uk', 'zh-cn'];
+		for (const object of ioPackage.instanceObjects) {
+			assert.deepEqual(Object.keys(object.common.name).sort(), [...languages].sort(), object._id);
+		}
+	});
 });
 
 describe('admin translations', () => {

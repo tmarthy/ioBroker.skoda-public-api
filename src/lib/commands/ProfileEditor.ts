@@ -348,9 +348,7 @@ export class ProfileEditor {
 								? field.path.includes('minimumBattery')
 									? 'level.setting.battery.min'
 									: 'level.setting.battery'
-								: field.path === 'name'
-									? 'text.setting'
-									: 'text',
+								: 'text',
 					read: true,
 					write: available.has(field.path),
 					...(field.states
