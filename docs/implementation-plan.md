@@ -211,6 +211,13 @@ Bearbeitungsstand sichtbar. Polls erhalten geänderte Entwürfe; nach Neustart b
 Bearbeitung mit neuen Fahrzeugdaten. Unit- und Integrationstests sichern die Bündelung
 mehrerer Änderungen und unveränderte API-Aufrufzahlen ab.
 
+Zusätzlich umgesetzt: spezifische Einstellungsrollen, vollständige Feldbeschriftungen
+und Hilfetexte sowie lokalisierte Auswahlwerte. Alte Objekte werden ohne Verlust eigener
+Namen oder History-Einstellungen migriert. Entfernte beziehungsweise noch nicht frisch
+bestätigte Editorfelder sind schreibgeschützt und als nicht verfügbar gekennzeichnet;
+`edit.available` zeigt die Profilverfügbarkeit. Wiederkehrende Felder werden reaktiviert.
+Tests decken Rollen, Sprache, Migration, Neustart und Verfügbarkeitswechsel ab.
+
 ### Laufende Wartung
 
 - Änderungen der OpenAPI-`v0`-Spec prüfen und Codegen anpassen

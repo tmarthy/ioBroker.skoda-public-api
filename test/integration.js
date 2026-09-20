@@ -338,6 +338,13 @@ tests.integration(path.join(__dirname, '..'), {
 				const profile = JSON.parse((await readState(harness, profileId)).val);
 				profile.name = 'Updated through ioBroker';
 				const editRoot = `${VEHICLE}.chargingProfiles.profiles.1.edit`;
+				await waitFor('available profile editor', async () => (await getState(harness, `${editRoot}.available`))?.val === true);
+				const fieldObject = harness.objects.getObjectAsync
+					? await harness.objects.getObjectAsync(`${editRoot}.timers.1.time`)
+					: await harness.objects.getObject(`${editRoot}.timers.1.time`);
+				expect(fieldObject.common.role).to.equal('text.setting');
+				expect(fieldObject.common.name.de).to.equal('Abfahrtszeit');
+				expect(fieldObject.common.desc.de).to.include('Fahrzeug-Ortszeit');
 				const beforeEdit = mock.requests.length;
 				profile.settings.targetStateOfChargeInPercent = 90;
 				profile.timers[0].time = '08:15';

@@ -167,7 +167,14 @@ class SkodaPublicApi extends utils.Adapter {
 			clearTimer: handle => this.clearTimeout(handle as ioBroker.Timeout),
 		});
 		this.queue.start();
-		this.profileEditor = new ProfileEditor(api, (id, value, base) => this.queue!.submit(id, value, base));
+		const systemConfig = await api.getForeignObjectAsync('system.config');
+		this.profileEditor = new ProfileEditor(
+			api,
+			(id, value, base) => this.queue!.submit(id, value, base),
+			systemConfig?.common.language ?? 'en',
+		);
+		await this.profileEditor.initialize(settings.vins);
+		this.lifecycle.check();
 
 		for (const vin of settings.vins) {
 			await api.setObjectNotExistsAsync(`${vin}.refresh`, {

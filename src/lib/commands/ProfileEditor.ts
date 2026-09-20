@@ -2,6 +2,7 @@
 import { vehicleErrors } from '../api/client';
 import { partFromErrorType } from '../api/parts';
 import type { VehicleResponse } from '../api/types';
+import { EDITOR_LABELS, EDITOR_CHOICES, EDITOR_DESCRIPTIONS, weekdayLabel } from './profileEditorLabels';
 import { translated } from '../i18n';
 import { localizedObjectName } from '../states/objectNames';
 import type { StateApi } from '../states/StateWriter';
@@ -114,16 +115,57 @@ function setField(profile: Profile, path: string, value: unknown): void {
 export class ProfileEditor {
 	private readonly drafts = new Map<string, Draft>();
 	private readonly created = new Set<string>();
+	private readonly metadata = new Map<string, ioBroker.StateCommon>();
+	private readonly values = new Map<string, ioBroker.StateValue>();
 	private chain: Promise<void> = Promise.resolve();
 
 	/**
 	 * @param api Local ioBroker state storage.
 	 * @param submit Existing command queue, with the original snapshot for conflict detection.
+	 * @param language System language for selection labels (common.states requires strings).
 	 */
 	public constructor(
 		private readonly api: StateApi,
 		private readonly submit: (id: string, value: string, base: string) => Promise<void>,
+		private readonly language: string = 'en',
 	) {}
+
+	/**
+	 * Disable persisted controls until a fresh poll establishes their availability.
+	 *
+	 * @param vins Configured vehicle IDs.
+	 */
+	public initialize(vins: readonly string[]): Promise<void> {
+		return this.serial(async () => {
+			for (const vin of vins) {
+				const prefix = `${vin}.${ROOT}.`;
+				const states = await this.api.getStatesAsync(`${prefix}*`);
+				const roots = new Set<string>();
+				for (const [fullId, state] of Object.entries(states)) {
+					const start = fullId.indexOf(prefix);
+					if (start < 0 || !state) {
+						continue;
+					}
+					const id = fullId.slice(start);
+					const match = /^-?\d+\.edit\./.exec(id.slice(prefix.length));
+					if (!match) {
+						continue;
+					}
+					const root = id.slice(0, id.indexOf('.edit.') + 5);
+					roots.add(root);
+					const object = await this.api.getObjectAsync(id);
+					if (object?.type === 'state') {
+						this.metadata.set(id, object.common);
+						this.values.set(id, state.val);
+					}
+				}
+				for (const root of roots) {
+					await this.disableUnused(root, new Set());
+					await this.availability(root, false);
+				}
+			}
+		});
+	}
 
 	/**
 	 * Update drafts from an already scheduled poll; never fetches data itself.
@@ -179,6 +221,10 @@ export class ProfileEditor {
 			const path = id.slice(root.length + 1);
 			const draft = this.drafts.get(root);
 			if (!draft) {
+				const common = this.metadata.get(id);
+				if (common && !['dirty', 'conflict', 'message', 'available'].includes(path)) {
+					await this.state(id, this.values.get(id) ?? null, common, 1);
+				}
 				return;
 			} // No persisted draft is ever submitted before a fresh poll.
 			if (path === 'apply' || path === 'reset') {
@@ -207,8 +253,12 @@ export class ProfileEditor {
 					draft.message = 'Submitted to command queue. See info.lastCommand and info.commandConfirmation.';
 				}
 			} else {
-				const field = fields(draft.value).find(field => field.path === path);
+				const field =
+					draft.current && fields(JSON.parse(draft.current)).some(field => field.path === path)
+						? fields(draft.value).find(field => field.path === path)
+						: undefined;
 				if (!field) {
+					await this.write(root, draft);
 					return;
 				}
 				const valid =
@@ -249,38 +299,86 @@ export class ProfileEditor {
 	 */
 	private async write(root: string, draft: Draft): Promise<void> {
 		await this.channel(root, translated('Edit charging profile', 'Ladeprofil bearbeiten'));
+		const available = new Set(draft.current ? fields(JSON.parse(draft.current)).map(field => field.path) : []);
+		const active = new Set<string>();
 		for (const field of fields(draft.value)) {
 			const parts = field.path.split('.');
 			for (let i = 1; i < parts.length; i++) {
 				await this.channel(
 					`${root}.${parts.slice(0, i).join('.')}`,
-					localizedObjectName(parts[i - 1], parts[i - 1]),
+					EDITOR_LABELS[parts[i - 1] as keyof typeof EDITOR_LABELS] ??
+						localizedObjectName(parts[i - 1], parts[i - 1]),
 				);
 			}
-			await this.state(`${root}.${field.path}`, field.value, {
-				name: localizedObjectName(field.path, field.path),
-				type: typeof field.value as 'string' | 'number' | 'boolean',
-				role: typeof field.value === 'boolean' ? 'switch' : typeof field.value === 'number' ? 'level' : 'text',
-				read: true,
-				write: true,
-				...(field.states
-					? { states: Object.fromEntries(field.states.map(value => [value, value || '—'])) }
-					: {}),
-				...(field.percent ? { unit: '%', min: 0, max: 100, step: 1 } : {}),
-			});
+			await this.state(
+				`${root}.${field.path}`,
+				field.value,
+				{
+					name:
+						weekdayLabel(parts.at(-1)!) ??
+						EDITOR_LABELS[parts.at(-1)! as keyof typeof EDITOR_LABELS] ??
+						localizedObjectName(field.path, field.path),
+					desc: !available.has(field.path)
+						? EDITOR_DESCRIPTIONS.unavailable
+						: /(?:^|\.)(?:time|startTime|endTime)$/.test(field.path)
+							? EDITOR_DESCRIPTIONS.time
+							: EDITOR_DESCRIPTIONS.field,
+					type: typeof field.value as 'string' | 'number' | 'boolean',
+					role:
+						typeof field.value === 'boolean'
+							? 'switch.setting'
+							: typeof field.value === 'number'
+								? field.path.includes('minimumBattery')
+									? 'level.setting.battery.min'
+									: 'level.setting.battery'
+								: 'text.setting',
+					read: true,
+					write: available.has(field.path),
+					...(field.states
+						? {
+								states: Object.fromEntries(
+									field.states.map(value => {
+										const names =
+											weekdayLabel(value) ?? EDITOR_CHOICES[value as keyof typeof EDITOR_CHOICES];
+										return [
+											value,
+											names?.[this.language as keyof typeof names] ?? names?.en ?? value,
+										];
+									}),
+								),
+							}
+						: {}),
+					...(field.percent ? { unit: '%', min: 0, max: 100, step: 1 } : {}),
+				},
+				available.has(field.path) ? 0 : 1,
+			);
+			if (available.has(field.path)) {
+				active.add(`${root}.${field.path}`);
+			}
 		}
 		for (const button of ['apply', 'reset'] as const) {
-			await this.state(`${root}.${button}`, false, {
-				name:
-					button === 'apply'
-						? translated('Apply profile changes', 'Profiländerungen übernehmen')
-						: translated('Reset profile draft', 'Profilentwurf zurücksetzen'),
-				type: 'boolean',
-				role: 'button',
-				read: false,
-				write: true,
-			});
+			await this.state(
+				`${root}.${button}`,
+				false,
+				{
+					name:
+						button === 'apply'
+							? translated('Apply profile changes', 'Profiländerungen übernehmen')
+							: translated('Reset profile draft', 'Profilentwurf zurücksetzen'),
+					desc: draft.current ? EDITOR_DESCRIPTIONS[button] : EDITOR_DESCRIPTIONS.unavailable,
+					type: 'boolean',
+					role: 'button',
+					read: false,
+					write: draft.current !== undefined,
+				},
+				draft.current ? 0 : 1,
+			);
+			if (draft.current) {
+				active.add(`${root}.${button}`);
+			}
 		}
+		await this.disableUnused(root, active);
+		await this.availability(root, draft.current !== undefined);
 		await this.state(`${root}.dirty`, canonicalJson(draft.value) !== draft.base, {
 			name: translated('Profile draft changed', 'Profilentwurf geändert'),
 			type: 'boolean',
@@ -312,23 +410,100 @@ export class ProfileEditor {
 	 */
 	private async channel(id: string, name: ioBroker.StringOrTranslated): Promise<void> {
 		if (!this.created.has(id)) {
+			const existing = await this.api.getObjectAsync(id);
 			await this.api.setObjectNotExistsAsync(id, { type: 'channel', common: { name }, native: {} });
+			if (existing && existing.common.name === id.split('.').at(-1)) {
+				await this.api.extendObjectAsync(id, { common: { name } });
+			}
 			this.created.add(id);
 		}
 	}
 
 	/**
-	 * Create a field and acknowledge local staging, not vehicle execution.
+	 * Keep obsolete controls visible but read-only and flagged as unavailable.
+	 *
+	 * @param root Profile editor path.
+	 * @param active State IDs supported by the latest response.
+	 */
+	private async disableUnused(root: string, active: Set<string>): Promise<void> {
+		for (const [id, common] of this.metadata) {
+			if (
+				!id.startsWith(`${root}.`) ||
+				active.has(id) ||
+				['dirty', 'conflict', 'message', 'available'].includes(id.slice(root.length + 1))
+			) {
+				continue;
+			}
+			await this.state(
+				id,
+				this.values.get(id) ?? null,
+				{ ...common, write: false, desc: EDITOR_DESCRIPTIONS.unavailable },
+				1,
+			);
+		}
+	}
+
+	/**
+	 * Expose profile availability independently of draft conflicts.
+	 *
+	 * @param root Profile editor path.
+	 * @param available Whether current polled data contains a valid profile.
+	 */
+	private async availability(root: string, available: boolean): Promise<void> {
+		await this.state(`${root}.available`, available, {
+			name: EDITOR_LABELS.available,
+			type: 'boolean',
+			role: 'indicator',
+			read: true,
+			write: false,
+		});
+	}
+
+	/**
+	 * Migrate owned metadata while retaining custom names and other user settings.
 	 *
 	 * @param id Relative state ID.
 	 * @param val Local value.
 	 * @param common Field metadata.
+	 * @param quality Zero for available data, one for unavailable retained values.
 	 */
-	private async state(id: string, val: ioBroker.StateValue, common: ioBroker.StateCommon): Promise<void> {
-		if (!this.created.has(id)) {
-			await this.api.setObjectNotExistsAsync(id, { type: 'state', common, native: {} });
-			this.created.add(id);
+	private async state(
+		id: string,
+		val: ioBroker.StateValue,
+		common: ioBroker.StateCommon,
+		quality: 0 | 1 = 0,
+	): Promise<void> {
+		let previous = this.metadata.get(id);
+		if (!previous) {
+			const existing = await this.api.getObjectAsync(id);
+			if (existing?.type === 'state') {
+				previous = existing.common;
+			} else {
+				await this.api.setObjectNotExistsAsync(id, { type: 'state', common, native: {} });
+			}
 		}
-		await this.api.setStateChangedAsync(id, { val, ack: true, q: 0 });
+		if (previous) {
+			const legacyName = id.slice(id.indexOf('.edit.') + 6);
+			if (previous.name !== legacyName) {
+				common = { ...common, name: previous.name };
+			}
+			const patch = Object.fromEntries(
+				Object.entries(common).filter(
+					([key, value]) =>
+						canonicalJson(previous[key as keyof ioBroker.StateCommon]) !== canonicalJson(value),
+				),
+			);
+			if (Object.keys(patch).length) {
+				await this.api.extendObjectAsync(id, { common: patch });
+			}
+		}
+		this.metadata.set(id, { ...previous, ...common });
+		this.values.set(id, val);
+		const state = await this.api.getStateAsync(id);
+		if ((state?.q ?? 0) !== quality) {
+			await this.api.setStateAsync(id, { val, ack: true, q: quality });
+		} else {
+			await this.api.setStateChangedAsync(id, { val, ack: true, q: quality });
+		}
 	}
 }

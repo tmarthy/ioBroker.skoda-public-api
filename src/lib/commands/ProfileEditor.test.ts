@@ -4,6 +4,7 @@ import path from 'node:path';
 import { FakeAdapter } from '../../../test/helpers/fakeAdapter';
 import type { VehicleResponse } from '../api/types';
 import { ProfileEditor } from './ProfileEditor';
+import { OBJECT_NAME_LANGUAGES } from '../i18n';
 import { canonicalJson } from './chargingControls';
 
 const VIN = 'TMBJB9NY5RF999999';
@@ -141,5 +142,111 @@ describe('commands/ProfileEditor => local drafts and explicit apply', () => {
 		expect(profile.name).to.equal('Serial');
 		expect(profile.timers.find((timer: { id: number }) => timer.id === 1).time).to.equal('10:30');
 		expect(profile.timers[0].id).to.equal(3);
+	});
+	it('uses setting roles, translated field names and localized choices with help text', async () => {
+		editor = new ProfileEditor(api, () => Promise.resolve(), 'de');
+		await editor.initialize([VIN]);
+		await editor.observe(VIN, fixture());
+		const common = (field: string): ioBroker.StateCommon =>
+			api.objects.get(`${ROOT}.${field}`)!.common as ioBroker.StateCommon;
+		expect(common('timers.1.enabled').role).to.equal('switch.setting');
+		expect(common('settings.targetStateOfChargeInPercent').role).to.equal('level.setting.battery');
+		expect(common('settings.minBatteryStateOfCharge.minimumBatteryStateOfChargeInPercent').role).to.equal(
+			'level.setting.battery.min',
+		);
+		expect(common('timers.1.time').role).to.equal('text.setting');
+		expect(common('apply')).to.include({ role: 'button', read: false, write: true });
+		expect(common('timers.1.time').name).to.have.property('de', 'Abfahrtszeit');
+		expect(common('timers.1.time').desc).to.have.property('de').that.includes('Fahrzeug-Ortszeit');
+		expect(common('timers.1.type').states).to.deep.equal({ ONE_OFF: 'Einmalig', RECURRING: 'Wiederkehrend' });
+		expect(common('timers.1.oneOffDay').states).to.have.property('MONDAY', 'Montag');
+		expect(common('timers.1.recurringOn.MONDAY').name).to.have.property('de', 'Montag');
+		for (const [id, object] of api.objects) {
+			if (id.startsWith(`${ROOT}.`) && object.type === 'state') {
+				expect(Object.keys(object.common.name)).to.have.members([...OBJECT_NAME_LANGUAGES]);
+			}
+		}
+	});
+
+	it('disables removed fields, preserves their values, rejects writes, and reactivates returning fields', async () => {
+		const response = fixture();
+		response.vehicle.chargingProfiles!.profiles[0].timers = [];
+		delete response.vehicle.chargingProfiles!.profiles[0].settings.maxChargingCurrent;
+		await editor.observe(VIN, response);
+		const id = `${ROOT}.timers.1.time`;
+		expect(api.objects.get(id)!.common).to.have.property('write', false);
+		expect(api.objects.get(id)!.common)
+			.to.have.property('desc')
+			.that.has.property('de')
+			.that.includes('nicht verfügbar');
+		expect(api.val(id)).to.equal('07:00');
+		expect(api.quality(id)).to.equal(1);
+		await api.setStateAsync(id, { val: '12:00', ack: false });
+		await edit('timers.1.time', '12:00');
+		expect(api.val(id)).to.equal('07:00');
+		expect(api.val(`${ROOT}.available`)).to.equal(true);
+		expect(submitted).to.have.length(0);
+		await editor.observe(VIN, fixture());
+		expect(api.objects.get(id)!.common).to.have.property('write', true);
+		expect(api.quality(id)).to.equal(0);
+		expect(api.objects.get(id)!.common)
+			.to.have.property('desc')
+			.that.has.property('de')
+			.that.includes('Fahrzeug-Ortszeit');
+	});
+
+	it('retains dirty drafts but disables fields removed by a conflicting poll', async () => {
+		await edit('timers.1.time', '08:00');
+		const response = fixture();
+		response.vehicle.chargingProfiles!.profiles[0].timers = [];
+		await editor.observe(VIN, response);
+		expect(api.val(`${ROOT}.timers.1.time`)).to.equal('08:00');
+		expect(api.val(`${ROOT}.dirty`)).to.equal(true);
+		expect(api.val(`${ROOT}.conflict`)).to.equal(true);
+		expect(api.objects.get(`${ROOT}.timers.1.time`)!.common).to.have.property('write', false);
+		await edit('apply', true);
+		expect(submitted).to.have.length(0);
+	});
+
+	it('disables persisted controls before the first poll and retains deleted profiles across restart', async () => {
+		editor = new ProfileEditor(api, () => Promise.resolve());
+		await editor.initialize([VIN]);
+		expect(api.val(`${ROOT}.available`)).to.equal(false);
+		expect(api.objects.get(`${ROOT}.apply`)!.common).to.have.property('write', false);
+		expect(api.quality(`${ROOT}.name`)).to.equal(1);
+		await api.setStateAsync(`${ROOT}.name`, { val: 'Premature edit', ack: false });
+		await edit('name', 'Premature edit');
+		expect(api.val(`${ROOT}.name`)).to.equal('Zu Hause');
+		const response = fixture();
+		response.vehicle.chargingProfiles!.profiles = [];
+		await editor.observe(VIN, response);
+		expect(api.objects.get(`${ROOT}.name`)!.common).to.have.property('write', false);
+		expect(api.val(`${ROOT}.name`)).to.equal('Zu Hause');
+		await editor.observe(VIN, fixture());
+		expect(api.val(`${ROOT}.available`)).to.equal(true);
+		expect(api.objects.get(`${ROOT}.apply`)!.common).to.have.property('write', true);
+		expect(api.quality(`${ROOT}.name`)).to.equal(0);
+	});
+
+	it('migrates legacy defaults while preserving custom names and unrelated metadata', async () => {
+		const id = `${ROOT}.timers.1.time`;
+		await api.extendObjectAsync(id, {
+			common: { name: 'timers.1.time', role: 'text', custom: { 'history.0': { enabled: true } } },
+		});
+		await api.extendObjectAsync(`${ROOT}.name`, { common: { name: 'Mein Profilname' } });
+		editor = new ProfileEditor(api, () => Promise.resolve());
+		await editor.initialize([VIN]);
+		await editor.observe(VIN, fixture());
+		expect(api.objects.get(id)!.common!.name).to.have.property('de', 'Abfahrtszeit');
+		expect(api.objects.get(id)!.common).to.have.property('role', 'text.setting');
+		expect(api.objects.get(id)!.common)
+			.to.have.property('custom')
+			.that.deep.equals({ 'history.0': { enabled: true } });
+		expect(api.objects.get(`${ROOT}.name`)!.common!.name).to.equal('Mein Profilname');
+		await api.extendObjectAsync(id, { common: { name: 'Meine Abfahrtszeit' } });
+		const response = fixture();
+		response.vehicle.chargingProfiles!.profiles[0].timers = [];
+		await editor.observe(VIN, response);
+		expect(api.objects.get(id)!.common!.name).to.equal('Meine Abfahrtszeit');
 	});
 });

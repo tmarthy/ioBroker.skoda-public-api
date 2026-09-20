@@ -333,7 +333,24 @@ restored after an adapter restart: the first valid poll initializes them again, 
 stored editor values cannot be submitted before that poll. Missing/failed profiles
 cannot be applied. Optional settings appear only when supplied by the vehicle;
 timer/window IDs and unknown API fields are preserved, and entries cannot be created
-or deleted here. Existing states for removed fields may remain, but are ignored.
+or deleted here.
+
+Editor fields use configuration roles (`switch.setting`, `level.setting.battery`,
+`level.setting.battery.min`, `text.setting`) so interfaces can distinguish them from
+immediate vehicle controls. Field names and help texts support all ioBroker languages;
+selection labels use the ioBroker system language (restart the adapter after changing
+that language). API values such as `ONE_OFF` remain unchanged.
+
+`edit.available` indicates whether the latest poll contains a valid profile. Removed
+fields, timers or profiles retain their last values, but their controls become
+read-only (`common.write: false`) with quality `q: 1` and an explanatory description.
+Direct writes to unavailable fields are ignored and their retained values restored.
+When a field returns, its controls and quality `q: 0` are restored automatically.
+Persisted editor controls are also disabled at startup until the first valid poll.
+These availability checks use existing polls and local ioBroker data only.
+
+Existing objects receive updated adapter-owned metadata without deleting them;
+custom names and unrelated settings such as history configuration are preserved.
 
 #### Update complete JSON directly
 
@@ -469,6 +486,7 @@ reproduce the official Škoda logo; it is distributed under this project's MIT l
 - Expose per-vehicle polling diagnostics: next due time, persistent last successful poll and the current waiting reason.
 - Expose per-control command confirmation and local timeouts using existing polls only, without additional API requests.
 - Add local charging-profile editors with individual fields, weekday switches, apply/reset buttons and conflict detection; batch changes into one profile update.
+- Refine editor setting roles and translated help/choices; migrate existing metadata and mark unavailable controls read-only until their data returns.
 
 ### 0.1.9 (2026-09-06)
 - Used ioBroker-managed request timers and removed news for the skipped npm version 0.1.7.

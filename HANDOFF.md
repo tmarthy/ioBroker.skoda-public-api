@@ -224,3 +224,18 @@ gemeinsam prüfen und versionieren.
   Geänderte/fehlende Profile und abweichende laufende Profilbefehle blockieren Apply.
 - Tests prüfen unter anderem Konflikte, Timer-IDs, Validierung, unbekannte Felder,
   Neustart und mehrere Feldänderungen mit genau einem PUT im Integrationstest.
+
+### Metadaten und Verfügbarkeit des Profileditors
+
+- Einstellungsrollen: `switch.setting`, `level.setting.battery`,
+  `level.setting.battery.min`, `text.setting`; Buttons bleiben `button`.
+- `profileEditorLabels.ts` enthält mehrsprachige Feldnamen, Auswahltexte und Hilfen.
+  Wochentage kommen aus `Intl` (UTC, zwischengespeichert). `common.states` verwendet
+  Stringwerte in der System-Sprache; ein Sprachwechsel wird nach Neustart wirksam.
+- `initialize(vins)` liest ausschließlich lokale States/Objekte und sperrt persistierte
+  Editorfelder bis zum nächsten gültigen Poll. `edit.available` zeigt die Verfügbarkeit.
+- Entfernte Felder bleiben mit letztem Wert erhalten: `write=false`, `q=1`, übersetzte
+  Beschreibung. Rückkehr setzt Metadaten und Qualität zurück. Änderungen an einem
+  lokalen Entwurf bleiben bei Konflikten erhalten; nicht verfügbare Felder sind gesperrt.
+- Migration aktualisiert nur abweichende Metadaten. Benutzerdefinierte Namen und
+  andere Einstellungen wie History bleiben erhalten. Keine zusätzlichen Fahrzeugrequests.

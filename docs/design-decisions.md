@@ -222,6 +222,14 @@ neu initialisiert, nie automatisch wiederhergestellt oder gesendet. Die vorhande
 JSON-Befehle bleiben kompatibel. Nicht gepollte App-Änderungen bleiben wegen fehlender
 serverseitiger Versionsprüfung weiterhin ein Restrisiko.
 
+Der Editor verwendet `.setting`-Rollen und mehrsprachige Metadaten. Auswahltexte werden
+als Strings in der System-Sprache hinterlegt, weil `common.states` Stringwerte erwartet.
+Bereits vorhandene Objekte werden gezielt migriert; eigene Namen und History bleiben
+unangetastet. Entfernte Felder werden nicht gelöscht, sondern mit `write=false`, `q=1`
+und Verfügbarkeitsbeschreibung behalten. Ein erneuter Poll kann sie reaktivieren.
+Dasselbe gilt beim Start, bis neue Fahrzeugdaten vorliegen. `edit.available` ist eine
+lokale Diagnose; weder Migration noch Verfügbarkeitsprüfung erzeugen Fahrzeugrequests.
+
 ## Bekannte Restrisiken
 
 1. **Bang-Bang bleibt ein Kompromiss.** Die Wirksamkeit des Überschussladens
