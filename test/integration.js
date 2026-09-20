@@ -236,6 +236,18 @@ tests.integration(path.join(__dirname, '..'), {
 				expect(position.val).to.match(/^-?\d+(\.\d+)?;-?\d+(\.\d+)?$/);
 			});
 
+			it('reports the next poll, successful response time and waiting reason', async function () {
+				this.timeout(30000);
+				await waitFor('the normal polling schedule', async () =>
+					(await getState(harness, `${VEHICLE}.info.polling.reason`))?.val === 'IDLE_INTERVAL');
+				const last = await readState(harness, `${VEHICLE}.info.polling.lastSuccessfulPollAt`);
+				const next = await readState(harness, `${VEHICLE}.info.polling.nextPollAt`);
+				expect(last.val).to.be.greaterThan(Date.now() - 60000);
+				expect(next.val).to.be.greaterThan(last.val);
+				expect(next.val - last.val).to.be.within(15 * 60000, 15 * 60000 + 10000);
+				expect(last.ack).to.equal(true);
+			});
+
 			it('schreibt Budget und Schluesselablauf aus den Headern', async function () {
 				this.timeout(60000);
 				const remaining = await readState(harness, `${VEHICLE}.rateLimit.remaining`);
@@ -286,6 +298,10 @@ tests.integration(path.join(__dirname, '..'), {
 
 				const name = await readState(harness, `${VEHICLE}.info.lastCommand.name`);
 				expect(name.val).to.equal('charging.start');
+				await waitFor('the verification schedule', async () =>
+					(await getState(harness, `${VEHICLE}.info.polling.reason`))?.val === 'VERIFICATION');
+				expect((await readState(harness, `${VEHICLE}.info.polling.nextPollAt`)).val - Date.now()).to.be.within(0, 60000);
+
 				// `ack: true` heisst "an die API uebergeben", nicht "das Auto hat es
 				// getan" (E6) - der Beweis dafuer steht im Mock.
 				const enabled = await readState(harness, `${VEHICLE}.charging.enabled`);
@@ -422,6 +438,10 @@ tests.integration(path.join(__dirname, '..'), {
 				await delay(3000);
 				const connection = await readState(harness, `${INSTANCE}.info.connection`);
 				expect(connection.val).to.equal(false);
+				expect((await readState(harness, `${VEHICLE}.info.polling.reason`)).val).to.equal('AUTH_ERROR');
+				expect((await readState(harness, `${VEHICLE}.info.polling.lastSuccessfulPollAt`)).val).to.equal(0);
+				expect((await readState(harness, `${VEHICLE}.info.polling.nextPollAt`)).val).to.be.greaterThan(Date.now() + 50 * 60000);
+
 				expect(mock.requests).to.have.length(1);
 				// Die Notification selbst laeuft ueber den Host-Prozess, den dieser
 				// Testaufbau nicht bereitstellt.

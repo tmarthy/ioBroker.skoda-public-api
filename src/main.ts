@@ -125,6 +125,7 @@ class SkodaPublicApi extends utils.Adapter {
 				this.run(() => api.setState('info.connection', connected, true));
 			},
 			onResponse: (meta, error) => this.run(() => this.keyExpiry?.observe(meta, error)),
+			onScheduleChange: (vin, status) => this.run(() => writer.writePollingStatus(vin, status)),
 			intervals: {
 				idleMs: settings.idleMs,
 				activeMs: settings.activeMs,

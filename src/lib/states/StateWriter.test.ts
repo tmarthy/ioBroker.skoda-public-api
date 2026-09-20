@@ -69,6 +69,88 @@ describe('states/StateWriter => Antwort in den Objektbaum', () => {
 		expect(beweis).to.equal(true);
 	});
 
+	describe('polling status', () => {
+		it('initializes unknown success and keeps history across restarts and failed polls', async () => {
+			const prefix = `${VIN}.info.polling`;
+			await writer.writePollingStatus(VIN, { reason: 'STARTUP', nextPollAt: clock });
+			expect(adapter.val(`${prefix}.lastSuccessfulPollAt`)).to.equal(0);
+			await writer.writePollingStatus(VIN, {
+				reason: 'IDLE_INTERVAL',
+				nextPollAt: clock + 60_000,
+				lastSuccessfulPollAt: clock,
+			});
+			const restarted = new StateWriter({ api: adapter });
+			await restarted.writePollingStatus(VIN, { reason: 'STARTUP', nextPollAt: clock + 1000 });
+			await restarted.writePollingStatus(VIN, { reason: 'AUTH_ERROR', nextPollAt: clock + 3_600_000 });
+			expect(adapter.val(`${prefix}.lastSuccessfulPollAt`)).to.equal(clock);
+			expect(adapter.val(`${prefix}.nextPollAt`)).to.equal(clock + 3_600_000);
+			expect(adapter.val(`${prefix}.reason`)).to.equal('AUTH_ERROR');
+			expect(adapter.objects.get(`${prefix}.nextPollAt`)?.common).to.include({
+				type: 'number',
+				role: 'date',
+				write: false,
+			});
+			expect((adapter.objects.get(`${prefix}.reason`)?.common as ioBroker.StateCommon).states).to.have.property(
+				'AUTH_ERROR',
+			);
+			for (const suffix of ['lastSuccessfulPollAt', 'nextPollAt', 'reason']) {
+				expect(
+					Object.keys(adapter.objects.get(`${prefix}.${suffix}`)?.common?.name as object).sort(),
+				).to.deep.equal([...OBJECT_NAME_LANGUAGES].sort());
+			}
+			// Diagnostics must not fix the device name to a VIN before the first vehicle response.
+			await writer.write(VIN, fixture('idle'));
+			expect(adapter.objects.get(VIN)?.common?.name).to.equal('Enyaq');
+			expect(adapter.quality(`${prefix}.reason`)).to.equal(0);
+		});
+
+		it('serializes slow diagnostic writes so the newest schedule wins', async () => {
+			let release!: () => void;
+			let entered!: () => void;
+			const gate = new Promise<void>(resolve => {
+				release = resolve;
+			});
+			const started = new Promise<void>(resolve => {
+				entered = resolve;
+			});
+			const original = adapter.setStateChangedAsync.bind(adapter);
+			adapter.setStateChangedAsync = async (id, state) => {
+				if (id.endsWith('.nextPollAt') && state.val === 1) {
+					entered();
+					await gate;
+				}
+				return original(id, state);
+			};
+			const first = writer.writePollingStatus(VIN, { reason: 'STARTUP', nextPollAt: 1 });
+			await started;
+			const second = writer.writePollingStatus(VIN, {
+				reason: 'IDLE_INTERVAL',
+				nextPollAt: 2,
+				lastSuccessfulPollAt: clock,
+			});
+			release();
+			await Promise.all([first, second]);
+			expect(adapter.val(`${VIN}.info.polling.nextPollAt`)).to.equal(2);
+			expect(adapter.val(`${VIN}.info.polling.reason`)).to.equal('IDLE_INTERVAL');
+		});
+
+		it('recovers from a failed diagnostics write and keeps vehicle histories separate', async () => {
+			const original = adapter.getStateAsync.bind(adapter);
+			adapter.getStateAsync = () => Promise.reject(new Error('Storage unavailable'));
+			await writer.writePollingStatus(VIN, { reason: 'STARTUP', nextPollAt: clock }).catch(() => undefined);
+			adapter.getStateAsync = original;
+			await writer.writePollingStatus(VIN, {
+				reason: 'IDLE_INTERVAL',
+				nextPollAt: clock + 60_000,
+				lastSuccessfulPollAt: clock,
+			});
+			await writer.writePollingStatus('OTHER_VIN', { reason: 'SUSPENDED', nextPollAt: 0 });
+			expect(adapter.val(`${VIN}.info.polling.lastSuccessfulPollAt`)).to.equal(clock);
+			expect(adapter.val('OTHER_VIN.info.polling.lastSuccessfulPollAt')).to.equal(0);
+			expect(adapter.val('OTHER_VIN.info.polling.nextPollAt')).to.equal(0);
+		});
+	});
+
 	it('migrates charging mode and exposes a complete writable profile without changing user names', async () => {
 		const modeId = `${VIN}.charging.settings.preferredChargeMode`;
 		await adapter.setObjectNotExistsAsync(modeId, {

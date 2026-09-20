@@ -24,6 +24,7 @@ import { vehicleErrors } from '../api/client';
 import { newestCapturedAt } from '../api/vehicleData';
 import { partFromErrorType } from '../api/parts';
 import type { VehicleResponse } from '../api/types';
+import { POLLING_REASONS, type PollingStatus } from '../scheduler/pollingStatus';
 import {
 	CHARGING_LIMIT_PATH,
 	CHARGING_MODE_PATH,
@@ -110,6 +111,8 @@ export class StateWriter {
 	private readonly api: StateApi;
 	private readonly now: () => number;
 	private readonly t: Translate;
+	/** Serialize diagnostics per vehicle so an older asynchronous write cannot win. */
+	private readonly pollingWrites = new Map<string, Promise<void>>();
 
 	/** Bereits angelegte Objekte - Anlage genau einmal pro Pfad (E13). */
 	private readonly createdObjects = new Set<string>();
@@ -130,6 +133,66 @@ export class StateWriter {
 		this.api = options.api;
 		this.now = options.now ?? (() => Date.now());
 		this.t = options.t ?? translateFallback;
+	}
+
+	/**
+	 * Persist scheduler snapshots in order, independently of the vehicle-data write path.
+	 *
+	 * @param vin Vehicle identification number.
+	 * @param status Immutable scheduler snapshot.
+	 */
+	public writePollingStatus(vin: string, status: PollingStatus): Promise<void> {
+		const previous = this.pollingWrites.get(vin) ?? Promise.resolve();
+		const task = previous.catch(() => undefined).then(() => this.writePollingStatusNow(vin, status));
+		this.pollingWrites.set(vin, task);
+		const cleanup = (): void => {
+			if (this.pollingWrites.get(vin) === task) {
+				this.pollingWrites.delete(vin);
+			}
+		};
+		void task.then(cleanup, cleanup);
+		return task;
+	}
+
+	/**
+	 * Retain historical success across restarts, but replace the old schedule immediately.
+	 *
+	 * @param vin Vehicle identification number.
+	 * @param status Scheduler snapshot.
+	 */
+	private async writePollingStatusNow(vin: string, status: PollingStatus): Promise<void> {
+		await this.ensureChannel(vin, 'info', translated('Adapter information', 'Adapterinformationen'));
+		await this.ensureChannel(vin, 'info.polling', translated('Polling status', 'Abfragestatus'));
+		let lastSuccessfulPollAt = status.lastSuccessfulPollAt;
+		if (lastSuccessfulPollAt === undefined) {
+			const previous = await this.api.getStateAsync(`${vin}.info.polling.lastSuccessfulPollAt`);
+			lastSuccessfulPollAt =
+				typeof previous?.val === 'number' && Number.isFinite(previous.val) && previous.val >= 0
+					? previous.val
+					: 0;
+		}
+		await this.writeDerived(vin, 'info.polling.lastSuccessfulPollAt', lastSuccessfulPollAt, {
+			name: translated('Last successful vehicle poll', 'Letzte erfolgreiche Fahrzeugabfrage'),
+			type: 'number',
+			role: 'date',
+			read: true,
+			write: false,
+		});
+		await this.writeDerived(vin, 'info.polling.nextPollAt', status.nextPollAt, {
+			name: translated('Next scheduled vehicle poll', 'Nächste geplante Fahrzeugabfrage'),
+			type: 'number',
+			role: 'date',
+			read: true,
+			write: false,
+		});
+		await this.writeDerived(vin, 'info.polling.reason', status.reason, {
+			name: translated('Polling reason', 'Grund des Abfragestatus'),
+			type: 'string',
+			role: 'text',
+			read: true,
+			write: false,
+			states: { ...POLLING_REASONS },
+		});
 	}
 
 	/**

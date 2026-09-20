@@ -57,6 +57,13 @@ So erzeugt eine Neustartschleife kein scheinbar frisches Request-Budget.
 - Poll-Durchläufe sind serialisiert; ein angeforderter Verifikations-Poll geht während
   eines laufenden Durchlaufs nicht verloren.
 - Quota-Daten liegen unter `<vin>.rateLimit.*` und überleben Neustarts.
+- Scheduler-Änderungen werden ohne zusätzliche API-Abfragen über `onScheduleChange`
+  an den StateWriter gemeldet. Die Diagnose-Schreibvorgänge werden je VIN serialisiert
+  und vom Adapter-Lebenszyklus überwacht; sie blockieren keine Fahrzeugabfragen.
+- `<vin>.info.polling.*` enthält den nächsten Poll-Termin, den über Neustarts erhaltenen
+  letzten erfolgreichen API-Abruf und einen stabilen Statuscode. Lokale Schreib-Retries
+  gelten nicht als neue Polls; bei ihnen, laufenden Requests und ausgesetztem Polling
+  ist `nextPollAt` gleich `0`. Ein HTTP-Erfolg sagt nichts über die Fahrzeugdatenfrische aus.
 
 ### Befehle
 

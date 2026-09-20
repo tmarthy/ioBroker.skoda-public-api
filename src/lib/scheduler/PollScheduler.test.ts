@@ -7,6 +7,7 @@ import { QuotaManager } from '../quota/QuotaManager';
 import { quotaForVehicle, VehicleQuotaManager } from '../quota/VehicleQuotaManager';
 import { StateWriter } from '../states/StateWriter';
 import { MIN_IDLE_MS, PollScheduler, type SchedulerLog, type VehicleReader } from './PollScheduler';
+import type { PollingStatus } from './pollingStatus';
 
 const MINUTE = 60_000;
 
@@ -37,6 +38,7 @@ describe('scheduler/PollScheduler => Kadenz unter 20 Requests pro Stunde', () =>
 	let adapter: FakeAdapter;
 	let writer: StateWriter;
 	let connection: boolean[];
+	let statuses: Array<{ vin: string; status: PollingStatus }>;
 
 	const now = (): number => clock;
 
@@ -54,6 +56,7 @@ describe('scheduler/PollScheduler => Kadenz unter 20 Requests pro Stunde', () =>
 			onVehicleData: (vin, response) => writer.write(vin, response),
 			log,
 			onConnectionChange: value => connection.push(value),
+			onScheduleChange: (vin, status) => statuses.push({ vin, status }),
 			now,
 			// Fester Jitter, damit Wartezeiten in Tests nachrechenbar bleiben.
 			random: () => 0.5,
@@ -70,10 +73,174 @@ describe('scheduler/PollScheduler => Kadenz unter 20 Requests pro Stunde', () =>
 		adapter = new FakeAdapter();
 		writer = new StateWriter({ api: adapter, now });
 		connection = [];
+		statuses = [];
 	});
 
 	afterEach(async () => {
 		await mock.stop();
+	});
+
+	describe('polling diagnostics', () => {
+		it('reports startup, running, normal and unchanged-data schedules without extra requests', async () => {
+			const scheduler = buildScheduler({ setTimer: () => 1, clearTimer: () => undefined });
+			scheduler.start();
+			expect(statuses[0]).to.deep.equal({
+				vin: DEFAULT_VIN,
+				status: {
+					nextPollAt: clock,
+					lastSuccessfulPollAt: undefined,
+					reason: 'STARTUP',
+				},
+			});
+			await scheduler.tick();
+			expect(statuses.map(entry => entry.status.reason)).to.deep.equal(['STARTUP', 'POLLING', 'IDLE_INTERVAL']);
+			expect(statuses[1].status.nextPollAt).to.equal(0);
+			expect(scheduler.snapshot()[0]).to.include({
+				nextPollAt: clock + 15 * MINUTE,
+				lastSuccessfulPollAt: clock,
+			});
+			clock += 15 * MINUTE;
+			await scheduler.tick();
+			expect(scheduler.snapshot()[0]).to.include({
+				reason: 'UNCHANGED_DATA',
+				nextPollAt: clock + 30 * MINUTE,
+				lastSuccessfulPollAt: clock,
+			});
+			expect(mock.requests).to.have.length(2);
+			scheduler.stop();
+			const count = statuses.length;
+			scheduler.requestRefresh(DEFAULT_VIN);
+			await scheduler.tick();
+			expect(statuses).to.have.length(count);
+		});
+
+		it('reports manual refresh, active intervals and verification without claiming success for a command', async () => {
+			const scheduler = buildScheduler();
+			await scheduler.tick();
+			const firstSuccess = clock;
+			clock += MINUTE;
+			scheduler.requestRefresh(DEFAULT_VIN);
+			expect(scheduler.snapshot()[0]).to.include({
+				reason: 'MANUAL_REFRESH',
+				nextPollAt: clock,
+				lastSuccessfulPollAt: firstSuccess,
+			});
+			mock.loadFixture('charging');
+			await scheduler.tick();
+			expect(scheduler.snapshot()[0]).to.include({ reason: 'ACTIVE_INTERVAL', nextPollAt: clock + 5 * MINUTE });
+			const lastSuccess = clock;
+			clock += 1000;
+			scheduler.requestVerificationPoll(DEFAULT_VIN);
+			expect(scheduler.snapshot()[0]).to.include({
+				reason: 'VERIFICATION',
+				nextPollAt: clock + MINUTE,
+				lastSuccessfulPollAt: lastSuccess,
+			});
+			clock += MINUTE;
+			await scheduler.tick();
+			expect(scheduler.snapshot()[0].reason).to.equal('COMMAND_INTERVAL');
+		});
+
+		for (const [scenario, reason, wait] of [
+			['api-key-expired', 'AUTH_ERROR', 60 * MINUTE],
+			['rate-limit-exceeded', 'QUOTA', 15 * MINUTE],
+			['server-error', 'ERROR_RETRY', 15_000],
+			['not-found', 'SUSPENDED', 0],
+		] as const) {
+			it(`reports ${reason} after ${scenario} and keeps the last successful response time`, async () => {
+				const scheduler = buildScheduler();
+				await scheduler.tick();
+				const lastSuccess = clock;
+				clock += 15 * MINUTE;
+				mock.scenario = scenario;
+				await scheduler.tick();
+				expect(scheduler.snapshot()[0]).to.include({
+					reason,
+					nextPollAt: wait ? clock + wait : 0,
+					lastSuccessfulPollAt: lastSuccess,
+				});
+				scheduler.requestRefresh(DEFAULT_VIN);
+				expect(scheduler.snapshot()[0].reason).to.equal(reason);
+			});
+		}
+
+		it('distinguishes exhausted retries from the initial error retry', async () => {
+			mock.scenario = 'server-error';
+			const scheduler = buildScheduler();
+			clock += await scheduler.tick();
+			await scheduler.tick();
+			expect(scheduler.snapshot()[0]).to.include({ reason: 'ERROR_INTERVAL', nextPollAt: clock + 15 * MINUTE });
+		});
+
+		it('shows quota reserve and startup guard without recording an HTTP success', async () => {
+			for (const [denial, reason] of [
+				['reserve', 'COMMAND_RESERVE'],
+				['startup-guard', 'STARTUP_GUARD'],
+				['exhausted', 'QUOTA'],
+			] as const) {
+				const scheduler = buildScheduler({
+					quota: {
+						...quotaForVehicle(DEFAULT_VIN, quota),
+						tryAcquire: () => ({ reason: denial, waitMs: MINUTE }),
+					},
+				});
+				await scheduler.tick();
+				expect(scheduler.snapshot()[0]).to.include({
+					reason,
+					nextPollAt: clock + MINUTE,
+					lastSuccessfulPollAt: undefined,
+				});
+				scheduler.requestRefresh(DEFAULT_VIN);
+				expect(scheduler.snapshot()[0].reason).to.equal(reason);
+			}
+			expect(mock.requests).to.have.length(0);
+		});
+
+		it('does not report local write retries as another API poll or another successful response', async () => {
+			let writes = 0;
+			const scheduler = buildScheduler({
+				onVehicleData: () => {
+					if (++writes === 1) {
+						throw new Error('Write failed');
+					}
+				},
+			});
+			await scheduler.tick();
+			const lastSuccess = clock;
+			expect(scheduler.snapshot()[0]).to.include({
+				reason: 'WRITE_RETRY',
+				nextPollAt: 0,
+				lastSuccessfulPollAt: lastSuccess,
+			});
+			clock += 15_000;
+			await scheduler.tick();
+			expect(scheduler.snapshot()[0]).to.include({
+				reason: 'IDLE_INTERVAL',
+				nextPollAt: clock + 15 * MINUTE,
+				lastSuccessfulPollAt: lastSuccess,
+			});
+			expect(mock.requests).to.have.length(1);
+		});
+
+		it('reports unexpected request failures and isolates diagnostic callback failures', async () => {
+			const scheduler = buildScheduler({
+				client: {
+					getVehicle: () => {
+						throw new Error('Unexpected failure');
+					},
+				},
+			});
+			await scheduler.tick().catch(() => undefined);
+			expect(scheduler.snapshot()[0]).to.include({ reason: 'ERROR_RETRY', nextPollAt: clock + 15_000 });
+			const healthy = buildScheduler({
+				onScheduleChange: () => {
+					throw new Error('Diagnostics failed');
+				},
+			});
+			await healthy.tick();
+			expect(healthy.snapshot()[0].reason).to.equal('IDLE_INTERVAL');
+			expect(mock.requests).to.have.length(1);
+		});
 	});
 
 	describe('manual refresh', () => {

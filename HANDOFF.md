@@ -58,6 +58,15 @@ Andere Werte werden ohne API-Aufruf, Quittierung oder Änderung wartender Befehl
 ignoriert. `<vin>.refresh` fordert einen vorgezogenen Poll an; Quota, Befehlsreserve
 und Fehlerwartezeiten gelten dabei weiterhin.
 
+Unter `<vin>.info.polling` zeigen `nextPollAt`, `lastSuccessfulPollAt` und `reason`
+den tatsächlichen Scheduler-Plan, den letzten erfolgreichen API-Abruf und den aktuellen
+Wartegrund. Die Zeitstempel verwenden Unix-Millisekunden. Der letzte Erfolg bleibt über
+Neustarts erhalten; `0` bedeutet, dass kein Erfolg gespeichert ist. `nextPollAt` ist bei
+laufendem Request, lokalen Schreibwiederholungen oder ausgesetztem Polling `0`. Die
+Diagnose kostet keine API-Requests und ist unabhängig von der Frische der Fahrzeugdaten.
+Bei gestoppter Instanz bleiben die zuletzt geschriebenen Werte stehen; erst der nächste
+Start ersetzt den alten Zeitplan. Die vollständige Liste der Gründe steht im README.
+
 Die API erlaubt **20 Requests pro Stunde und VIN**. Für jede VIN führt der Adapter
 deshalb einen eigenen, persistenten Quota-Bucket unter `<vin>.rateLimit.*`. Polls
 halten eine konfigurierbare Befehlsreserve frei. Befehle laufen über eine Queue mit

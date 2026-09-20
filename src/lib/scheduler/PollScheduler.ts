@@ -29,6 +29,7 @@ import { detectParts, newestCapturedAt } from '../api/vehicleData';
 import type { VehicleQuota } from '../quota/VehicleQuotaManager';
 import { COMMAND_DEFS } from '../states/commandDefs';
 import { translateFallback, type Translate } from '../i18n';
+import type { PollingReason, PollingStatus } from './pollingStatus';
 
 /** Der Ausschnitt des Clients, den der Scheduler braucht. */
 export interface VehicleReader {
@@ -108,6 +109,8 @@ export interface PollSchedulerOptions {
 	 * es kostet also nichts, ihn bei jedem Poll nachzusehen (E10).
 	 */
 	onResponse?: (meta: ApiMeta, error?: ApiError) => void;
+	/** Publishes scheduler changes without extra requests; persistence must not block polling. */
+	onScheduleChange?: (vin: string, status: PollingStatus) => void;
 	/** Abweichungen von den Vorgabewerten. */
 	intervals?: Partial<PollIntervals>;
 	/** Parkposition mitlesen. Aus heisst: gar nicht erst anfordern (E14). */
@@ -124,6 +127,8 @@ export interface PollSchedulerOptions {
 
 /** Was der Scheduler ueber ein Fahrzeug weiss. */
 interface VehicleState {
+	reason: PollingReason;
+	lastSuccessfulPollAt?: number;
 	inFlight?: boolean;
 	refreshBlockedUntil?: number;
 	vin: string;
@@ -150,7 +155,7 @@ interface VehicleState {
 }
 
 /** Momentaufnahme fuer Tests und Logausgaben. */
-export interface VehicleScheduleSnapshot {
+export interface VehicleScheduleSnapshot extends PollingStatus {
 	/** Fahrgestellnummer. */
 	vin: string;
 	/** Faelligkeit des naechsten Polls, in Millisekunden seit Epoch. */
@@ -179,6 +184,7 @@ export class PollScheduler {
 	private readonly onVehicleData: PollSchedulerOptions['onVehicleData'];
 	private readonly onConnectionChange?: (connected: boolean) => void;
 	private readonly onResponse?: (meta: ApiMeta, error?: ApiError) => void;
+	private readonly onScheduleChange?: PollSchedulerOptions['onScheduleChange'];
 	private readonly log: SchedulerLog;
 	private readonly t: Translate;
 	private readonly intervals: PollIntervals;
@@ -204,6 +210,7 @@ export class PollScheduler {
 		this.onVehicleData = options.onVehicleData;
 		this.onConnectionChange = options.onConnectionChange;
 		this.onResponse = options.onResponse;
+		this.onScheduleChange = options.onScheduleChange;
 		this.log = options.log;
 		this.t = options.t ?? translateFallback;
 		this.readParkingPosition = options.readParkingPosition ?? true;
@@ -225,7 +232,15 @@ export class PollScheduler {
 
 		const now = this.now();
 		for (const vin of options.vins) {
-			this.states.set(vin, { vin, nextDueAt: now, backoff: 1, active: false, attempts: 0, suspended: false });
+			this.states.set(vin, {
+				vin,
+				nextDueAt: now,
+				backoff: 1,
+				active: false,
+				attempts: 0,
+				suspended: false,
+				reason: 'STARTUP',
+			});
 		}
 	}
 
@@ -238,6 +253,9 @@ export class PollScheduler {
 			return;
 		}
 		this.running = true;
+		for (const state of this.states.values()) {
+			this.publishSchedule(state);
+		}
 		this.arm(0);
 	}
 
@@ -289,8 +307,16 @@ export class PollScheduler {
 			state.inFlight = true;
 			try {
 				await this.pollOne(state);
+			} catch (error) {
+				if (!this.stopped && !(error instanceof ShutdownError)) {
+					state.nextDueAt = this.now() + this.intervals.retryMs;
+					state.refreshBlockedUntil = state.nextDueAt;
+					state.reason = 'ERROR_RETRY';
+				}
+				throw error;
 			} finally {
 				state.inFlight = false;
+				this.publishSchedule(state);
 			}
 		}
 		return this.msUntilNextDue();
@@ -307,7 +333,12 @@ export class PollScheduler {
 		if (this.stopped || !state || state.suspended || state.inFlight || state.pendingWrite) {
 			return;
 		}
+		const previous = state.nextDueAt;
 		state.nextDueAt = Math.min(state.nextDueAt, Math.max(this.now(), state.refreshBlockedUntil ?? 0));
+		if (state.nextDueAt < previous) {
+			state.reason = 'MANUAL_REFRESH';
+			this.publishSchedule(state);
+		}
 		this.wake();
 	}
 
@@ -334,7 +365,12 @@ export class PollScheduler {
 		// Autos gilt ab jetzt nicht mehr.
 		state.backoff = 1;
 		state.verificationDueAt = Math.min(state.verificationDueAt ?? Infinity, now + this.intervals.verificationMs);
+		const previous = state.nextDueAt;
 		state.nextDueAt = Math.min(state.nextDueAt, now + this.intervals.verificationMs);
+		if (state.nextDueAt < previous && !state.inFlight && !state.pendingWrite) {
+			state.reason = 'VERIFICATION';
+			this.publishSchedule(state);
+		}
 		this.wake();
 	}
 
@@ -345,6 +381,7 @@ export class PollScheduler {
 	 */
 	public snapshot(): VehicleScheduleSnapshot[] {
 		return [...this.states.values()].map(state => ({
+			...this.pollingStatus(state),
 			vin: state.vin,
 			nextDueAt: state.nextDueAt,
 			intervalMs: this.intervalFor(state),
@@ -353,6 +390,35 @@ export class PollScheduler {
 			suspended: state.suspended,
 			parts: state.parts,
 		}));
+	}
+
+	/**
+	 * Reports only an actual future HTTP attempt, not a local write retry.
+	 *
+	 * @param state Vehicle schedule.
+	 */
+	private pollingStatus(state: VehicleState): PollingStatus {
+		return {
+			nextPollAt: state.suspended || state.pendingWrite || state.reason === 'POLLING' ? 0 : state.nextDueAt,
+			lastSuccessfulPollAt: state.lastSuccessfulPollAt,
+			reason: state.reason,
+		};
+	}
+
+	/**
+	 * Diagnostics must neither spend quota nor interrupt the scheduler.
+	 *
+	 * @param state Vehicle schedule.
+	 */
+	private publishSchedule(state: VehicleState): void {
+		if (this.stopped) {
+			return;
+		}
+		try {
+			this.onScheduleChange?.(state.vin, this.pollingStatus(state));
+		} catch {
+			this.log.warn('Polling status could not be published.');
+		}
 	}
 
 	/**
@@ -373,6 +439,12 @@ export class PollScheduler {
 			// Befehlen (E15). Der Poll kommt wieder, wenn das Fenster sich oeffnet.
 			state.nextDueAt = this.now() + Math.max(MIN_SLEEP_MS, permission.waitMs);
 			state.refreshBlockedUntil = state.nextDueAt;
+			state.reason =
+				permission.reason === 'startup-guard'
+					? 'STARTUP_GUARD'
+					: permission.reason === 'reserve'
+						? 'COMMAND_RESERVE'
+						: 'QUOTA';
 			this.log.debug(
 				this.t(
 					'Poll for %s postponed (%s), next attempt in %s s.',
@@ -388,6 +460,8 @@ export class PollScheduler {
 			state.verificationDueAt = undefined;
 		}
 		let result;
+		state.reason = 'POLLING';
+		this.publishSchedule(state);
 		try {
 			result = await this.client.getVehicle(state.vin, this.includeFor(state));
 		} catch (error) {
@@ -406,6 +480,7 @@ export class PollScheduler {
 		}
 
 		if (result.ok) {
+			state.lastSuccessfulPollAt = this.now();
 			await this.handleSuccess(state, result.data);
 		} else {
 			this.handleError(state, result.error);
@@ -475,6 +550,7 @@ export class PollScheduler {
 			}
 			state.pendingWrite = { response, unchanged };
 			state.nextDueAt = this.now() + this.intervals.retryMs;
+			state.reason = 'WRITE_RETRY';
 			this.log.error(
 				this.t(
 					'Vehicle data for %s could not be written: %s. Retrying the write in %s s without an API request.',
@@ -489,6 +565,16 @@ export class PollScheduler {
 		state.pendingWrite = undefined;
 		const interval = this.intervalFor(state);
 		state.nextDueAt = Math.min(this.now() + interval, state.verificationDueAt ?? Infinity);
+		state.reason =
+			state.verificationDueAt !== undefined && state.verificationDueAt <= this.now() + interval
+				? 'VERIFICATION'
+				: state.backoff > 1
+					? 'UNCHANGED_DATA'
+					: this.inCommandMode(state)
+						? 'COMMAND_INTERVAL'
+						: state.active
+							? 'ACTIVE_INTERVAL'
+							: 'IDLE_INTERVAL';
 		this.log.debug(
 			this.t(
 				'Poll for %s: %s%s, next in %s min.',
@@ -517,6 +603,7 @@ export class PollScheduler {
 			// Diese VIN gibt es unter diesem Schluessel nicht. Weiterfragen kostet nur
 			// Budget - bis zur naechsten Konfigurationsaenderung ist hier Schluss.
 			state.suspended = true;
+			state.reason = 'SUSPENDED';
 			this.log.error(this.t('Vehicle %s not found; polling suspended. %s', maskVin(state.vin), error.message));
 			return;
 		}
@@ -526,6 +613,7 @@ export class PollScheduler {
 			// (E10). Bis dahin einmal pro Stunde nachsehen.
 			this.setConnected(false);
 			state.nextDueAt = now + this.intervals.errorMs;
+			state.reason = 'AUTH_ERROR';
 			this.log.error(this.t('%s - polling reduced to once per hour.', error.message));
 			return;
 		}
@@ -534,12 +622,14 @@ export class PollScheduler {
 			state.attempts += 1;
 			const waitMs = error.retryAfterMs ?? this.jitteredRetry();
 			state.nextDueAt = now + waitMs;
+			state.reason = error.kind === 'rate-limit-exceeded' ? 'QUOTA' : 'ERROR_RETRY';
 			this.log.warn(this.t('%s - attempt %s in %s s.', error.message, state.attempts, Math.round(waitMs / 1000)));
 			return;
 		}
 
 		state.attempts = 0;
 		state.nextDueAt = now + this.intervalFor(state);
+		state.reason = 'ERROR_INTERVAL';
 		this.log.warn(this.t('%s - next regular poll.', error.message));
 	}
 

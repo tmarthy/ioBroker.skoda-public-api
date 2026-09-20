@@ -106,6 +106,9 @@ not schedule an additional verification poll if the position is still old.
 | `<vin>.info.dataAge` | Seconds since the newest `carCapturedTimestamp` in the response. |
 | `<vin>.info.lastErrors` | The `errors[]` of the last response as JSON. |
 | `<vin>.info.lastCommand.*` | `name`, `result`, `timestamp`, `problemType` of the last command. |
+| `<vin>.info.polling.nextPollAt` | Scheduled due time of the next poll attempt, in Unix milliseconds; `0` while polling, suspended, or retrying local state writes. |
+| `<vin>.info.polling.lastSuccessfulPollAt` | Time of the last successful vehicle API response, in Unix milliseconds; preserved across restarts, `0` if none is recorded. |
+| `<vin>.info.polling.reason` | Current scheduler state or reason for waiting, with readable labels in the object browser. |
 
 **Incomplete responses are normal.** When the API reports a failed part, or a field
 disappears from a returned part, its states keep their last value with quality "not
@@ -114,6 +117,40 @@ profiles. Returning values regain good quality, even if their value has not chan
 Parts intentionally excluded from the request are left alone. `dataAge` measures the
 age of the newest vehicle timestamp at the last successful poll; it is not a live clock
 or a freshness guarantee for every individual state.
+
+### Polling diagnostics
+
+The three `info.polling` states are maintained separately for each configured vehicle,
+including before its first successful response. They update when the scheduler changes
+its plan and do not consume additional API requests.
+
+| `reason` | Meaning |
+|---|---|
+| `STARTUP` | Initial poll is due. |
+| `POLLING` | A vehicle request is in progress. |
+| `IDLE_INTERVAL` | Waiting for the normal interval. |
+| `ACTIVE_INTERVAL` | Waiting for the charging/climatisation interval. |
+| `COMMAND_INTERVAL` | Using the shorter interval following a command. |
+| `UNCHANGED_DATA` | Vehicle timestamps have not changed, so the interval was extended. This is not proof that the vehicle is asleep. |
+| `MANUAL_REFRESH` | A manual refresh has brought the next poll forward. |
+| `VERIFICATION` | A verification poll has been scheduled following an accepted command. |
+| `COMMAND_RESERVE` | Polling has reached the command reserve; requests are held for commands until quota resets. |
+| `QUOTA` | Waiting for quota, including API rate-limit responses. |
+| `STARTUP_GUARD` | Waiting to protect the persisted quota after a restart. |
+| `AUTH_ERROR` | The API key was rejected; polling is reduced to the error interval. |
+| `ERROR_RETRY` | Waiting before retrying a failed request. |
+| `ERROR_INTERVAL` | Waiting for the regular interval after a failed request or exhausted retries. |
+| `WRITE_RETRY` | An API response was received, but its local state writes must be retried; no new API request is scheduled yet. |
+| `SUSPENDED` | The API returned 404; polling for this VIN is suspended until the adapter restarts. |
+
+`nextPollAt` is a scheduled due time, not a promise of fresh data at that instant.
+Quota is checked again before sending, and another vehicle's request can delay it.
+A successful poll may contain unchanged or partial vehicle data: compare `info.dataAge`,
+the individual `carCapturedTimestamp` values and quality flags for freshness.
+Commands and the admin connection test do not advance `lastSuccessfulPollAt`.
+Local write retries also keep the time of the original successful response.
+When the adapter is stopped, these states retain their last values; the schedule is
+valid only while the instance is running and is replaced at the next start.
 
 ### Display units
 
@@ -295,6 +332,7 @@ at 2, plus an ioBroker notification from 7 days on and an alert once the key is 
 | `429 rate-limit-exceeded` | Budget spent. Normal operation; the adapter waits for the window and keeps `info.connection` at `true`. |
 | Commands do nothing | Check `info.lastCommand.result`. `COALESCED` means the target already matched the last known state — use the `start`/`stop` buttons to force the call. |
 | States stop updating | Look at `<vin>.info.dataAge`. A sleeping vehicle is polled less and less often, on purpose. |
+| Unclear when the next poll will happen | Check `<vin>.info.polling.nextPollAt` and `.reason`; `.lastSuccessfulPollAt` shows the last successful API response. |
 
 ## Compact Mode
 
@@ -323,6 +361,7 @@ reproduce the official Škoda logo; it is distributed under this project's MIT l
 - Add a writable charging limit with input validation, quota handling and verification polling.
 - Ignore non-boolean on/off switch writes instead of interpreting them as stop commands.
 - Add writable charging mode and complete charging-profile JSON controls with validation, independent queues and verification polling.
+- Expose per-vehicle polling diagnostics: next due time, persistent last successful poll and the current waiting reason.
 
 ### 0.1.9 (2026-09-06)
 - Used ioBroker-managed request timers and removed news for the skipped npm version 0.1.7.
