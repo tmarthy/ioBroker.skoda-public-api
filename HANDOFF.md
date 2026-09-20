@@ -10,11 +10,10 @@ technische Arbeitsgrundlage in
 
 - Das öffentliche Repository ist
   [`tmarthy/ioBroker.skoda-public-api`](https://github.com/tmarthy/ioBroker.skoda-public-api).
-- Version `0.1.10` ist in `package.json`, `package-lock.json`, `io-package.json`,
-  den ioBroker-News und im README-Changelog vorbereitet. Der Tag `v0.1.10` löst
-  nach dem Push die CI-Matrix und bei Erfolg npm Trusted Publishing sowie den
-  GitHub-Release aus. Bis zum erfolgreichen Workflow bleibt `0.1.9` die zuletzt
-  bestätigte npm-Veröffentlichung.
+- Version `0.1.10` wurde über npm und GitHub veröffentlicht. Version `0.1.11`
+  enthält die Korrekturen der ioBroker-Objektprüfung. Versionsangaben, ioBroker-News
+  und README-Changelog sind darauf abgestimmt. Der Tag `v0.1.11` löst die CI-Matrix
+  und bei Erfolg npm Trusted Publishing sowie den GitHub-Release aus.
 - Der Antrag auf Aufnahme in ioBroker `latest` ist als
   [`ioBroker.repositories#6592`](https://github.com/ioBroker/ioBroker.repositories/pull/6592)
   weiterhin offen (geprüft am 19. September 2026).
@@ -30,10 +29,7 @@ technische Arbeitsgrundlage in
    als offene Fehler übernehmen. Entsprechende Korrekturen bzw. Unterstützung sind
    inzwischen vorhanden. Bei Bedarf einen aktuellen Objekt-Export bereitstellen und
    einen erneuten Check anfordern; der aktuelle Kommentarverlauf wurde hier nicht geprüft.
-2. **Nächstes Release vorbereiten.** Unveröffentlichte Änderungen prüfen, insbesondere
-   manuelles Refresh, Ladelimit, Lademodus und Ladeprofile, und die unten beschriebene
-   Release-Prüfung ausführen.
-3. **Lademodus und Ladeprofile am Fahrzeug prüfen.** Die Schreibzugriffe sind mit
+2. **Lademodus und Ladeprofile am Fahrzeug prüfen.** Die Schreibzugriffe sind mit
    Mock- und Integrationstests abgedeckt; die neue Steuerung benötigt noch einen
    Praxistest mit einem passenden Fahrzeug und dessen verfügbaren Modi/Profilen.
 

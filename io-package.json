@@ -1,8 +1,21 @@
 {
   "common": {
     "name": "skoda-public-api",
-    "version": "0.1.10",
+    "version": "0.1.11",
     "news": {
+      "0.1.11": {
+        "en": "Fixed the profile-name role and completed connection-state translations, including migration of existing instances.",
+        "de": "Rolle des Profilnamens korrigiert und Übersetzungen des Verbindungsstatus einschließlich bestehender Instanzen vervollständigt.",
+        "ru": "Исправлена роль имени профиля и дополнены переводы состояния подключения, включая существующие экземпляры.",
+        "pt": "Corrigida a função do nome do perfil e completadas as traduções do estado da ligação, incluindo instâncias existentes.",
+        "nl": "De rol van de profielnaam gecorrigeerd en vertalingen van de verbindingsstatus aangevuld, ook voor bestaande instanties.",
+        "fr": "Correction du rôle du nom de profil et ajout des traductions de l’état de connexion, y compris pour les instances existantes.",
+        "it": "Corretto il ruolo del nome del profilo e completate le traduzioni dello stato di connessione, anche per le istanze esistenti.",
+        "es": "Se corrigió el rol del nombre del perfil y se completaron las traducciones del estado de conexión, también en instancias existentes.",
+        "pl": "Poprawiono rolę nazwy profilu i uzupełniono tłumaczenia stanu połączenia, także w istniejących instancjach.",
+        "uk": "Виправлено роль назви профілю та доповнено переклади стану підключення, зокрема для наявних екземплярів.",
+        "zh-cn": "修正配置名称的角色，并补全连接状态翻译，包括现有实例。"
+      },
       "0.1.10": {
         "en": "Added writable charging limit, mode and profiles, convenient profile editing, polling diagnostics and visible command confirmation.",
         "de": "Schreibbares Ladelimit, Lademodus und Ladeprofile, komfortable Profilbearbeitung, Abfragediagnose und sichtbare Befehlsbestätigung ergänzt.",
@@ -80,19 +93,6 @@
         "pl": "Dodano kompletne tłumaczenia backendu dla wszystkich języków obsługiwanych przez ioBroker",
         "uk": "Додано повні переклади серверної частини для всіх мов, які підтримує ioBroker",
         "zh-cn": "为 ioBroker 支持的所有语言添加了完整的后端翻译"
-      },
-      "0.1.3": {
-        "en": "Completed missing admin UI translations for all supported languages",
-        "de": "Fehlende Übersetzungen der Admin-Oberfläche für alle unterstützten Sprachen ergänzt",
-        "ru": "Добавлены отсутствующие переводы интерфейса администратора для всех поддерживаемых языков",
-        "pt": "Concluídas as traduções em falta da interface de administração para todos os idiomas suportados",
-        "nl": "Ontbrekende vertalingen van de beheerinterface voor alle ondersteunde talen aangevuld",
-        "fr": "Ajout des traductions manquantes de l’interface d’administration pour toutes les langues prises en charge",
-        "it": "Completate le traduzioni mancanti dell’interfaccia di amministrazione per tutte le lingue supportate",
-        "es": "Completadas las traducciones que faltaban en la interfaz de administración para todos los idiomas compatibles",
-        "pl": "Uzupełniono brakujące tłumaczenia interfejsu administratora dla wszystkich obsługiwanych języków",
-        "uk": "Додано відсутні переклади інтерфейсу адміністратора для всіх підтримуваних мов",
-        "zh-cn": "补全了所有受支持语言中缺失的管理界面翻译"
       }
     },
     "titleLang": {
