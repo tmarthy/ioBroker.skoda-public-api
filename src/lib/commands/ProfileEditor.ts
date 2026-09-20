@@ -1,4 +1,5 @@
 /** Local charging-profile drafts. Only an explicit apply enters the existing command queue. */
+import { diagnosticText, EDITOR_MESSAGES } from '../diagnosticTranslations';
 import { vehicleErrors } from '../api/client';
 import { partFromErrorType } from '../api/parts';
 import type { VehicleResponse } from '../api/types';
@@ -162,6 +163,17 @@ export class ProfileEditor {
 				for (const root of roots) {
 					await this.disableUnused(root, new Set());
 					await this.availability(root, false);
+					await this.state(
+						`${root}.message`,
+						diagnosticText('unavailable', EDITOR_MESSAGES.unavailable, this.language),
+						{
+							name: translated('Profile editor message', 'Meldung der Profilbearbeitung'),
+							type: 'string',
+							role: 'text',
+							read: true,
+							write: false,
+						},
+					);
 				}
 			}
 		});
@@ -198,7 +210,7 @@ export class ProfileEditor {
 			for (const [root, draft] of this.drafts) {
 				if (root.startsWith(`${vin}.`) && !seen.has(root)) {
 					draft.current = undefined;
-					draft.message = 'Profile unavailable in the latest poll. Wait for valid vehicle data.';
+					draft.message = diagnosticText('unavailable', EDITOR_MESSAGES.unavailable, this.language);
 					await this.write(root, draft);
 				}
 			}
@@ -228,29 +240,29 @@ export class ProfileEditor {
 				return;
 			} // No persisted draft is ever submitted before a fresh poll.
 			if (path === 'apply' || path === 'reset') {
-				await this.api.setStateAsync(id, { val: false, ack: true });
+				await this.api.setStateAsync(id, { val: false, ack: true, q: draft.current ? 0 : 1 });
 				if (value !== true) {
 					return;
 				}
 				if (!draft.current) {
-					draft.message = 'Profile unavailable in the latest poll. Wait for valid vehicle data.';
+					draft.message = diagnosticText('unavailable', EDITOR_MESSAGES.unavailable, this.language);
 				} else if (path === 'reset') {
 					draft.base = draft.current;
 					draft.value = JSON.parse(draft.current);
 					draft.message = '';
 				} else if (draft.base !== draft.current) {
-					draft.message = 'Profile changed during editing. Reset the draft and reapply your changes.';
+					draft.message = diagnosticText('conflict', EDITOR_MESSAGES.conflict, this.language);
 				} else if (!isChargingProfile(draft.value)) {
-					draft.message = 'Invalid profile. Check timer time, type and selected days before applying.';
+					draft.message = diagnosticText('invalid', EDITOR_MESSAGES.invalid, this.language);
 				} else if (canonicalJson(draft.value) === draft.base) {
-					draft.message = 'No changes to apply.';
+					draft.message = diagnosticText('unchanged', EDITOR_MESSAGES.unchanged, this.language);
 				} else {
 					await this.submit(
 						`${root.slice(0, -'.edit'.length)}.configurationJson`,
 						canonicalJson(draft.value),
 						draft.base,
 					);
-					draft.message = 'Submitted to command queue. See info.lastCommand and info.commandConfirmation.';
+					draft.message = diagnosticText('submitted', EDITOR_MESSAGES.submitted, this.language);
 				}
 			} else {
 				const field =
@@ -270,7 +282,10 @@ export class ProfileEditor {
 						(value === '' && path.endsWith('.time')) ||
 						/^(?:[01]\d|2[0-3]):[0-5]\d$/.test(String(value)));
 				if (!valid) {
-					draft.message = `Invalid value for ${path}.`;
+					draft.message = diagnosticText('invalidField', EDITOR_MESSAGES.invalidField, this.language).replace(
+						'%s',
+						() => path,
+					);
 				} else {
 					setField(draft.value, path, value);
 					draft.message = '';
@@ -326,12 +341,16 @@ export class ProfileEditor {
 					type: typeof field.value as 'string' | 'number' | 'boolean',
 					role:
 						typeof field.value === 'boolean'
-							? 'switch.setting'
+							? field.path.includes('.recurringOn.')
+								? 'switch'
+								: 'switch.setting'
 							: typeof field.value === 'number'
 								? field.path.includes('minimumBattery')
 									? 'level.setting.battery.min'
 									: 'level.setting.battery'
-								: 'text.setting',
+								: field.path === 'name'
+									? 'text.setting'
+									: 'text',
 					read: true,
 					write: available.has(field.path),
 					...(field.states
@@ -473,6 +492,14 @@ export class ProfileEditor {
 		common: ioBroker.StateCommon,
 		quality: 0 | 1 = 0,
 	): Promise<void> {
+		if (quality === 1) {
+			common = {
+				...common,
+				read: true,
+				write: false,
+				role: common.type === 'boolean' ? 'indicator' : common.type === 'number' ? 'value' : 'text',
+			};
+		}
 		let previous = this.metadata.get(id);
 		if (!previous) {
 			const existing = await this.api.getObjectAsync(id);

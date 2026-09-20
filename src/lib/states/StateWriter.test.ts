@@ -78,6 +78,39 @@ describe('states/StateWriter => Antwort in den Objektbaum', () => {
 		expect(adapter.val(id)).to.equal('Local draft');
 	});
 
+	it('migrates diagnostic labels for the system language while keeping status codes and custom metadata', async () => {
+		await writer.writePollingStatus(VIN, { reason: 'QUOTA', nextPollAt: 123 });
+		await writer.writeCommandConfirmation(VIN, {
+			channel: 'charging',
+			name: 'charging.start',
+			target: 'true',
+			sentAt: 1,
+			expiresAt: 2,
+			confirmedAt: 2,
+			status: 'CONFIRMED',
+		});
+		const reason = `${VIN}.info.polling.reason`;
+		const confirmation = `${VIN}.info.commandConfirmation.charging.status`;
+		await adapter.extendObjectAsync(reason, {
+			common: { name: 'Mein Abfragestatus', custom: { 'history.0': { enabled: true } } },
+		});
+		writer = new StateWriter({ api: adapter, language: 'de' });
+		await writer.interruptCommandConfirmations(VIN);
+		await writer.writePollingStatus(VIN, { reason: 'QUOTA', nextPollAt: 123 });
+		expect(adapter.objects.get(reason)!.common)
+			.to.have.property('states')
+			.that.has.property('QUOTA', 'Warten auf API-Kontingent');
+		expect(adapter.objects.get(reason)!.common).to.have.property('name', 'Mein Abfragestatus');
+		expect(adapter.objects.get(reason)!.common)
+			.to.have.property('custom')
+			.that.deep.equals({ 'history.0': { enabled: true } });
+		expect(adapter.objects.get(confirmation)!.common)
+			.to.have.property('states')
+			.that.has.property('CONFIRMED', 'Passende neuere Fahrzeugdaten erkannt');
+		expect(adapter.val(reason)).to.equal('QUOTA');
+		expect(adapter.val(confirmation)).to.equal('CONFIRMED');
+	});
+
 	describe('command confirmation', () => {
 		const accepted = (): CommandConfirmation => ({
 			channel: 'charging',

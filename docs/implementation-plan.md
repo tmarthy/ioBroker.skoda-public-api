@@ -218,6 +218,11 @@ bestätigte Editorfelder sind schreibgeschützt und als nicht verfügbar gekennz
 `edit.available` zeigt die Profilverfügbarkeit. Wiederkehrende Felder werden reaktiviert.
 Tests decken Rollen, Sprache, Migration, Neustart und Verfügbarkeitswechsel ab.
 
+Ergänzte Regressionstests prüfen Rolle/Schreibrecht-Konsistenz auch für nicht verfügbare
+Buttons, eindeutige detaillierte Rollen pro Kanal sowie die Wiederherstellung nach
+Rückkehr. Editormeldungen und Diagnose-Labels sind in allen elf Sprachen verfügbar;
+Tests sichern stabile Statuscodes und die Migration bestehender Label-Zuordnungen ab.
+
 ### Laufende Wartung
 
 - Änderungen der OpenAPI-`v0`-Spec prüfen und Codegen anpassen

@@ -181,6 +181,10 @@ tests.integration(path.join(__dirname, '..'), {
 				mock.vehicleState.charging.settings.availableChargeModes = ['MANUAL', 'TIMER'];
 				baseUrl = await mock.start();
 				await configure(harness);
+				const system = harness.objects.getObjectAsync ? await harness.objects.getObjectAsync('system.config') : await harness.objects.getObject('system.config');
+				system.common.language = 'de';
+				if (harness.objects.setObjectAsync) { await harness.objects.setObjectAsync('system.config', system); }
+				else { await harness.objects.setObject('system.config', system); }
 
 				// Werte eines Vorgaengerprozesses: ein inzwischen fehlendes Feld und
 				// ein unveraenderter Wert, dessen alte Fehlerqualitaet verschwinden muss.
@@ -246,6 +250,8 @@ tests.integration(path.join(__dirname, '..'), {
 				expect(next.val).to.be.greaterThan(last.val);
 				expect(next.val - last.val).to.be.within(15 * 60000, 15 * 60000 + 10000);
 				expect(last.ack).to.equal(true);
+				const reasonObject = harness.objects.getObjectAsync ? await harness.objects.getObjectAsync(`${VEHICLE}.info.polling.reason`) : await harness.objects.getObject(`${VEHICLE}.info.polling.reason`);
+				expect(reasonObject.common.states.QUOTA).to.equal('Warten auf API-Kontingent');
 			});
 
 			it('schreibt Budget und Schluesselablauf aus den Headern', async function () {
@@ -342,10 +348,13 @@ tests.integration(path.join(__dirname, '..'), {
 				const fieldObject = harness.objects.getObjectAsync
 					? await harness.objects.getObjectAsync(`${editRoot}.timers.1.time`)
 					: await harness.objects.getObject(`${editRoot}.timers.1.time`);
-				expect(fieldObject.common.role).to.equal('text.setting');
+				expect(fieldObject.common.role).to.equal('text');
 				expect(fieldObject.common.name.de).to.equal('Abfahrtszeit');
 				expect(fieldObject.common.desc.de).to.include('Fahrzeug-Ortszeit');
 				const beforeEdit = mock.requests.length;
+				await setState(harness, `${editRoot}.timers.1.time`, { val: '25:00', ack: false });
+				await waitFor('localized validation message', async () => (await getState(harness, `${editRoot}.message`))?.val === 'Ungültiger Wert für timers.1.time.');
+				expect(mock.requests).to.have.length(beforeEdit);
 				profile.settings.targetStateOfChargeInPercent = 90;
 				profile.timers[0].time = '08:15';
 				for (const [field, value] of [['name', profile.name], ['settings.targetStateOfChargeInPercent', 90], ['timers.1.time', '08:15']]) {
@@ -390,6 +399,8 @@ tests.integration(path.join(__dirname, '..'), {
 					return true;
 				});
 				expect((await readState(harness, `${VEHICLE}.info.lastCommand.result`)).val).to.equal('SENT');
+				const confirmationObject = harness.objects.getObjectAsync ? await harness.objects.getObjectAsync(`${VEHICLE}.info.commandConfirmation.charging.status`) : await harness.objects.getObject(`${VEHICLE}.info.commandConfirmation.charging.status`);
+				expect(confirmationObject.common.states.CONFIRMED).to.equal('Passende neuere Fahrzeugdaten erkannt');
 				await waitFor('profile draft matches vehicle', async () => (await getState(harness, `${VEHICLE}.chargingProfiles.profiles.1.edit.dirty`))?.val === false);
 				expect(mock.requests).to.have.length(7); // Same baseline: 3 GETs, 1 POST and 3 PUTs.
 				expect(mock.requests.filter(request => request.method === 'GET')).to.have.length(3);

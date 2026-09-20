@@ -335,15 +335,23 @@ cannot be applied. Optional settings appear only when supplied by the vehicle;
 timer/window IDs and unknown API fields are preserved, and entries cannot be created
 or deleted here.
 
-Editor fields use configuration roles (`switch.setting`, `level.setting.battery`,
-`level.setting.battery.min`, `text.setting`) so interfaces can distinguish them from
-immediate vehicle controls. Field names and help texts support all ioBroker languages;
-selection labels use the ioBroker system language (restart the adapter after changing
-that language). API values such as `ONE_OFF` remain unchanged.
+Editor fields use configuration roles where they are unique within a channel
+(`switch.setting`, `level.setting.battery`, `level.setting.battery.min`, `text.setting`).
+Repeated text fields use the generic `text` role and weekday switches use `switch`,
+so detailed roles never occur twice in the same channel. These are still local drafts;
+only Apply submits them. Field names and help texts support all ioBroker languages;
+selection labels, editor messages and polling/confirmation status labels use the
+ioBroker system language (restart the adapter after changing that language). API values
+such as `ONE_OFF` and diagnostic codes such as `WAITING` or `QUOTA` remain unchanged.
+Existing diagnostic label maps are migrated, including completed confirmations.
+Backend logs remain English.
 
 `edit.available` indicates whether the latest poll contains a valid profile. Removed
 fields, timers or profiles retain their last values, but their controls become
-read-only (`common.write: false`) with quality `q: 1` and an explanatory description.
+read-only (`common.read: true`, `common.write: false`) with quality `q: 1` and an
+explanatory description. Their roles become `indicator` for Booleans (including disabled
+buttons), `value` for numbers, and `text` for strings. Returning fields regain their
+original control roles; active buttons remain write-only (`read: false`, `write: true`).
 Direct writes to unavailable fields are ignored and their retained values restored.
 When a field returns, its controls and quality `q: 0` are restored automatically.
 Persisted editor controls are also disabled at startup until the first valid poll.
@@ -487,6 +495,7 @@ reproduce the official Škoda logo; it is distributed under this project's MIT l
 - Expose per-control command confirmation and local timeouts using existing polls only, without additional API requests.
 - Add local charging-profile editors with individual fields, weekday switches, apply/reset buttons and conflict detection; batch changes into one profile update.
 - Refine editor setting roles and translated help/choices; migrate existing metadata and mark unavailable controls read-only until their data returns.
+- Keep unavailable roles consistent with access rights, avoid repeated detailed roles per channel, and localize editor messages and polling/confirmation labels without changing state codes.
 
 ### 0.1.9 (2026-09-06)
 - Used ioBroker-managed request timers and removed news for the skipped npm version 0.1.7.

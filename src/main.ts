@@ -91,7 +91,9 @@ class SkodaPublicApi extends utils.Adapter {
 		await quota.start();
 		this.lifecycle.check();
 
-		const writer = new StateWriter({ api, t });
+		const systemConfig = await api.getForeignObjectAsync('system.config');
+		const language = systemConfig?.common.language ?? 'en';
+		const writer = new StateWriter({ api, t, language });
 		for (const vin of settings.vins) {
 			await writer.interruptCommandConfirmations(vin);
 		}
@@ -167,12 +169,7 @@ class SkodaPublicApi extends utils.Adapter {
 			clearTimer: handle => this.clearTimeout(handle as ioBroker.Timeout),
 		});
 		this.queue.start();
-		const systemConfig = await api.getForeignObjectAsync('system.config');
-		this.profileEditor = new ProfileEditor(
-			api,
-			(id, value, base) => this.queue!.submit(id, value, base),
-			systemConfig?.common.language ?? 'en',
-		);
+		this.profileEditor = new ProfileEditor(api, (id, value, base) => this.queue!.submit(id, value, base), language);
 		await this.profileEditor.initialize(settings.vins);
 		this.lifecycle.check();
 

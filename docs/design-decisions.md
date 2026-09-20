@@ -222,13 +222,23 @@ neu initialisiert, nie automatisch wiederhergestellt oder gesendet. Die vorhande
 JSON-Befehle bleiben kompatibel. Nicht gepollte App-Änderungen bleiben wegen fehlender
 serverseitiger Versionsprüfung weiterhin ein Restrisiko.
 
-Der Editor verwendet `.setting`-Rollen und mehrsprachige Metadaten. Auswahltexte werden
+Der Editor verwendet eindeutige `.setting`-Rollen und mehrsprachige Metadaten.
+Wiederholte Textfelder und Wochentage nutzen generische `text`-/`switch`-Rollen, damit
+keine detaillierte Rolle innerhalb eines Kanals mehrfach vorkommt. Auswahltexte werden
 als Strings in der System-Sprache hinterlegt, weil `common.states` Stringwerte erwartet.
 Bereits vorhandene Objekte werden gezielt migriert; eigene Namen und History bleiben
 unangetastet. Entfernte Felder werden nicht gelöscht, sondern mit `write=false`, `q=1`
-und Verfügbarkeitsbeschreibung behalten. Ein erneuter Poll kann sie reaktivieren.
+und Verfügbarkeitsbeschreibung behalten. Nicht verfügbare Felder erhalten passende
+Nur-Lese-Rollen (`indicator`, `value`, `text`) mit `read=true`; insbesondere entstehen
+keine Buttons mit `read=false` und `write=false`. Bei Rückkehr werden Bedienrollen und
+Schreibrechte wiederhergestellt. Ein erneuter Poll kann sie reaktivieren.
 Dasselbe gilt beim Start, bis neue Fahrzeugdaten vorliegen. `edit.available` ist eine
 lokale Diagnose; weder Migration noch Verfügbarkeitsprüfung erzeugen Fahrzeugrequests.
+
+Editor-, Polling- und Bestätigungsanzeigen werden über stabile Codes lokalisiert.
+Anzeigen folgen der Systemsprache, Maschinenwerte und englische Backendlogs bleiben
+unverändert. Bestehende Diagnose-Labels werden ohne Änderung von Benutzer-Metadaten
+migriert; auch abgeschlossene Befehlsbestätigungen erhalten beim Start aktuelle Labels.
 
 ## Bekannte Restrisiken
 

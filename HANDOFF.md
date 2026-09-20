@@ -228,7 +228,10 @@ gemeinsam prüfen und versionieren.
 ### Metadaten und Verfügbarkeit des Profileditors
 
 - Einstellungsrollen: `switch.setting`, `level.setting.battery`,
-  `level.setting.battery.min`, `text.setting`; Buttons bleiben `button`.
+  `level.setting.battery.min`, `text.setting`, jeweils eindeutig pro Kanal.
+  Wiederholte Textfelder verwenden `text`, Wochentage `switch`.
+  Verfügbare Buttons bleiben `button`; nicht verfügbare Booleans erhalten `indicator`,
+  Zahlen `value` und Strings `text`, jeweils `read=true`/`write=false`.
 - `profileEditorLabels.ts` enthält mehrsprachige Feldnamen, Auswahltexte und Hilfen.
   Wochentage kommen aus `Intl` (UTC, zwischengespeichert). `common.states` verwendet
   Stringwerte in der System-Sprache; ein Sprachwechsel wird nach Neustart wirksam.
@@ -239,3 +242,13 @@ gemeinsam prüfen und versionieren.
   lokalen Entwurf bleiben bei Konflikten erhalten; nicht verfügbare Felder sind gesperrt.
 - Migration aktualisiert nur abweichende Metadaten. Benutzerdefinierte Namen und
   andere Einstellungen wie History bleiben erhalten. Keine zusätzlichen Fahrzeugrequests.
+
+### Lokalisierte Diagnosen
+
+`diagnosticTranslations.ts` übersetzt Editormeldungen und die Labels der Polling- und
+Bestätigungsstatus in alle elf Sprachen. Die Systemsprache wird beim Start einmal gelesen;
+Backendlogs bleiben englisch, API-Werte und Statuscodes unverändert. Vorhandene `common.states`
+werden gezielt migriert, abgeschlossene Bestätigungen bereits beim Start. Sprachwechsel
+benötigen einen Adapterneustart. Tests prüfen Rollenkonsistenz und eindeutige detaillierte
+Rollen auch nach Ausfall, Wiederkehr und Neustart; der Integrationstest läuft mit deutscher
+Systemsprache und unveränderter Anzahl an Fahrzeugrequests.

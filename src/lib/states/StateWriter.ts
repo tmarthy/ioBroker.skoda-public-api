@@ -1,3 +1,4 @@
+import { diagnosticStates } from '../diagnosticTranslations';
 import { canonicalJson, isChargingProfile } from '../commands/chargingControls';
 /**
  * StateWriter - traegt die Antwort der API in den ioBroker-Objektbaum ein.
@@ -87,6 +88,8 @@ export interface StateApi {
 
 /** Womit der Writer eingerichtet wird. */
 export interface StateWriterOptions {
+	/** System language for diagnostic selection labels. */
+	language?: string;
 	/** Der Ausschnitt der Adapter-Schnittstelle, in den geschrieben wird. */
 	api: StateApi;
 	/** Zeitquelle fuer `info.dataAge`, ersetzbar fuer Tests. */
@@ -112,6 +115,7 @@ export class StateWriter {
 	private readonly api: StateApi;
 	private readonly now: () => number;
 	private readonly t: Translate;
+	private readonly language: string;
 	/** Serialize diagnostics per vehicle so an older asynchronous write cannot win. */
 	private readonly pollingWrites = new Map<string, Promise<void>>();
 	/** Preserve the order of acceptance, confirmation and timeout notifications. */
@@ -136,6 +140,7 @@ export class StateWriter {
 		this.api = options.api;
 		this.now = options.now ?? (() => Date.now());
 		this.t = options.t ?? translateFallback;
+		this.language = options.language ?? 'en';
 	}
 
 	/**
@@ -194,7 +199,7 @@ export class StateWriter {
 			role: 'text',
 			read: true,
 			write: false,
-			states: { ...POLLING_REASONS },
+			states: diagnosticStates(POLLING_REASONS, this.language),
 		});
 	}
 
@@ -209,7 +214,7 @@ export class StateWriter {
 		const states = await this.api.getStatesAsync(`${prefix}*`);
 		for (const [fullId, state] of Object.entries(states)) {
 			const start = fullId.indexOf(prefix);
-			if (start < 0 || state?.val !== 'WAITING') {
+			if (start < 0 || !state) {
 				continue;
 			}
 			const id = fullId.slice(start);
@@ -218,7 +223,14 @@ export class StateWriter {
 					id.slice(prefix.length),
 				)
 			) {
-				await this.api.setStateAsync(id, { val: 'INTERRUPTED', ack: true, q: QUALITY_GOOD });
+				const labels = diagnosticStates(CONFIRMATION_STATUSES, this.language);
+				const object = await this.api.getObjectAsync(id);
+				if (object?.type === 'state' && canonicalJson(object.common.states) !== canonicalJson(labels)) {
+					await this.api.extendObjectAsync(id, { common: { states: labels } });
+				}
+				if (state.val === 'WAITING') {
+					await this.api.setStateAsync(id, { val: 'INTERRUPTED', ack: true, q: QUALITY_GOOD });
+				}
 			}
 		}
 	}
@@ -306,7 +318,7 @@ export class StateWriter {
 				role: 'text',
 				read: true,
 				write: false,
-				states: { ...CONFIRMATION_STATUSES },
+				states: diagnosticStates(CONFIRMATION_STATUSES, this.language),
 			},
 			true,
 		);
@@ -671,6 +683,12 @@ export class StateWriter {
 			await this.migrateStandardName(id, common.name);
 			this.createdObjects.add(id);
 			this.createdStates.add(id);
+			if (common.states && (path === 'info.polling.reason' || path.startsWith('info.commandConfirmation.'))) {
+				const existing = await this.api.getObjectAsync(id);
+				if (canonicalJson(existing?.common.states) !== canonicalJson(common.states)) {
+					await this.api.extendObjectAsync(id, { common: { states: common.states } });
+				}
+			}
 		}
 		if (forceWrite) {
 			await this.api.setStateAsync(id, { val: value, ack: true, q: QUALITY_GOOD });

@@ -154,7 +154,7 @@ describe('commands/ProfileEditor => local drafts and explicit apply', () => {
 		expect(common('settings.minBatteryStateOfCharge.minimumBatteryStateOfChargeInPercent').role).to.equal(
 			'level.setting.battery.min',
 		);
-		expect(common('timers.1.time').role).to.equal('text.setting');
+		expect(common('timers.1.time').role).to.equal('text');
 		expect(common('apply')).to.include({ role: 'button', read: false, write: true });
 		expect(common('timers.1.time').name).to.have.property('de', 'Abfahrtszeit');
 		expect(common('timers.1.time').desc).to.have.property('de').that.includes('Fahrzeug-Ortszeit');
@@ -238,7 +238,7 @@ describe('commands/ProfileEditor => local drafts and explicit apply', () => {
 		await editor.initialize([VIN]);
 		await editor.observe(VIN, fixture());
 		expect(api.objects.get(id)!.common!.name).to.have.property('de', 'Abfahrtszeit');
-		expect(api.objects.get(id)!.common).to.have.property('role', 'text.setting');
+		expect(api.objects.get(id)!.common).to.have.property('role', 'text');
 		expect(api.objects.get(id)!.common)
 			.to.have.property('custom')
 			.that.deep.equals({ 'history.0': { enabled: true } });
@@ -248,5 +248,62 @@ describe('commands/ProfileEditor => local drafts and explicit apply', () => {
 		response.vehicle.chargingProfiles!.profiles[0].timers = [];
 		await editor.observe(VIN, response);
 		expect(api.objects.get(id)!.common!.name).to.equal('Meine Abfahrtszeit');
+	});
+	it('keeps detailed roles unique per channel and makes unavailable roles consistent with access rights', async () => {
+		const check = (): void => {
+			const used = new Set<string>();
+			for (const [id, object] of api.objects) {
+				if (object.type !== 'state') {
+					continue;
+				}
+				const common = object.common;
+				if (common.role.includes('.')) {
+					const key = `${id.slice(0, id.lastIndexOf('.'))}|${common.role}`;
+					expect(used.has(key), key).to.equal(false);
+					used.add(key);
+				}
+				if (common.role === 'button') {
+					expect(common).to.include({ read: false, write: true, type: 'boolean' });
+				}
+				if (/^(switch|level)(\.|$)/.test(common.role)) {
+					expect(common.write, id).to.equal(true);
+				}
+				if (/^(indicator|value)(\.|$)/.test(common.role)) {
+					expect(common).to.include({ read: true, write: false });
+				}
+			}
+		};
+		check();
+		const missing = fixture();
+		delete missing.vehicle.chargingProfiles;
+		await editor.observe(VIN, missing);
+		check();
+		expect(api.objects.get(`${ROOT}.apply`)!.common).to.include({ read: true, write: false, role: 'indicator' });
+		await edit('apply', false);
+		expect(api.quality(`${ROOT}.apply`)).to.equal(1);
+		await editor.observe(VIN, fixture());
+		check();
+		expect(api.objects.get(`${ROOT}.apply`)!.common).to.include({ read: false, write: true, role: 'button' });
+		editor = new ProfileEditor(api, () => Promise.resolve());
+		await editor.initialize([VIN]);
+		check();
+	});
+
+	it('localizes visible validation and submission messages without translating API values', async () => {
+		editor = new ProfileEditor(api, () => Promise.resolve(), 'de');
+		await api.setStateAsync(`${ROOT}.message`, { val: 'Old English message', ack: true });
+		await editor.initialize([VIN]);
+		expect(api.val(`${ROOT}.message`)).to.equal(
+			'Profil derzeit nicht verfügbar. Auf gültige Fahrzeugdaten warten.',
+		);
+		await editor.observe(VIN, fixture());
+		await edit('timers.1.time', '25:00');
+		expect(api.val(`${ROOT}.message`)).to.equal('Ungültiger Wert für timers.1.time.');
+		await edit('apply', true);
+		expect(api.val(`${ROOT}.message`)).to.equal('Keine Änderungen zum Übernehmen.');
+		await edit('name', 'Arbeit');
+		await edit('apply', true);
+		expect(api.val(`${ROOT}.message`)).to.include('An Befehlswarteschlange übergeben');
+		expect(api.val(`${ROOT}.timers.1.type`)).to.equal('RECURRING');
 	});
 });
