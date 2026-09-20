@@ -25,6 +25,7 @@ import { newestCapturedAt } from '../api/vehicleData';
 import { partFromErrorType } from '../api/parts';
 import type { VehicleResponse } from '../api/types';
 import { POLLING_REASONS, type PollingStatus } from '../scheduler/pollingStatus';
+import { CONFIRMATION_STATUSES, type CommandConfirmation } from '../commands/confirmation';
 import {
 	CHARGING_LIMIT_PATH,
 	CHARGING_MODE_PATH,
@@ -113,6 +114,8 @@ export class StateWriter {
 	private readonly t: Translate;
 	/** Serialize diagnostics per vehicle so an older asynchronous write cannot win. */
 	private readonly pollingWrites = new Map<string, Promise<void>>();
+	/** Preserve the order of acceptance, confirmation and timeout notifications. */
+	private readonly confirmationWrites = new Map<string, Promise<void>>();
 
 	/** Bereits angelegte Objekte - Anlage genau einmal pro Pfad (E13). */
 	private readonly createdObjects = new Set<string>();
@@ -193,6 +196,120 @@ export class StateWriter {
 			write: false,
 			states: { ...POLLING_REASONS },
 		});
+	}
+
+	/**
+	 * Mark unfinished observations from a previous process without issuing vehicle requests.
+	 * Call before admitting new commands at startup.
+	 *
+	 * @param vin Configured vehicle.
+	 */
+	public async interruptCommandConfirmations(vin: string): Promise<void> {
+		const prefix = `${vin}.info.commandConfirmation.`;
+		const states = await this.api.getStatesAsync(`${prefix}*`);
+		for (const [fullId, state] of Object.entries(states)) {
+			const start = fullId.indexOf(prefix);
+			if (start < 0 || state?.val !== 'WAITING') {
+				continue;
+			}
+			const id = fullId.slice(start);
+			if (
+				/^(charging|airConditioning|auxiliaryHeating|activeVentilation|chargingLimit|chargingMode|chargingProfiles\.-?\d+)\.status$/.test(
+					id.slice(prefix.length),
+				)
+			) {
+				await this.api.setStateAsync(id, { val: 'INTERRUPTED', ack: true, q: QUALITY_GOOD });
+			}
+		}
+	}
+
+	/**
+	 * Persist confirmation snapshots in order without touching lastCommand or control values.
+	 *
+	 * @param vin Vehicle identification number.
+	 * @param confirmation Latest accepted command for a control group.
+	 */
+	public writeCommandConfirmation(vin: string, confirmation: CommandConfirmation): Promise<void> {
+		const previous = this.confirmationWrites.get(vin) ?? Promise.resolve();
+		const task = previous.catch(() => undefined).then(() => this.writeCommandConfirmationNow(vin, confirmation));
+		this.confirmationWrites.set(vin, task);
+		const cleanup = (): void => {
+			if (this.confirmationWrites.get(vin) === task) {
+				this.confirmationWrites.delete(vin);
+			}
+		};
+		void task.then(cleanup, cleanup);
+		return task;
+	}
+
+	/**
+	 * Write metadata before status so status events can be used as the update signal.
+	 *
+	 * @param vin Vehicle identification number.
+	 * @param confirmation Accepted command and observed outcome.
+	 */
+	private async writeCommandConfirmationNow(vin: string, confirmation: CommandConfirmation): Promise<void> {
+		await this.ensureChannel(vin, 'info', translated('Adapter information', 'Adapterinformationen'));
+		const root = 'info.commandConfirmation';
+		await this.ensureChannel(vin, root, translated('Command confirmation', 'Befehlsbestätigung'));
+		if (confirmation.channel.startsWith('chargingProfiles.')) {
+			await this.ensureChannel(
+				vin,
+				`${root}.chargingProfiles`,
+				translated('Charging profiles by id', 'Ladeprofile nach ID'),
+			);
+		}
+		const base = `${root}.${confirmation.channel}`;
+		await this.ensureChannel(vin, base, translated('Command confirmation', 'Befehlsbestätigung'));
+		await this.writeDerived(vin, `${base}.name`, confirmation.name, {
+			name: translated('Last command', 'Letzter Befehl'),
+			type: 'string',
+			role: 'text',
+			read: true,
+			write: false,
+		});
+		await this.writeDerived(vin, `${base}.target`, confirmation.target, {
+			name: translated('Command target', 'Befehlsziel'),
+			type: 'string',
+			role: 'json',
+			read: true,
+			write: false,
+		});
+		await this.writeDerived(vin, `${base}.sentAt`, confirmation.sentAt, {
+			name: translated('Command accepted at', 'Befehl angenommen am'),
+			type: 'number',
+			role: 'date',
+			read: true,
+			write: false,
+		});
+		await this.writeDerived(vin, `${base}.expiresAt`, confirmation.expiresAt, {
+			name: translated('Confirmation deadline', 'Bestätigungsfrist'),
+			type: 'number',
+			role: 'date',
+			read: true,
+			write: false,
+		});
+		await this.writeDerived(vin, `${base}.confirmedAt`, confirmation.confirmedAt, {
+			name: translated('Command confirmed at', 'Befehl bestätigt am'),
+			type: 'number',
+			role: 'date',
+			read: true,
+			write: false,
+		});
+		await this.writeDerived(
+			vin,
+			`${base}.status`,
+			confirmation.status,
+			{
+				name: translated('Confirmation status', 'Bestätigungsstatus'),
+				type: 'string',
+				role: 'text',
+				read: true,
+				write: false,
+				states: { ...CONFIRMATION_STATUSES },
+			},
+			true,
+		);
 	}
 
 	/**
@@ -538,12 +655,14 @@ export class StateWriter {
 	 * @param path Punktpfad des Zustands.
 	 * @param value Der Wert.
 	 * @param common Das vollstaendige `common`.
+	 * @param forceWrite Emit an event even when the value is unchanged.
 	 */
 	private async writeDerived(
 		vin: string,
 		path: string,
 		value: ioBroker.StateValue,
 		common: ioBroker.StateCommon,
+		forceWrite = false,
 	): Promise<void> {
 		const id = `${vin}.${path}`;
 		if (!this.createdObjects.has(id)) {
@@ -552,7 +671,11 @@ export class StateWriter {
 			this.createdObjects.add(id);
 			this.createdStates.add(id);
 		}
-		await this.writeValue(id, value);
+		if (forceWrite) {
+			await this.api.setStateAsync(id, { val: value, ack: true, q: QUALITY_GOOD });
+		} else {
+			await this.writeValue(id, value);
+		}
 	}
 
 	/**

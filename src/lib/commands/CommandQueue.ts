@@ -19,7 +19,8 @@
  */
 import { ShutdownError } from '../lifecycle';
 import type { ApiError } from '../api/errors';
-import type { ApiMeta, ApiResult, CommandBody } from '../api/client';
+import { vehicleErrors, type ApiMeta, type ApiResult, type CommandBody } from '../api/client';
+import { partFromErrorType } from '../api/parts';
 import type { CommandAction, CommandDomain, VehicleResponse } from '../api/types';
 import { newestCapturedAt } from '../api/vehicleData';
 import type { VehicleQuota } from '../quota/VehicleQuotaManager';
@@ -35,6 +36,7 @@ import {
 import { buildCommandBody, parseCommandState, type ParsedCommand } from './commandMap';
 import { canonicalJson, findProfile, isProfileId, isRecord } from './chargingControls';
 import { translateFallback, type Translate } from '../i18n';
+import type { CommandConfirmation, ConfirmationStatus } from './confirmation';
 
 /** Der Ausschnitt des Clients, den die Queue braucht. */
 export interface CommandSender {
@@ -74,6 +76,8 @@ export interface CommandQueueOptions {
 	vins: readonly string[];
 	/** Wohin das Ergebnis geht: in der Adapterverdrahtung der StateWriter. */
 	onReport: (vin: string, report: CommandReport) => Promise<void> | void;
+	/** Observation-only notification; never schedules a request or retries a command. */
+	onConfirmation?: (vin: string, confirmation: CommandConfirmation) => void;
 	/** Wohin die Meldungen gehen. */
 	log: CommandLog;
 	/** Backend-Uebersetzung; ohne Adapter-Kontext wird Englisch verwendet. */
@@ -116,6 +120,15 @@ interface QueueEntry {
 	protectReserve: boolean;
 }
 
+/** Retained after timeout so existing coalescing can invalidate stale pre-command data. */
+interface AwaitingConfirmation {
+	command: ParsedCommand;
+	desired: boolean | number | string;
+	sentAt: number;
+	expiresAt: number;
+	timedOut?: boolean;
+}
+
 /**
  * Nimmt Schreibvorgaenge auf den Befehls-States entgegen und setzt sie ab, sobald
  * Budget da ist.
@@ -125,6 +138,7 @@ export class CommandQueue {
 	private readonly quota: VehicleQuota;
 	private readonly vins: Set<string>;
 	private readonly onReport: CommandQueueOptions['onReport'];
+	private readonly onConfirmation?: CommandQueueOptions['onConfirmation'];
 	private readonly onCommandSent?: (vin: string) => void;
 	private readonly onConnectionChange?: (connected: boolean) => void;
 	private readonly onResponse?: (meta: ApiMeta, error?: ApiError) => void;
@@ -147,10 +161,7 @@ export class CommandQueue {
 	/** Sollwerte der Requests, die gerade unterwegs sind. */
 	private readonly inFlight = new Map<string, boolean | number | string>();
 	/** Akzeptierte Sollwerte, die noch kein Poll bestaetigt hat. */
-	private readonly awaitingState = new Map<
-		string,
-		{ desired: boolean | number | string; sentAt: number; expiresAt: number }
-	>();
+	private readonly awaitingState = new Map<string, AwaitingConfirmation>();
 
 	/** Admitted submissions, including immediate reports outside the send chain. */
 	private readonly submissions = new Set<Promise<void>>();
@@ -160,6 +171,8 @@ export class CommandQueue {
 	private running = false;
 	private stopped = false;
 	private timer?: TimerHandle;
+	/** Separate from the sending timer: expiry may only update local diagnostics. */
+	private confirmationTimer?: TimerHandle;
 
 	/**
 	 * @param options Client, Budget, Fahrzeuge, Ausgabekanaele und Zeitwerte.
@@ -169,6 +182,7 @@ export class CommandQueue {
 		this.quota = options.quota;
 		this.vins = new Set(options.vins);
 		this.onReport = options.onReport;
+		this.onConfirmation = options.onConfirmation;
 		this.onCommandSent = options.onCommandSent;
 		this.onConnectionChange = options.onConnectionChange;
 		this.onResponse = options.onResponse;
@@ -189,6 +203,7 @@ export class CommandQueue {
 			return;
 		}
 		this.running = true;
+		this.armConfirmationTimer();
 	}
 
 	/** Haelt die Schleife an. Muss beim Entladen des Adapters gerufen werden. */
@@ -199,6 +214,11 @@ export class CommandQueue {
 			this.clearTimer(this.timer);
 			this.timer = undefined;
 		}
+		if (this.confirmationTimer !== undefined) {
+			this.clearTimer(this.confirmationTimer);
+			this.confirmationTimer = undefined;
+		}
+		this.awaitingState.clear();
 		this.client.abort?.();
 		this.entries.clear();
 	}
@@ -223,6 +243,10 @@ export class CommandQueue {
 		if (this.stopped) {
 			return;
 		}
+		this.expireConfirmations();
+		const failedParts = new Set<string | undefined>(
+			vehicleErrors(response).map(error => partFromErrorType(error.type)),
+		);
 		const vehicle = response.vehicle as unknown as Record<string, unknown>;
 		const blocks = this.blocks.get(vin) ?? new Map<string, Record<string, unknown>>();
 		// An omitted or removed profile must not remain a writable cached snapshot.
@@ -242,18 +266,27 @@ export class CommandQueue {
 				blocks.set(def.part, typedBlock);
 				const key = this.keyOf({ vin, def });
 				const expected = this.awaitingState.get(key);
-				const captured = newestCapturedAt(typedBlock);
+				// Only this response block can confirm its command; unrelated nested timestamps cannot.
+				const captured =
+					typeof typedBlock.carCapturedTimestamp === 'string'
+						? Date.parse(typedBlock.carCapturedTimestamp)
+						: NaN;
 				if (
 					expected &&
-					captured !== undefined &&
+					!failedParts.has(def.part) &&
+					Number.isFinite(captured) &&
 					captured > expected.sentAt &&
-					this.valueFromBlock(def, typedBlock) === expected.desired
+					this.confirmationMatches(expected, typedBlock)
 				) {
 					this.awaitingState.delete(key);
+					if (!expected.timedOut) {
+						this.publishConfirmation(expected, 'CONFIRMED');
+					}
 				}
 			}
 		}
 		this.blocks.set(vin, blocks);
+		this.armConfirmationTimer();
 	}
 
 	/**
@@ -286,6 +319,7 @@ export class CommandQueue {
 		if (this.stopped) {
 			return;
 		}
+		this.expireConfirmations();
 		const command = parseCommandState(relativeId, value);
 		if (!command || !this.vins.has(command.vin)) {
 			return;
@@ -388,6 +422,7 @@ export class CommandQueue {
 
 	/** Processes a single serialized batch. */
 	private async runTick(): Promise<number | undefined> {
+		this.expireConfirmations();
 		for (const [key, entry] of [...this.entries]) {
 			if (this.stopped) {
 				break;
@@ -550,11 +585,15 @@ export class CommandQueue {
 		}
 
 		if (result.ok) {
-			this.awaitingState.set(key, {
+			const accepted: AwaitingConfirmation = {
+				command,
 				desired: command.desired,
 				sentAt: this.now(),
 				expiresAt: this.now() + this.ttlMs,
-			});
+			};
+			this.awaitingState.set(key, accepted);
+			this.publishConfirmation(accepted, 'WAITING');
+			this.armConfirmationTimer();
 			this.log.info(this.t('%s: Sent to the API.', command.name));
 			// Die Verifikation gehoert zum Request-Lebenslauf und darf nicht davon
 			// abhaengen, ob das anschliessende Schreiben des Reports gelingt.
@@ -568,6 +607,108 @@ export class CommandQueue {
 		}
 
 		await this.handleError(key, entry, result.error);
+	}
+
+	/**
+	 * Unknown states cannot prove that a stop command took effect.
+	 *
+	 * @param expected Accepted command.
+	 * @param block Its vehicle response block.
+	 */
+	private confirmationMatches(expected: AwaitingConfirmation, block: Record<string, unknown>): boolean {
+		const def = expected.command.def;
+		if (this.valueFromBlock(def, block) !== expected.desired) {
+			return false;
+		}
+		if (expected.desired !== false || def.numeric || def.setting) {
+			return true;
+		}
+		const state = def.part === 'charging' && isRecord(block.status) ? block.status.state : block.state;
+		const inactive =
+			def.part === 'charging'
+				? ['CONNECT_CABLE', 'CONSERVING', 'READY_FOR_CHARGING', 'DISCHARGING', 'CHARGING_INTERRUPTED']
+				: def.part === 'airConditioning'
+					? ['OFF', 'COMPLETED']
+					: ['OFF'];
+		return typeof state === 'string' && inactive.includes(state);
+	}
+
+	/**
+	 * Publish a fresh snapshot; callback failure must not change command processing.
+	 *
+	 * @param expected Accepted command.
+	 * @param status Observation outcome.
+	 */
+	private publishConfirmation(expected: AwaitingConfirmation, status: ConfirmationStatus): void {
+		if (this.stopped) {
+			return;
+		}
+		const { command } = expected;
+		const def = command.def;
+		const channel = def.numeric
+			? 'chargingLimit'
+			: def.setting === 'mode'
+				? 'chargingMode'
+				: def.setting === 'profile'
+					? `chargingProfiles.${def.profileId}`
+					: def.part;
+		try {
+			this.onConfirmation?.(command.vin, {
+				channel,
+				name: command.name,
+				target: command.action === 'profile' ? String(command.desired) : JSON.stringify(command.desired),
+				sentAt: expected.sentAt,
+				expiresAt: expected.expiresAt,
+				confirmedAt: status === 'CONFIRMED' ? this.now() : 0,
+				status,
+			});
+		} catch {
+			this.log.warn('Command confirmation could not be published.');
+		}
+	}
+
+	/** Update expired observations locally, without waking the command sender or poll scheduler. */
+	private expireConfirmations(): void {
+		if (this.stopped) {
+			return;
+		}
+		for (const expected of this.awaitingState.values()) {
+			if (!expected.timedOut && this.now() >= expected.expiresAt) {
+				expected.timedOut = true;
+				this.publishConfirmation(expected, 'TIMED_OUT');
+			}
+		}
+		this.armConfirmationTimer();
+	}
+
+	/** Schedule only a local expiry notification; this timer never invokes pump or onCommandSent. */
+	private armConfirmationTimer(): void {
+		if (this.confirmationTimer !== undefined) {
+			this.clearTimer(this.confirmationTimer);
+			this.confirmationTimer = undefined;
+		}
+		if (!this.running || this.stopped) {
+			return;
+		}
+		let due = Infinity;
+		for (const expected of this.awaitingState.values()) {
+			if (!expected.timedOut) {
+				due = Math.min(due, expected.expiresAt);
+			}
+		}
+		if (Number.isFinite(due)) {
+			const timer = this.setTimer(
+				() => {
+					if (this.confirmationTimer !== timer) {
+						return;
+					}
+					this.confirmationTimer = undefined;
+					this.expireConfirmations();
+				},
+				Math.max(0, due - this.now()),
+			);
+			this.confirmationTimer = timer;
+		}
 	}
 
 	/**

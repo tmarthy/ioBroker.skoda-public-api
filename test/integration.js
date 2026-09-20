@@ -298,6 +298,10 @@ tests.integration(path.join(__dirname, '..'), {
 
 				const name = await readState(harness, `${VEHICLE}.info.lastCommand.name`);
 				expect(name.val).to.equal('charging.start');
+				await waitFor('waiting command confirmation', async () =>
+					(await getState(harness, `${VEHICLE}.info.commandConfirmation.charging.status`))?.val === 'WAITING');
+				expect((await readState(harness, `${VEHICLE}.info.commandConfirmation.charging.confirmedAt`)).val).to.equal(0);
+
 				await waitFor('the verification schedule', async () =>
 					(await getState(harness, `${VEHICLE}.info.polling.reason`))?.val === 'VERIFICATION');
 				expect((await readState(harness, `${VEHICLE}.info.polling.nextPollAt`)).val - Date.now()).to.be.within(0, 60000);
@@ -339,6 +343,11 @@ tests.integration(path.join(__dirname, '..'), {
 					return state?.ack === true && JSON.parse(state.val).name === profile.name;
 				});
 				expect(mock.vehicleState.chargingProfiles.profiles[0]).to.deep.equal(profile);
+				// Simulate newly captured vehicle data for the already scheduled verification poll.
+				const captured = new Date(Date.now() + 5).toISOString();
+				mock.vehicleState.charging.carCapturedTimestamp = captured;
+				mock.vehicleState.chargingProfiles.carCapturedTimestamp = captured;
+
 			});
 
 			it('liest den Ist-Zustand mit dem Verifikations-Poll nach', async function () {
@@ -351,6 +360,16 @@ tests.integration(path.join(__dirname, '..'), {
 					},
 					85000,
 				);
+				await waitFor('confirmation from the existing verification poll', async () => {
+					for (const group of ['charging', 'chargingLimit', 'chargingMode', 'chargingProfiles.1']) {
+						if ((await getState(harness, `${VEHICLE}.info.commandConfirmation.${group}.status`))?.val !== 'CONFIRMED') {
+							return false;
+						}
+					}
+					return true;
+				});
+				expect((await readState(harness, `${VEHICLE}.info.lastCommand.result`)).val).to.equal('SENT');
+				expect(mock.requests).to.have.length(7); // Same baseline: 3 GETs, 1 POST and 3 PUTs.
 				expect(mock.requests.filter(request => request.method === 'GET')).to.have.length(3);
 				expect((await readState(harness, `${VEHICLE}.charging.settings.targetStateOfChargeInPercent`)).val).to.equal(90);
 				expect((await readState(harness, `${VEHICLE}.charging.settings.preferredChargeMode`)).val).to.equal('TIMER');
@@ -369,6 +388,18 @@ tests.integration(path.join(__dirname, '..'), {
 				mock = new MockSkodaApi();
 				baseUrl = await mock.start();
 				await configure(harness);
+
+				const confirmationId = `${VEHICLE}.info.commandConfirmation.charging.status`;
+				const confirmationObject = {
+					_id: confirmationId, type: 'state',
+					common: { name: 'Confirmation status', type: 'string', role: 'text', read: true, write: false }, native: {},
+				};
+				if (harness.objects.setObjectAsync) {
+					await harness.objects.setObjectAsync(confirmationId, confirmationObject);
+				} else {
+					await harness.objects.setObject(confirmationId, confirmationObject);
+				}
+				await setState(harness, confirmationId, { val: 'WAITING', ack: true });
 
 				// So sieht ein Neustart von innen aus: Der Zustand des Vorgaengers
 				// steht in <VIN>.rateLimit.*, und der letzte Request liegt eine halbe
@@ -403,6 +434,7 @@ tests.integration(path.join(__dirname, '..'), {
 
 				const remaining = await readState(harness, `${VEHICLE}.rateLimit.remaining`);
 				expect(remaining.val, 'Der Budgetstand hat den Neustart nicht ueberlebt').to.equal(8);
+				expect((await readState(harness, `${VEHICLE}.info.commandConfirmation.charging.status`)).val).to.equal('INTERRUPTED');
 			});
 		});
 

@@ -73,6 +73,21 @@ der konfigurierten TTL. Ein passender Ist-Zustand mit neuerem Fahrzeugzeitstempe
 sie vorzeitig auf. Nach Ablauf werden neue Schreibvorgänge wieder gegen frische Daten
 geprüft; ohne neuere Daten gilt der Ist als unbekannt. Kein automatisches Nachsenden.
 
+Der beobachtete Bestätigungsstatus steht getrennt unter
+`info.commandConfirmation.<group>.*`: `WAITING`, `CONFIRMED`, `TIMED_OUT` oder nach
+einem Neustart `INTERRUPTED`. Jede Gruppe beschreibt den letzten angenommenen Befehl,
+nicht den letzten Schreibversuch. Neue angenommene Befehle derselben Gruppe ersetzen
+die Beobachtung; Coalescing verlängert die Frist nicht. Der ursprüngliche Sendestatus
+in `info.lastCommand` bleibt unverändert.
+
+**Quota-Invariante:** Die Anzeige verwendet ausschließlich bestehende Poll-Antworten.
+Ein eigener lokaler Timer meldet den Fristablauf, ohne die Sende-Queue oder den
+PollScheduler zu wecken. Weder zusätzliche API-Abfragen noch automatische Wiederholungen
+sind zulässig. Bestätigung verlangt einen passenden Wert und einen neueren Zeitstempel
+des betreffenden fehlerfreien Antwortblocks. Ein Timeout ist kein Nachweis, dass das
+Fahrzeug den Befehl nicht ausgeführt hat; nach Fristablauf eintreffende Daten ändern
+den abgeschlossenen Status nicht nachträglich.
+
 ### E6 — Befehls-Interface: Schalter primär, Buttons sekundär
 `<vin>.charging.enabled` (`role: switch`) trägt den **Soll-Zustand**;
 `<vin>.charging.start` / `.stop` (`role: button`) erzwingen einen Aufruf.

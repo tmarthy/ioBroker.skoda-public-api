@@ -6,6 +6,7 @@ import type { VehicleResponse } from '../api/types';
 import { QUALITY_NOT_GOOD, StateWriter, type StateApi } from './StateWriter';
 import { generatedStateDefs } from './objectDefs.generated';
 import { OBJECT_NAME_LANGUAGES } from '../i18n';
+import type { CommandConfirmation } from '../commands/confirmation';
 
 /**
  * Beweist zur Uebersetzungszeit, dass eine echte Adapter-Instanz die schmale
@@ -67,6 +68,88 @@ describe('states/StateWriter => Antwort in den Objektbaum', () => {
 	it('nimmt eine echte Adapter-Instanz an', () => {
 		const beweis: AdapterErfuelltStateApi = true;
 		expect(beweis).to.equal(true);
+	});
+
+	describe('command confirmation', () => {
+		const accepted = (): CommandConfirmation => ({
+			channel: 'charging',
+			name: 'charging.start',
+			target: 'true',
+			sentAt: clock,
+			expiresAt: clock + 600_000,
+			confirmedAt: 0,
+			status: 'WAITING',
+		});
+
+		it('writes read-only diagnostics without changing lastCommand or the control acknowledgement', async () => {
+			await writer.writeCommandResult(VIN, {
+				name: 'charging.start',
+				result: 'SENT',
+				timestamp: clock,
+				acknowledge: { path: 'charging.enabled', value: true },
+			});
+			await writer.writeCommandConfirmation(VIN, accepted());
+			await writer.writeCommandConfirmation(VIN, {
+				...accepted(),
+				status: 'CONFIRMED',
+				confirmedAt: clock + 60_000,
+			});
+			const base = `${VIN}.info.commandConfirmation.charging`;
+			expect(adapter.val(`${base}.status`)).to.equal('CONFIRMED');
+			expect(adapter.val(`${base}.confirmedAt`)).to.equal(clock + 60_000);
+			expect(JSON.parse(String(adapter.val(`${base}.target`)))).to.equal(true);
+			expect(adapter.val(`${VIN}.info.lastCommand.result`)).to.equal('SENT');
+			expect(adapter.states.get(`${VIN}.charging.enabled`)).to.include({ val: true, ack: true });
+			for (const leaf of ['name', 'target', 'sentAt', 'expiresAt', 'confirmedAt', 'status']) {
+				expect(adapter.objects.get(`${base}.${leaf}`)?.common).to.include({ read: true, write: false });
+				expect(
+					Object.keys(adapter.objects.get(`${base}.${leaf}`)?.common?.name as object).sort(),
+				).to.deep.equal([...OBJECT_NAME_LANGUAGES].sort());
+			}
+			await writer.write(VIN, fixture('idle'));
+			expect(adapter.quality(`${base}.status`)).to.equal(0);
+		});
+
+		it('serializes transitions and emits status last, including repeated WAITING for a replacement', async () => {
+			const first = writer.writeCommandConfirmation(VIN, accepted());
+			const second = writer.writeCommandConfirmation(VIN, {
+				...accepted(),
+				name: 'charging.stop',
+				target: 'false',
+				sentAt: clock + 1,
+			});
+			const third = writer.writeCommandConfirmation(VIN, {
+				...accepted(),
+				name: 'charging.stop',
+				target: 'false',
+				sentAt: clock + 1,
+				status: 'TIMED_OUT',
+			});
+			await Promise.all([first, second, third]);
+			const base = `${VIN}.info.commandConfirmation.charging`;
+			expect(adapter.writes.filter(id => id === `${base}.status`)).to.have.length(3);
+			expect(adapter.writes[adapter.writes.length - 1]).to.equal(`${base}.status`);
+			expect(adapter.val(`${base}.target`)).to.equal('false');
+			expect(adapter.val(`${base}.status`)).to.equal('TIMED_OUT');
+		});
+
+		it('marks only pending observations for the configured VIN as interrupted on restart', async () => {
+			await writer.writeCommandConfirmation(VIN, accepted());
+			await writer.writeCommandConfirmation(VIN, { ...accepted(), channel: 'chargingProfiles.1' });
+			await writer.writeCommandConfirmation(VIN, {
+				...accepted(),
+				channel: 'chargingMode',
+				status: 'CONFIRMED',
+				confirmedAt: clock + 1,
+			});
+			await writer.writeCommandConfirmation('OTHER_VIN', accepted());
+			await writer.interruptCommandConfirmations(VIN);
+			expect(adapter.val(`${VIN}.info.commandConfirmation.charging.status`)).to.equal('INTERRUPTED');
+			expect(adapter.val(`${VIN}.info.commandConfirmation.chargingProfiles.1.status`)).to.equal('INTERRUPTED');
+			expect(adapter.val(`${VIN}.info.commandConfirmation.charging.sentAt`)).to.equal(clock);
+			expect(adapter.val(`${VIN}.info.commandConfirmation.chargingMode.status`)).to.equal('CONFIRMED');
+			expect(adapter.val('OTHER_VIN.info.commandConfirmation.charging.status')).to.equal('WAITING');
+		});
 	});
 
 	describe('polling status', () => {

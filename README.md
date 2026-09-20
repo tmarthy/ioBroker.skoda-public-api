@@ -106,6 +106,7 @@ not schedule an additional verification poll if the position is still old.
 | `<vin>.info.dataAge` | Seconds since the newest `carCapturedTimestamp` in the response. |
 | `<vin>.info.lastErrors` | The `errors[]` of the last response as JSON. |
 | `<vin>.info.lastCommand.*` | `name`, `result`, `timestamp`, `problemType` of the last command. |
+| `<vin>.info.commandConfirmation.<group>.*` | Acceptance, target, deadline and observed confirmation of the latest accepted command in each control group. |
 | `<vin>.info.polling.nextPollAt` | Scheduled due time of the next poll attempt, in Unix milliseconds; `0` while polling, suspended, or retrying local state writes. |
 | `<vin>.info.polling.lastSuccessfulPollAt` | Time of the last successful vehicle API response, in Unix milliseconds; preserved across restarts, `0` if none is recorded. |
 | `<vin>.info.polling.reason` | Current scheduler state or reason for waiting, with readable labels in the object browser. |
@@ -193,6 +194,62 @@ While a command is awaiting confirmation, repeating the same switch value is als
 newer than the accepted command ends this waiting phase. Without confirmation it lasts
 at most the configured command lifetime (10 minutes by default), after which a new
 switch write can retry. Expiry does not automatically resend the command.
+
+### Visible command confirmation
+
+Confirmation uses **only the existing vehicle polls**. This feature adds no API calls,
+no faster polling and no additional verification requests. The existing verification
+poll after an accepted command remains subject to quota. A separate local timer records
+timeouts without querying the vehicle or resending the command.
+
+After an API-accepted command, inspect
+`<vin>.info.commandConfirmation.<group>.status`:
+
+| Status | Meaning |
+|---|---|
+| `WAITING` | The API accepted the command; matching newer vehicle data has not yet been observed. |
+| `CONFIRMED` | A later existing poll reported the requested value with a timestamp newer than API acceptance. |
+| `TIMED_OUT` | No confirmation was observed within the configured command lifetime, measured from API acceptance. This does **not** prove the vehicle failed to execute the command. |
+| `INTERRUPTED` | A configured adapter restart ended an unfinished observation from the previous process. No command is automatically resent. |
+
+Groups are `charging`, `airConditioning`, `auxiliaryHeating`, `activeVentilation`,
+`chargingLimit`, `chargingMode` and `chargingProfiles.<id>`. Each holds the latest
+**accepted** command for that control; this is not a command history. A newly accepted
+command replaces the previous observation in the same group. Other groups and vehicles
+remain independent. Repeated coalesced writes do not extend the confirmation deadline.
+Queued, invalid or rejected commands do not create or replace confirmation records;
+their outcome remains available in `info.lastCommand`.
+
+Each group also provides:
+
+- `name`: the accepted command, for example `charging.start`.
+- `target`: the requested value as JSON (`true`, `90`, `"TIMER"`, or a full profile).
+- `sentAt`: API acceptance time, in Unix milliseconds.
+- `expiresAt`: confirmation deadline, in Unix milliseconds.
+- `confirmedAt`: time the matching data was observed, in Unix milliseconds; `0` otherwise.
+
+For example, an ioBroker JavaScript script can observe confirmation without polling:
+
+```js
+on({ id: 'skoda-public-api.0.<VIN>.info.commandConfirmation.charging.status', change: 'any' }, obj => {
+    if (obj.state.ack && obj.state.val === 'CONFIRMED') {
+        log('The requested charging state was observed in newer vehicle data.');
+    }
+});
+```
+
+Status is written after the record's other fields, including when a new accepted
+command replaces one that was already `WAITING`. Read `name`, `target` and `sentAt`
+to identify the observation. Confirmation does not change `info.lastCommand.result`
+or write the control value again: `SENT` and `ack: true` continue to mean API acceptance.
+
+The relevant response block must have its own newer `carCapturedTimestamp`. Missing
+or failed parts, unrelated timestamps and unknown vehicle states cannot confirm a
+command. A newer matching state is an observation, not a server-side operation receipt;
+another client could have requested the same setting. Data first observed after the
+deadline leaves the record at `TIMED_OUT`. On a configured restart, only unfinished
+`WAITING` records become `INTERRUPTED`; completed records remain available. While the
+adapter is stopped, no local confirmation timers run and stored values remain unchanged.
 
 ### Charging limit
 
@@ -362,6 +419,7 @@ reproduce the official Škoda logo; it is distributed under this project's MIT l
 - Ignore non-boolean on/off switch writes instead of interpreting them as stop commands.
 - Add writable charging mode and complete charging-profile JSON controls with validation, independent queues and verification polling.
 - Expose per-vehicle polling diagnostics: next due time, persistent last successful poll and the current waiting reason.
+- Expose per-control command confirmation and local timeouts using existing polls only, without additional API requests.
 
 ### 0.1.9 (2026-09-06)
 - Used ioBroker-managed request timers and removed news for the skipped npm version 0.1.7.

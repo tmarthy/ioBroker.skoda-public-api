@@ -1,13 +1,14 @@
 import { expect } from 'chai';
 import { DEFAULT_API_KEY, DEFAULT_VIN, MockSkodaApi } from '../../../test/mock/server';
 import { SkodaApiClient, type ApiResult } from '../api/client';
-import type { CommandAction, CommandDomain } from '../api/types';
+import type { CommandAction, CommandDomain, VehicleResponse } from '../api/types';
 import { httpApiError } from '../api/errors';
 import { QuotaManager } from '../quota/QuotaManager';
 import { quotaForVehicle } from '../quota/VehicleQuotaManager';
 import type { CommandReport } from '../states/commandDefs';
 import { CommandQueue, type CommandLog, type CommandSender } from './CommandQueue';
 import type { CommandBody } from './commandMap';
+import type { CommandConfirmation } from './confirmation';
 
 const MINUTE = 60_000;
 
@@ -38,6 +39,7 @@ describe('commands/CommandQueue => Soll-Zustand, Coalescing, TTL', () => {
 	let reports: Array<[string, CommandReport]>;
 	let verified: string[];
 	let queue: CommandQueue;
+	let confirmations: Array<{ vin: string; confirmation: CommandConfirmation }>;
 
 	const now = (): number => clock;
 	const results = (): string[] => reports.map(([, report]) => report.result);
@@ -58,6 +60,7 @@ describe('commands/CommandQueue => Soll-Zustand, Coalescing, TTL', () => {
 				reports.push([vin, report]);
 			},
 			onCommandSent: vin => verified.push(vin),
+			onConfirmation: (vin, confirmation) => confirmations.push({ vin, confirmation }),
 			log,
 			now,
 			random: () => 0.5,
@@ -82,12 +85,202 @@ describe('commands/CommandQueue => Soll-Zustand, Coalescing, TTL', () => {
 		log = new RecordingLog();
 		reports = [];
 		verified = [];
+		confirmations = [];
 		queue = buildQueue();
 	});
 
 	afterEach(async () => {
 		queue.stop();
 		await mock.stop();
+	});
+
+	describe('visible command confirmation without additional API calls', () => {
+		const status = (): string[] => confirmations.map(entry => entry.confirmation.status);
+		const poll = (state: string, captured = clock): VehicleResponse => ({
+			vehicle: {
+				charging: {
+					isVehicleInSavedLocation: false,
+					carCapturedTimestamp: new Date(captured).toISOString(),
+					status: { state },
+				},
+			},
+		});
+
+		it('distinguishes API acceptance from matching newer vehicle data and leaves lastCommand unchanged', async () => {
+			await queue.submit(`${DEFAULT_VIN}.charging.enabled`, true);
+			const sentAt = clock;
+			expect(confirmations[0]).to.deep.equal({
+				vin: DEFAULT_VIN,
+				confirmation: {
+					channel: 'charging',
+					name: 'charging.start',
+					target: 'true',
+					sentAt,
+					expiresAt: sentAt + 10 * MINUTE,
+					confirmedAt: 0,
+					status: 'WAITING',
+				},
+			});
+			queue.updateFromResponse(DEFAULT_VIN, poll('CHARGING'));
+			clock += MINUTE;
+			queue.updateFromResponse(DEFAULT_VIN, poll('READY_FOR_CHARGING'));
+			expect(status()).to.deep.equal(['WAITING']);
+			queue.updateFromResponse(DEFAULT_VIN, poll('CHARGING'));
+			expect(status()).to.deep.equal(['WAITING', 'CONFIRMED']);
+			expect(confirmations[1].confirmation.confirmedAt).to.equal(clock);
+			queue.updateFromResponse(DEFAULT_VIN, poll('CHARGING'));
+			expect(confirmations).to.have.length(2);
+			expect(results()).to.deep.equal(['SENT']);
+			expect(verified).to.deep.equal([DEFAULT_VIN]);
+			expect(mock.requests).to.have.length(1);
+			expect(quota.snapshot().remaining).to.equal(19);
+		});
+
+		it('does not confirm missing or failed parts, unrelated timestamps or unknown stop states', async () => {
+			await queue.submit(`${DEFAULT_VIN}.charging.stop`, true);
+			clock += MINUTE;
+			queue.updateFromResponse(DEFAULT_VIN, {
+				vehicle: { odometer: { mileageInKm: 1, carCapturedTimestamp: new Date(clock).toISOString() } },
+			});
+			const failed = poll('READY_FOR_CHARGING');
+			failed.errors = [{ type: 'CHARGING_UNAVAILABLE' }];
+			queue.updateFromResponse(DEFAULT_VIN, failed);
+			const nested: any = poll('READY_FOR_CHARGING', clock - MINUTE);
+			nested.vehicle.charging.status.carCapturedTimestamp = new Date(clock).toISOString();
+			queue.updateFromResponse(DEFAULT_VIN, nested);
+			for (const value of ['UNKNOWN', 'UNSUPPORTED', 'FUTURE_STATE']) {
+				queue.updateFromResponse(DEFAULT_VIN, poll(value));
+			}
+			expect(status()).to.deep.equal(['WAITING']);
+			queue.updateFromResponse(DEFAULT_VIN, poll('READY_FOR_CHARGING'));
+			expect(status()).to.deep.equal(['WAITING', 'CONFIRMED']);
+			expect(mock.requests).to.have.length(1);
+		});
+
+		it('expires locally without quota acquisition, verification requests or resending', async () => {
+			const timers = new Map<number, { handler: () => void; ms: number }>();
+			let sequence = 0;
+			let acquired = 0;
+			const budget = quotaForVehicle(DEFAULT_VIN, quota);
+			queue = buildQueue({
+				quota: {
+					...budget,
+					tryAcquire: (vin, priority) => {
+						acquired++;
+						return budget.tryAcquire(vin, priority);
+					},
+				},
+				setTimer: (handler, ms) => {
+					timers.set(++sequence, { handler, ms });
+					return sequence;
+				},
+				clearTimer: handle => {
+					timers.delete(handle as number);
+				},
+			});
+			queue.start();
+			await queue.submit(`${DEFAULT_VIN}.charging.enabled`, true);
+			const before = quota.snapshot();
+			expect(timers.size).to.equal(1);
+			const [id, timer] = [...timers][0];
+			expect(timer.ms).to.equal(10 * MINUTE);
+			clock += timer.ms;
+			timers.delete(id);
+			timer.handler();
+			expect(status()).to.deep.equal(['WAITING', 'TIMED_OUT']);
+			expect(timers.size).to.equal(0);
+			expect(acquired).to.equal(1);
+			expect(mock.requests).to.have.length(1);
+			expect(quota.snapshot()).to.deep.equal(before);
+			expect(verified).to.deep.equal([DEFAULT_VIN]);
+			clock += MINUTE;
+			queue.updateFromResponse(DEFAULT_VIN, poll('CHARGING'));
+			expect(status()).to.deep.equal(['WAITING', 'TIMED_OUT']);
+		});
+
+		it('preserves the deadline on coalesced writes and replaces it only on a newly accepted command', async () => {
+			await queue.submit(`${DEFAULT_VIN}.charging.enabled`, true);
+			clock += MINUTE;
+			await queue.submit(`${DEFAULT_VIN}.charging.enabled`, true);
+			expect(status()).to.deep.equal(['WAITING']);
+			await queue.submit(`${DEFAULT_VIN}.charging.enabled`, false);
+			expect(status()).to.deep.equal(['WAITING', 'WAITING']);
+			expect(confirmations[1].confirmation).to.include({
+				name: 'charging.stop',
+				target: 'false',
+				expiresAt: clock + 10 * MINUTE,
+			});
+			clock += MINUTE;
+			queue.updateFromResponse(DEFAULT_VIN, poll('CHARGING'));
+			expect(status()).to.deep.equal(['WAITING', 'WAITING']);
+			queue.updateFromResponse(DEFAULT_VIN, poll('READY_FOR_CHARGING'));
+			expect(status()).to.deep.equal(['WAITING', 'WAITING', 'CONFIRMED']);
+		});
+
+		it('keeps confirmations independent for mode, limit and profiles', async () => {
+			mock.vehicleState.charging.settings.availableChargeModes = ['MANUAL', 'TIMER'];
+			await feedPoll();
+			const profile = structuredClone(mock.vehicleState.chargingProfiles.profiles[0]);
+			profile.name = 'New profile name';
+			await queue.submit(`${DEFAULT_VIN}.charging.settings.preferredChargeMode`, 'TIMER');
+			await queue.submit(`${DEFAULT_VIN}.charging.settings.targetStateOfChargeInPercent`, 90);
+			await queue.submit(`${DEFAULT_VIN}.chargingProfiles.profiles.1.configurationJson`, JSON.stringify(profile));
+			expect(confirmations.map(entry => entry.confirmation.channel)).to.deep.equal([
+				'chargingMode',
+				'chargingLimit',
+				'chargingProfiles.1',
+			]);
+			clock += MINUTE;
+			const response = { vehicle: structuredClone(mock.vehicleState) };
+			response.vehicle.charging.carCapturedTimestamp = new Date(clock).toISOString();
+			queue.updateFromResponse(DEFAULT_VIN, response);
+			expect(
+				confirmations
+					.filter(entry => entry.confirmation.status === 'CONFIRMED')
+					.map(entry => entry.confirmation.channel),
+			).to.have.members(['chargingMode', 'chargingLimit']);
+			response.vehicle.chargingProfiles.carCapturedTimestamp = new Date(clock).toISOString();
+			queue.updateFromResponse(DEFAULT_VIN, response);
+			expect(confirmations[5].confirmation).to.include({ channel: 'chargingProfiles.1', status: 'CONFIRMED' });
+			expect(JSON.parse(confirmations[5].confirmation.target)).to.deep.equal(profile);
+			expect(mock.requests).to.have.length(4);
+			expect(verified).to.have.length(3);
+		});
+
+		it('does not create confirmations for queued, invalid, rejected or already-reported targets', async () => {
+			await feedPoll();
+			await queue.submit(`${DEFAULT_VIN}.charging.enabled`, false);
+			await queue.submit(`${DEFAULT_VIN}.charging.settings.targetStateOfChargeInPercent`, 85);
+			mock.scenario = 'operation-disabled';
+			await queue.submit(`${DEFAULT_VIN}.charging.start`, true);
+			quota.recordResponse({ rateLimit: { limit: 20, remaining: 0, resetInSeconds: 60 }, consumedQuota: false });
+			await queue.submit(`${DEFAULT_VIN}.charging.start`, true);
+			expect(results()).to.deep.equal(['COALESCED', 'FAILED', 'REJECTED_BY_VEHICLE', 'QUEUED']);
+			expect(confirmations).to.have.length(0);
+		});
+
+		it('cancels confirmation timers on shutdown and ignores stale callbacks', async () => {
+			const timers = new Set<() => void>();
+			queue = buildQueue({
+				setTimer: handler => {
+					timers.add(handler);
+					return handler;
+				},
+				clearTimer: handle => {
+					timers.delete(handle as () => void);
+				},
+			});
+			queue.start();
+			await queue.submit(`${DEFAULT_VIN}.charging.start`, true);
+			const stale = [...timers][0];
+			await queue.shutdown();
+			expect(timers.size).to.equal(0);
+			clock += 11 * MINUTE;
+			stale();
+			queue.updateFromResponse(DEFAULT_VIN, poll('CHARGING'));
+			expect(status()).to.deep.equal(['WAITING']);
+			expect(mock.requests).to.have.length(1);
+		});
 	});
 
 	describe('invalid switch writes', () => {

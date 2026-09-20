@@ -75,6 +75,14 @@ So erzeugt eine Neustartschleife kein scheinbar frisches Request-Budget.
 - Befehle ohne verfügbares Budget warten bis zu ihrer TTL in der Queue.
 - Nach `202 Accepted` wird nach 60 Sekunden ein Verifikations-Poll angefordert.
 - `ack=true` bestätigt die Übergabe an die API, nicht die Ausführung im Fahrzeug.
+- `info.commandConfirmation.<group>.*` ergänzt pro Steuerungsgruppe den letzten
+  angenommenen Befehl um einen sichtbaren Bestätigungsstatus. Nur passende Werte mit
+  neuerem Zeitstempel im betreffenden fehlerfreien Antwortblock gelten als bestätigt.
+- Ein separater lokaler Timer meldet `TIMED_OUT`, ohne Queue-Sendungen oder Polls
+  anzustoßen. Bestätigungen nutzen ausschließlich die bereits vorhandenen Polls.
+  Die Frist beginnt bei API-Annahme und wird durch Coalescing nicht verlängert.
+- Bei Neustart werden zuvor offene Bestätigungen lokal als `INTERRUPTED` markiert;
+  sie werden nicht wieder gesendet. Diagnose-Schreibvorgänge sind je VIN serialisiert.
 
 ### Objektbaum
 

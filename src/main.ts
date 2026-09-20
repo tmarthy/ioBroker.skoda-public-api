@@ -90,6 +90,10 @@ class SkodaPublicApi extends utils.Adapter {
 		this.lifecycle.check();
 
 		const writer = new StateWriter({ api, t });
+		for (const vin of settings.vins) {
+			await writer.interruptCommandConfirmations(vin);
+		}
+		this.lifecycle.check();
 
 		// Der Schluessel erneuert sich nicht von selbst, und sein Ablauf faellt sonst
 		// wochenlang nicht auf: Die Werte im Baum bleiben laut E8 ja stehen.
@@ -143,6 +147,7 @@ class SkodaPublicApi extends utils.Adapter {
 			quota,
 			vins: settings.vins,
 			onReport: (vin, report) => writer.writeCommandResult(vin, report),
+			onConfirmation: (vin, confirmation) => this.run(() => writer.writeCommandConfirmation(vin, confirmation)),
 			log: this.log,
 			t,
 			// Die API antwortet auf Befehle mit `202` und kennt keinen Status-Endpunkt:

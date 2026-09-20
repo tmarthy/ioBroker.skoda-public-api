@@ -67,6 +67,15 @@ Diagnose kostet keine API-Requests und ist unabhängig von der Frische der Fahrz
 Bei gestoppter Instanz bleiben die zuletzt geschriebenen Werte stehen; erst der nächste
 Start ersetzt den alten Zeitplan. Die vollständige Liste der Gründe steht im README.
 
+Unter `<vin>.info.commandConfirmation.<group>` wird der zuletzt von der API angenommene
+Befehl je Steuerungsgruppe sichtbar: `status`, `name`, JSON-`target`, `sentAt`,
+`expiresAt` und `confirmedAt`. Die Zustände sind `WAITING`, `CONFIRMED`, `TIMED_OUT`
+und nach einem gültig konfigurierten Neustart `INTERRUPTED` für zuvor offene Vorgänge.
+Bestätigungen werden ausschließlich aus bestehenden Poll-Antworten abgeleitet; ein
+separater lokaler Timer meldet den Fristablauf. Es gibt weder zusätzliche API-Calls
+noch zusätzliche Verifikations-Polls oder automatische Wiederholungen. Die Semantik
+von `info.lastCommand` und `ack=true` bleibt unverändert (API-Annahme).
+
 Die API erlaubt **20 Requests pro Stunde und VIN**. Für jede VIN führt der Adapter
 deshalb einen eigenen, persistenten Quota-Bucket unter `<vin>.rateLimit.*`. Polls
 halten eine konfigurierbare Befehlsreserve frei. Befehle laufen über eine Queue mit
