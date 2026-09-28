@@ -17,20 +17,19 @@ technische Arbeitsgrundlage in
 - Der Spec-Wächter hat am 28. September 2026 neue optionale Felder
   `ChargingStatus.plugConnectionState` und `plugLockState` erkannt und
   [Issue #4](https://github.com/tmarthy/ioBroker.skoda-public-api/issues/4) eröffnet.
-  Spec, Codegen und Objektbezeichnungen sind lokal aktualisiert; der nächste
-  CI-Lauf muss dies nach dem Push bestätigen.
+  Spec, Codegen und Objektbezeichnungen sind in
+  [Draft-PR #5](https://github.com/tmarthy/ioBroker.skoda-public-api/pull/5)
+  aktualisiert. Ein manuell gestarteter Spec-Workflow auf dem Branch ist grün.
+- Die PR-Matrix ist auf allen neun Kombinationen aus Ubuntu, Windows, macOS und
+  Node 22, 24, 26 grün. Unter macOS lief der echte Compact-Group-Test jeweils mit.
 - npm Trusted Publishing ist für Tags über `.github/workflows/test-and-release.yml`
   eingerichtet. `NPM_TRUSTED_PUBLISHING=true` aktiviert den Deploy-Job.
 
 ## Offene Themen in empfohlener Reihenfolge
 
-1. **Release-Matrix auf macOS bestätigen.** Der echte Compact-Group-Test war dort
-   bisher ausgesetzt. Er läuft lokal auf macOS mit Node 26; nach der Aktivierung
-   sind die CI-Läufe mit Node 22, 24 und 26 zu kontrollieren.
-2. **Spec-Änderung veröffentlichen und Wächter erneut prüfen.** Die neuen
-   Steckerzustände sind lokal eingearbeitet. Danach den nächsten `check-spec`-Lauf
-   und gegebenenfalls Issue #4 kontrollieren.
-3. **Breitere Fahrzeugtests begleiten.** Besonders hilfreich sind Rückmeldungen
+1. **Draft-PR #5 prüfen und übernehmen.** Danach den nächsten `check-spec`-Lauf
+   auf `main` und die Schließung von Issue #4 kontrollieren.
+2. **Breitere Fahrzeugtests begleiten.** Besonders hilfreich sind Rückmeldungen
    zu anderen Modellen und Antriebsarten mit anonymisierten Fixtures.
 
 ## Funktionsumfang

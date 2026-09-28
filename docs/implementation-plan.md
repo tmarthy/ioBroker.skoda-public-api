@@ -224,5 +224,5 @@ Tests sichern stabile Statuscodes und die Migration bestehender Label-Zuordnunge
 - Änderungen der OpenAPI-`v0`-Spec prüfen und Codegen anpassen
 - Abhängigkeiten und GitHub Actions über Dependabot aktuell halten
 - Verhalten weiterer Fahrzeugtypen mit anonymisierten Fixtures absichern
-- Compact-Group-Integrationstest auf macOS in der Release-Matrix kontrollieren;
-  lokal läuft er mit Node 26, Windows bleibt wegen eines Controller-Testproblems ausgenommen
+- Compact-Group-Integrationstest läuft auf Linux und macOS; Draft-PR #5 bestätigt
+  macOS mit Node 22, 24 und 26. Windows bleibt wegen eines Controller-Testproblems ausgenommen
