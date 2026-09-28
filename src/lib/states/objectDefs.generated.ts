@@ -286,6 +286,22 @@ export const generatedStateDefs: Record<string, GeneratedStateDef> = {
 		"format": "date-time",
 		"desc": "Timestamp when the vehicle is expected to be fully charged"
 	},
+	"charging.status.plugConnectionState": {
+		"type": "string",
+		"states": {
+			"CONNECTED": "CONNECTED",
+			"DISCONNECTED": "DISCONNECTED"
+		},
+		"desc": "Connection state of the charging cable plugs, as the vehicle reports it."
+	},
+	"charging.status.plugLockState": {
+		"type": "string",
+		"states": {
+			"LOCKED": "LOCKED",
+			"UNLOCKED": "UNLOCKED"
+		},
+		"desc": "Lock state of the charging cable plugs, as the vehicle reports it."
+	},
 	"charging.status.remainingTimeToFullyChargedInMinutes": {
 		"type": "number",
 		"format": "int32",
@@ -301,7 +317,7 @@ export const generatedStateDefs: Record<string, GeneratedStateDef> = {
 			"DISCHARGING": "DISCHARGING",
 			"CHARGING_INTERRUPTED": "CHARGING_INTERRUPTED"
 		},
-		"desc": "Charging state."
+		"desc": "Charging state, derived from the charging process state and the plug state the vehicle reports, using the same rules as the MyŠkoda app."
 	},
 	"chargingProfiles.carCapturedTimestamp": {
 		"type": "string",

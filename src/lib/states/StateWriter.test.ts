@@ -926,6 +926,28 @@ describe('states/StateWriter => Antwort in den Objektbaum', () => {
 			expect(adapter.quality(`${VIN}.charging.status.chargePowerInKw`)).to.equal(0);
 		});
 
+		it('schreibt die neuen Steckerzustaende und behandelt einen fehlenden Ladestatus als unbekannt', async () => {
+			const response = fixture('charging');
+			response.vehicle.charging!.status!.plugConnectionState = 'CONNECTED';
+			response.vehicle.charging!.status!.plugLockState = 'LOCKED';
+			await writer.write(VIN, response);
+			for (const [field, value] of [
+				['plugConnectionState', 'CONNECTED'],
+				['plugLockState', 'LOCKED'],
+			]) {
+				const id = `${VIN}.charging.status.${field}`;
+				expect(adapter.val(id)).to.equal(value);
+				expect(adapter.objects.get(id)?.common).to.include({ type: 'string', role: 'text' });
+			}
+			delete response.vehicle.charging!.status!.state;
+			await writer.write(VIN, response);
+			expect(adapter.states.get(`${VIN}.charging.status.state`)).to.include({
+				val: 'CHARGING',
+				q: QUALITY_NOT_GOOD,
+			});
+			expect(adapter.quality(`${VIN}.charging.status.plugConnectionState`)).to.equal(0);
+		});
+
 		it('markiert absichtlich nicht gelieferte Teile ohne Fehler nicht als ausgefallen', async () => {
 			await writer.write(VIN, fixture('idle'));
 			writer = new StateWriter({ api: adapter });
