@@ -49,6 +49,8 @@ const labels: Readonly<Record<string, readonly [en: ObjectNameKey, de: string]>>
 	stateOfChargeInPercent: ['State of charge', 'Ladestand'],
 	chargePowerInKw: ['Charging power', 'Ladeleistung'],
 	chargeType: ['Charging type', 'Ladeart'],
+	plugConnectionState: ['Plug connection state', 'Verbindungsstatus des Ladesteckers'],
+	plugLockState: ['Plug lock state', 'Verriegelungsstatus des Ladesteckers'],
 	chargingRateInKilometersPerHour: ['Charging rate', 'Ladegeschwindigkeit'],
 	fullyChargedAt: ['Fully charged at', 'Vollständig geladen um'],
 	remainingTimeToFullyChargedInMinutes: ['Remaining charging time', 'Verbleibende Ladezeit'],

@@ -11,11 +11,9 @@ const { expect } = require('chai');
  * @param {any} deps Existing integration helpers and suite registration.
  */
 module.exports = function defineCompactSuite({ suite, configure, encrypt, getState, setState, readState, waitFor, delay, MockSkodaApi, DEFAULT_API_KEY, DEFAULT_VIN }) {
-	// The js-controller development version used by @iobroker/testing can terminate
-	// its directly launched compact-group controller on macOS and Windows before its
-	// zero-delay instance-start timers run. The platform-independent compact lifecycle
-	// coverage remains in the unit suite, while this real controller test runs on Linux.
-	if (process.platform !== 'linux') {
+	// The directly launched development controller still exits before its instance-start
+	// timers run on Windows. macOS now runs this real controller test as well as Linux.
+	if (process.platform === 'win32') {
 		return;
 	}
 	suite('Compact group 1', /** @param {() => any} getHarness Test harness factory. */ getHarness => {
