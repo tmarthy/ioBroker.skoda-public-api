@@ -1,3 +1,9 @@
+# Stable application for 0.1.11 — merged
+
+[Repository PR #6832](https://github.com/ioBroker/ioBroker.repositories/pull/6832)
+was merged on 11 October 2026. The application text below documents the completed
+submission.
+
 Add `skoda-public-api` version **0.1.11** to the stable repository.
 
 The adapter reads and controls Škoda vehicles through the official MyŠkoda Public
@@ -17,7 +23,7 @@ maintainer's Enyaq.
 The repository has automated unit, package and adapter integration tests. The
 [release CI for v0.1.11](https://github.com/tmarthy/ioBroker.skoda-public-api/actions/runs/35531311953)
 passed all nine platform/Node combinations and published the package. Its
-[latest main CI run](https://github.com/tmarthy/ioBroker.skoda-public-api/actions/runs/36470823356)
+[main CI run after preparation PR #7](https://github.com/tmarthy/ioBroker.skoda-public-api/actions/runs/38143355427)
 passed on Ubuntu, Windows and macOS with Node 22, 24 and 26. That run includes the
 post-0.1.11 API-spec and compact-test updates; the requested stable package remains
 the unchanged, published 0.1.11. The downloaded npm package contains `build/main.js`,
@@ -29,7 +35,7 @@ has no vehicle-discovery endpoint.
 
 **Checklist**
 
-- [ ] All requirements for stable inclusion are fulfilled, including the final
+- [x] All requirements for stable inclusion are fulfilled, including the final
   CI and repository-checker verification after the development-dependency update.
 - [x] The public testing thread and feedback are linked above.
 

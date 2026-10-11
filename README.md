@@ -16,6 +16,9 @@ Read and control Škoda vehicles via the official
 [MyŠkoda Public API](https://public.api.connect.skoda-auto.cz/docs).
 
 The adapter is published on npm and available in the ioBroker `latest` repository.
+Version **0.1.11** was accepted into the official `stable` repository on
+11 October 2026 ([stable PR #6832](https://github.com/ioBroker/ioBroker.repositories/pull/6832)).
+It becomes visible in ioBroker Admin after the repository catalog is refreshed.
 The [test thread](https://forum.iobroker.net/topic/85433/test-adapter-skoda-public-api-v0.1.x)
 collects feedback from other vehicles.
 Development status and open work are documented in [HANDOFF.md](HANDOFF.md).
@@ -25,10 +28,12 @@ Development status and open work are documented in [HANDOFF.md](HANDOFF.md).
 Requirements: Node.js 22 or newer, js-controller 6.0.11 or newer and Admin 7.6.20
 or newer.
 
-1. Select the `latest` repository in ioBroker Admin while the first stable inclusion
-   is pending.
+1. Select the `stable` repository in ioBroker Admin and refresh the adapter catalog.
 2. Open **Adapters**, search for `skoda-public-api` and install the released adapter.
 3. Create an instance and enter the API key and authorized VINs in its configuration.
+
+If the adapter is not listed yet after stable inclusion, wait for the next repository
+catalog update and refresh again. The released version is also available in `latest`.
 
 Use ioBroker Admin or the ioBroker CLI to install the released package. A source
 checkout contains TypeScript; the compiled adapter entry point is included in the

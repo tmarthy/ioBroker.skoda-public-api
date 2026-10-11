@@ -8,18 +8,26 @@ technische Arbeitsgrundlage in
 
 ## Aktueller Stand
 
+Stand: 11. Oktober 2026, nach der ersten Stable-Aufnahme.
+
 - Das öffentliche Repository ist
   [`tmarthy/ioBroker.skoda-public-api`](https://github.com/tmarthy/ioBroker.skoda-public-api).
 - Version `0.1.11` wurde über npm und GitHub veröffentlicht und ist in ioBroker
-  `latest` verfügbar. Der [Testaufruf im Forum](https://forum.iobroker.net/topic/85433/test-adapter-skoda-public-api-v0.1.x)
-  bestätigt die Aufnahme. `bluefox` und `tmarthy` sind npm-Maintainer.
+  `latest` verfügbar. Die Aufnahme derselben Version in `stable` wurde am
+  11. Oktober 2026 mit
+  [Repository-PR #6832](https://github.com/ioBroker/ioBroker.repositories/pull/6832)
+  übernommen. `bluefox` und `tmarthy` sind npm-Maintainer.
+- Der ausgelieferte [Stable-Katalog](https://download.iobroker.net/sources-dist.json)
+  hatte bei der Prüfung am 11. Oktober noch den Stand `2026-10-11T08:35:49.417Z`
+  vor dem Merge und enthielt den Adapter noch nicht. Die Sichtbarkeit im Admin folgt
+  nach Aktualisierung des Katalogs.
 - Lademodus und Ladeprofile wurden am eigenen Fahrzeug erfolgreich getestet.
 - Das öffentliche Testerfeedback bestätigt Fahrzeugdaten und Standheizung beim
   Octavia 2.0 TDI sowie positive Ergebnisse beim Superb Hybrid (2025) und Superb iV
   (2022). Ein Elroq (Modelljahr 2027) liefert ebenfalls positive Rückmeldungen zur
   Datenerfassung und Parkposition. Die Klimatisierung beim Superb Hybrid 2025 wurde
-  im Bericht noch nicht
-  abschließend getestet. Nachweise und der vorbereitete Stable-Antrag stehen in
+  im Bericht noch nicht abschließend getestet. Nachweise und die abgeschlossene
+  Stable-Aufnahme stehen in
   [`docs/stable-release.md`](docs/stable-release.md).
 - Der Spec-Wächter hat am 28. September 2026 neue optionale Felder
   `ChargingStatus.plugConnectionState` und `plugLockState` erkannt und
@@ -32,21 +40,25 @@ technische Arbeitsgrundlage in
   Node 22, 24, 26 grün. Unter macOS lief der echte Compact-Group-Test jeweils mit.
 - npm Trusted Publishing ist für Tags über `.github/workflows/test-and-release.yml`
   eingerichtet. `NPM_TRUSTED_PUBLISHING=true` aktiviert den Deploy-Job.
-- Ziel der ersten Stable-Aufnahme ist die veröffentlichte und öffentlich getestete
-  Version `0.1.11`. Die danach übernommenen Spec-Metadaten benötigen einen eigenen
-  späteren Release. Für die Stable-Vorbereitung wurde die Entwicklungsabhängigkeit
-  `@iobroker/testing` auf `^6.3.0` aktualisiert (Checker-Warnung W0037 in Issue #6
-  vom 9. Oktober).
+- Die Stable-Vorbereitung wurde mit
+  [PR #7](https://github.com/tmarthy/ioBroker.skoda-public-api/pull/7) übernommen;
+  `@iobroker/testing` ist auf `^6.3.0` aktualisiert. Die anschließende
+  [CI auf `main`](https://github.com/tmarthy/ioBroker.skoda-public-api/actions/runs/38143355427)
+  ist grün; der Stable-PR-Checker meldete keine Fehler und keine Warnungen.
+  [Checker-Issue #6](https://github.com/tmarthy/ioBroker.skoda-public-api/issues/6)
+  ist geschlossen.
+- Die erste Stable-Aufnahme verwendet das unveränderte npm-Paket `0.1.11`.
+  Die danach übernommenen Spec-Metadaten benötigen einen eigenen späteren Release.
 
 ## Offene Themen in empfohlener Reihenfolge
 
-1. **Stable-Vorbereitung prüfen und übernehmen.** Aktualisierte Testabhängigkeit und
-   Dokumentation mit den Prüfungen aus `docs/stable-release.md` nach GitHub übernehmen;
-   danach den CI- und Repository-Checker-Status auf diesem Stand kontrollieren.
-2. **Version `0.1.11` für `stable` einreichen.** Der lokale Repository-Patch und der
-   Antragstext sind vorbereitet. Die Aufnahme selbst erfolgt erst durch die
-   ioBroker-Repository-Maintainer; anschließend den ausgelieferten Stable-Eintrag und
-   Issue #6 kontrollieren.
+1. **Auslieferung des Stable-Katalogs kontrollieren.** Nach dem nächsten Katalog-Refresh
+   den Eintrag für `skoda-public-api` mit Version `0.1.11` und die Sichtbarkeit im
+   Admin prüfen. Die Aufnahme ist bereits genehmigt; ein neues npm-Release ist dafür
+   nicht erforderlich.
+2. **Nächsten Release getrennt vorbereiten.** Die nach `v0.1.11` übernommenen
+   Spec-Metadaten und weitere Änderungen mit eigenem Changelog, Tests und Versions-Tag
+   veröffentlichen.
 3. **Weitere Fahrzeugtests begleiten.** Anonymisierte Fixtures für Verbrenner und
    Hybrid fehlen weiterhin; positive Forumberichte ersetzen keine Fixture-Abdeckung.
 

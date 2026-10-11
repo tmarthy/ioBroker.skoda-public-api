@@ -1,9 +1,20 @@
-# Vorbereitung der ersten Stable-Aufnahme
+# Erste Stable-Aufnahme abgeschlossen
 
-Stand: 11. Oktober 2026. Kandidat: **`iobroker.skoda-public-api@0.1.11`**.
+Stand: 11. Oktober 2026. Stable-Version: **`iobroker.skoda-public-api@0.1.11`**.
+
+[Repository-PR #6832](https://github.com/ioBroker/ioBroker.repositories/pull/6832)
+wurde am 11. Oktober 2026 um 14:56:48 UTC übernommen. Der Eintrag in
+[`sources-dist-stable.json`](https://github.com/ioBroker/ioBroker.repositories/blob/master/sources-dist-stable.json)
+ist auf `0.1.11` festgelegt.
+
+Der ausgelieferte [Stable-Katalog](https://download.iobroker.net/sources-dist.json)
+hatte bei der Prüfung am selben Tag noch den Stand `2026-10-11T08:35:49.417Z`
+vor dem Merge und enthielt den Adapter noch nicht. Nach dem nächsten Katalog-Refresh
+ist die Sichtbarkeit im Admin zu kontrollieren. Für die Aufnahme ist kein weiteres
+npm-Release erforderlich.
 
 Die erste Stable-Aufnahme verwendet die bereits veröffentlichte und öffentlich
-getestete Version. Die lokale Aktualisierung der Testbibliothek verändert das
+getestete Version. Die Aktualisierung der Testbibliothek verändert das
 veröffentlichte npm-Paket nicht. Nach `v0.1.11` übernommene Änderungen an Spec und
 Metadaten gehören in einen späteren Release.
 
@@ -16,9 +27,10 @@ Metadaten gehören in einen späteren Release.
 | Öffentlicher Testaufruf | [Forumthread](https://forum.iobroker.net/topic/85433/test-adapter-skoda-public-api-v0.1.x) |
 | Rückmeldungen | Octavia 2.0 TDI: Fahrzeugstatus, Position, AdBlue/Kraftstoff und Start/Stop der Standheizung erfolgreich; Superb Hybrid 2025, Superb iV 2022 und Elroq Modelljahr 2027: positive Rückmeldungen |
 | Release-CI | [Grüner Tag-Lauf für `v0.1.11`](https://github.com/tmarthy/ioBroker.skoda-public-api/actions/runs/35531311953), einschließlich neun Testkombinationen und Veröffentlichung |
-| Aktuelle GitHub-CI | [Grüner Lauf auf `main` nach PR #5](https://github.com/tmarthy/ioBroker.skoda-public-api/actions/runs/36470823356), neun Kombinationen aus Betriebssystem und Node-Version |
+| GitHub-CI nach Stable-Vorbereitung | [Grüner Lauf auf `main` nach PR #7](https://github.com/tmarthy/ioBroker.skoda-public-api/actions/runs/38143355427), neun Kombinationen aus Betriebssystem und Node-Version |
 | API-Spec | [Grüner Spec-Lauf auf `main`](https://github.com/tmarthy/ioBroker.skoda-public-api/actions/runs/36470899807); Issue #4 geschlossen |
-| Repository-Checker | [Issue #6](https://github.com/tmarthy/ioBroker.skoda-public-api/issues/6), Stand 9. Oktober: keine Fehler; W0037 zur Testbibliothek durch `^6.3.0` behoben; fehlende Stable-Aufnahme als Vorschlag |
+| Repository-Checker | Checker im [Stable-PR #6832](https://github.com/ioBroker/ioBroker.repositories/pull/6832): keine Fehler und keine Warnungen; W0037 durch `^6.3.0` behoben; [Issue #6](https://github.com/tmarthy/ioBroker.skoda-public-api/issues/6) am 11. Oktober geschlossen |
+| Stable-Aufnahme | Repository-PR #6832 übernommen, Version `0.1.11` in `sources-dist-stable.json` eingetragen |
 | Paketinhalt | Veröffentlichtes npm-Tarball geprüft: `build/main.js`, Paketmetadaten, Admin-Konfiguration, alle elf Admin-Übersetzungen und Lizenz enthalten |
 
 Die Forumberichte bestätigen die genannten Funktionen. Beim Superb Hybrid 2025 war
@@ -28,8 +40,8 @@ der Discovery-Hinweis aus den Stable-Anforderungen trifft daher nicht zu.
 
 ## Lokale Prüfung der Vorbereitung
 
-Die aktuelle Arbeitskopie enthält zusätzlich die Spec-Aktualisierung aus PR #5 und
-ist nicht identisch mit dem unveränderten veröffentlichten npm-Paket `0.1.11`.
+Der bei der Vorbereitung geprüfte Git-Stand enthält zusätzlich die Spec-Aktualisierung
+aus PR #5 und ist nicht identisch mit dem unveränderten veröffentlichten npm-Paket `0.1.11`.
 Geprüft auf macOS mit Node `26.9.0` und `@iobroker/testing` `6.3.0`:
 
 | Prüfung | Ergebnis |
@@ -43,10 +55,11 @@ Geprüft auf macOS mit Node `26.9.0` und `@iobroker/testing` `6.3.0`:
 | Lokaler Paket-Dry-Run | 79 Dateien; benötigte Paketdateien enthalten |
 | Stable-Eintrag | Offizielle Prüfungen für Attribute, alphabetische Sortierung und vorhandenen Latest-Eintrag bestanden |
 
-Der lokale Checker ist laut Werkzeugdokumentation experimentell. Der noch offene
-Vorschlag betrifft die Stable-Aufnahme (S4047). `6.3.0` behebt die gemeldete Warnung
-W0037 entsprechend dem aktuellen Checker-Bericht. Die GitHub-CI und der Remote-Checker müssen nach
-Übernahme dieser Vorbereitung zusätzlich den neuen Git-Stand bestätigen.
+Der lokale Checker ist laut Werkzeugdokumentation experimentell. Vor der Aufnahme
+meldete er noch den Vorschlag S4047 zur fehlenden Stable-Version. Die Vorbereitung
+wurde mit [PR #7](https://github.com/tmarthy/ioBroker.skoda-public-api/pull/7) übernommen.
+Die anschließende GitHub-CI und der Checker im Stable-PR bestätigten den Stand ohne
+Fehler oder Warnungen; Checker-Issue #6 ist geschlossen.
 
 ## Konkreter Stable-Antrag
 
@@ -54,14 +67,16 @@ Der Patch [`stable-repository.patch`](stable-repository.patch) wurde mit dem off
 `addToStable`-Skript erzeugt. Er fügt ausschließlich den alphabetisch einsortierten
 Eintrag für `skoda-public-api` mit Version `0.1.11` in `sources-dist-stable.json` hinzu.
 Ausgangsstand des Repositorys: `6c21876d88cdbc1528c024b29b89a69f5e5cbd1e`.
-Der englische Antragstext steht in [`stable-pr.md`](stable-pr.md).
+Der englische Antragstext ist in [`stable-pr.md`](stable-pr.md) dokumentiert;
+Patch und Antrag dienen als Nachweis der abgeschlossenen Aufnahme.
 
-Vor dem Einreichen:
+## Abschluss und Nachbereitung
 
-1. Die lokale Aktualisierung der Entwicklungsabhängigkeit und die Dokumentation
-   übernehmen; CI und Repository-Checker auf dem veröffentlichten Git-Stand prüfen.
-2. Den Stable-Patch auf den aktuellen Stand von `ioBroker/ioBroker.repositories`
-   anwenden und den Antrag für Version `0.1.11` einreichen.
-3. Die Prüfung der ioBroker-Maintainer abwarten und nach Übernahme die tatsächlich
-   ausgelieferte Stable-Version kontrollieren. Erst dann die Dokumentation auf
-   „in stable verfügbar“ ändern.
+- [x] Testabhängigkeit und Dokumentation mit Adapter-PR #7 übernommen; CI grün.
+- [x] Stable-Antrag für die veröffentlichte Version `0.1.11` als Repository-PR #6832 eingereicht.
+- [x] Repository-Checker ohne Fehler und Warnungen; Stable-PR übernommen.
+- [x] README und Projektstatus auf die erfolgte Aufnahme aktualisiert.
+- [ ] Nach dem Katalog-Refresh die tatsächlich ausgelieferte Stable-Version kontrollieren.
+
+Eine Information im Forum und eine Ergänzung der ioBroker-News sind optional.
+Nach `v0.1.11` übernommene Produktänderungen werden mit einem eigenen Release veröffentlicht.

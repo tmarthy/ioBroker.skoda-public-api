@@ -31,8 +31,11 @@ Ladeprofil kann `maxChargingCurrent` auf `REDUCED` oder `MAXIMUM` gesetzt werden
 
 ### E1 — Qualitätsniveau: Veröffentlichung über npm und ioBroker
 Der Adapter wird öffentlich auf npm und GitHub veröffentlicht und für das offizielle
-ioBroker-Repository `latest` gepflegt. `stable` folgt erst nach öffentlichem Test und
-Nutzerfeedback. Grundlage sind eine vollständige `io-package.json`, JSON Config,
+ioBroker-Repository `latest` gepflegt. Version `0.1.11` wurde nach öffentlichem Test und
+Nutzerfeedback am 11. Oktober 2026 mit
+[Repository-PR #6832](https://github.com/ioBroker/ioBroker.repositories/pull/6832)
+in `stable` aufgenommen. Weitere Stable-Versionen werden nach öffentlichem Test und
+Nutzerfeedback beantragt. Grundlage sind eine vollständige `io-package.json`, JSON Config,
 automatisierte Tests, eine Plattformmatrix für Releases und reproduzierbare npm-Pakete.
 **Begründung:** Öffentliche Verteilung braucht nachvollziehbare Metadaten, Migrationen
 und Prüfungen über alle unterstützten Plattformen.

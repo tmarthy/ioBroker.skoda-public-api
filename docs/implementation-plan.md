@@ -176,13 +176,18 @@ als npm-Maintainer eingetragen. Version `0.1.11` ist veröffentlicht.
 
 ### Erste Stable-Aufnahme
 
-Die öffentlich getestete Version `0.1.11` ist der Kandidat für die erste Aufnahme in
-`stable`. Positive Berichte liegen für einen Octavia 2.0 TDI einschließlich
-Standheizung, zwei Superb-Hybride und einen Elroq (Modelljahr 2027) vor. Testnachweise,
-verbleibende Schritte und der
-vorbereitete Repository-Antrag stehen in [`stable-release.md`](stable-release.md).
+Die öffentlich getestete Version `0.1.11` wurde am 11. Oktober 2026 mit
+[Repository-PR #6832](https://github.com/ioBroker/ioBroker.repositories/pull/6832)
+in `stable` aufgenommen. Die Sichtbarkeit im Admin folgt nach Aktualisierung des
+ausgelieferten Katalogs; dessen geprüfter Stand lag noch vor dem Merge.
+Positive Berichte liegen für einen Octavia 2.0 TDI einschließlich Standheizung,
+zwei Superb-Hybride und einen Elroq (Modelljahr 2027) vor. Testnachweise und der
+Abschluss der Aufnahme stehen in [`stable-release.md`](stable-release.md).
 Neue Produktfunktionen gehören in nachfolgende Releases. Die Entwicklungsabhängigkeit
 `@iobroker/testing` wurde zur Behebung von W0037 auf `^6.3.0` aktualisiert.
+Die Vorbereitung ist mit [PR #7](https://github.com/tmarthy/ioBroker.skoda-public-api/pull/7)
+übernommen, die anschließende CI ist grün und
+[Checker-Issue #6](https://github.com/tmarthy/ioBroker.skoda-public-api/issues/6) geschlossen.
 
 ### Zusätzliche Schreiboperationen
 
