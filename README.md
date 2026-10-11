@@ -20,6 +20,20 @@ The [test thread](https://forum.iobroker.net/topic/85433/test-adapter-skoda-publ
 collects feedback from other vehicles.
 Development status and open work are documented in [HANDOFF.md](HANDOFF.md).
 
+## Installation
+
+Requirements: Node.js 22 or newer, js-controller 6.0.11 or newer and Admin 7.6.20
+or newer.
+
+1. Select the `latest` repository in ioBroker Admin while the first stable inclusion
+   is pending.
+2. Open **Adapters**, search for `skoda-public-api` and install the released adapter.
+3. Create an instance and enter the API key and authorized VINs in its configuration.
+
+Use ioBroker Admin or the ioBroker CLI to install the released package. A source
+checkout contains TypeScript; the compiled adapter entry point is included in the
+published npm package. The repository URL is intended for development and review.
+
 ### The one constraint that shapes everything
 
 The API allows **20 requests per hour per VIN**. There is a single read endpoint,

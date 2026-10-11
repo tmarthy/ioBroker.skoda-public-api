@@ -174,6 +174,16 @@ serverseitiger Buchung entstehen und zählt deshalb ebenfalls konservativ als ve
 Der Adapter ist seit September 2026 in `latest`. `bluefox` und `tmarthy` sind
 als npm-Maintainer eingetragen. Version `0.1.11` ist veröffentlicht.
 
+### Erste Stable-Aufnahme
+
+Die öffentlich getestete Version `0.1.11` ist der Kandidat für die erste Aufnahme in
+`stable`. Positive Berichte liegen für einen Octavia 2.0 TDI einschließlich
+Standheizung, zwei Superb-Hybride und einen Elroq (Modelljahr 2027) vor. Testnachweise,
+verbleibende Schritte und der
+vorbereitete Repository-Antrag stehen in [`stable-release.md`](stable-release.md).
+Neue Produktfunktionen gehören in nachfolgende Releases. Die Entwicklungsabhängigkeit
+`@iobroker/testing` wurde zur Behebung von W0037 auf `^6.3.0` aktualisiert.
+
 ### Zusätzliche Schreiboperationen
 
 Das Ladelimit ist über `charging.settings.targetStateOfChargeInPercent` umgesetzt: ein gemeinsamer
@@ -224,5 +234,5 @@ Tests sichern stabile Statuscodes und die Migration bestehender Label-Zuordnunge
 - Änderungen der OpenAPI-`v0`-Spec prüfen und Codegen anpassen
 - Abhängigkeiten und GitHub Actions über Dependabot aktuell halten
 - Verhalten weiterer Fahrzeugtypen mit anonymisierten Fixtures absichern
-- Compact-Group-Integrationstest läuft auf Linux und macOS; Draft-PR #5 bestätigt
+- Compact-Group-Integrationstest läuft auf Linux und macOS; der übernommene PR #5 bestätigt
   macOS mit Node 22, 24 und 26. Windows bleibt wegen eines Controller-Testproblems ausgenommen

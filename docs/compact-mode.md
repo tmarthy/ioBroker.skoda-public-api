@@ -131,7 +131,7 @@ versions and other operating systems require their own acceptance run. They are 
 implied by a successful local group-1/mock test.
 
 The real compact-group controller suite runs on Linux and macOS. A local macOS run
-with Node 26 passed on 2026-09-28. Draft PR #5 then passed the GitHub Actions
+with Node 26 passed on 2026-09-28. PR #5, merged on that date, passed the GitHub Actions
 matrix on macOS with Node 22, 24 and 26; each job ran this suite and reported 14
 passing integration tests. The development js-controller installed by
 `@iobroker/testing` can terminate its directly launched compact-group controller on

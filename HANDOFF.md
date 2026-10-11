@@ -14,23 +14,41 @@ technische Arbeitsgrundlage in
   `latest` verfügbar. Der [Testaufruf im Forum](https://forum.iobroker.net/topic/85433/test-adapter-skoda-public-api-v0.1.x)
   bestätigt die Aufnahme. `bluefox` und `tmarthy` sind npm-Maintainer.
 - Lademodus und Ladeprofile wurden am eigenen Fahrzeug erfolgreich getestet.
+- Das öffentliche Testerfeedback bestätigt Fahrzeugdaten und Standheizung beim
+  Octavia 2.0 TDI sowie positive Ergebnisse beim Superb Hybrid (2025) und Superb iV
+  (2022). Ein Elroq (Modelljahr 2027) liefert ebenfalls positive Rückmeldungen zur
+  Datenerfassung und Parkposition. Die Klimatisierung beim Superb Hybrid 2025 wurde
+  im Bericht noch nicht
+  abschließend getestet. Nachweise und der vorbereitete Stable-Antrag stehen in
+  [`docs/stable-release.md`](docs/stable-release.md).
 - Der Spec-Wächter hat am 28. September 2026 neue optionale Felder
   `ChargingStatus.plugConnectionState` und `plugLockState` erkannt und
   [Issue #4](https://github.com/tmarthy/ioBroker.skoda-public-api/issues/4) eröffnet.
   Spec, Codegen und Objektbezeichnungen sind in
-  [Draft-PR #5](https://github.com/tmarthy/ioBroker.skoda-public-api/pull/5)
-  aktualisiert. Ein manuell gestarteter Spec-Workflow auf dem Branch ist grün.
+  [PR #5](https://github.com/tmarthy/ioBroker.skoda-public-api/pull/5)
+  aktualisiert und am 28. September übernommen. Issue #4 ist geschlossen; der
+  anschließende Spec-Workflow auf `main` ist grün.
 - Die PR-Matrix ist auf allen neun Kombinationen aus Ubuntu, Windows, macOS und
   Node 22, 24, 26 grün. Unter macOS lief der echte Compact-Group-Test jeweils mit.
 - npm Trusted Publishing ist für Tags über `.github/workflows/test-and-release.yml`
   eingerichtet. `NPM_TRUSTED_PUBLISHING=true` aktiviert den Deploy-Job.
+- Ziel der ersten Stable-Aufnahme ist die veröffentlichte und öffentlich getestete
+  Version `0.1.11`. Die danach übernommenen Spec-Metadaten benötigen einen eigenen
+  späteren Release. Für die Stable-Vorbereitung wurde die Entwicklungsabhängigkeit
+  `@iobroker/testing` auf `^6.3.0` aktualisiert (Checker-Warnung W0037 in Issue #6
+  vom 9. Oktober).
 
 ## Offene Themen in empfohlener Reihenfolge
 
-1. **Draft-PR #5 prüfen und übernehmen.** Danach den nächsten `check-spec`-Lauf
-   auf `main` und die Schließung von Issue #4 kontrollieren.
-2. **Breitere Fahrzeugtests begleiten.** Besonders hilfreich sind Rückmeldungen
-   zu anderen Modellen und Antriebsarten mit anonymisierten Fixtures.
+1. **Stable-Vorbereitung prüfen und übernehmen.** Aktualisierte Testabhängigkeit und
+   Dokumentation mit den Prüfungen aus `docs/stable-release.md` nach GitHub übernehmen;
+   danach den CI- und Repository-Checker-Status auf diesem Stand kontrollieren.
+2. **Version `0.1.11` für `stable` einreichen.** Der lokale Repository-Patch und der
+   Antragstext sind vorbereitet. Die Aufnahme selbst erfolgt erst durch die
+   ioBroker-Repository-Maintainer; anschließend den ausgelieferten Stable-Eintrag und
+   Issue #6 kontrollieren.
+3. **Weitere Fahrzeugtests begleiten.** Anonymisierte Fixtures für Verbrenner und
+   Hybrid fehlen weiterhin; positive Forumberichte ersetzen keine Fixture-Abdeckung.
 
 ## Funktionsumfang
 
@@ -196,8 +214,9 @@ gemeinsam prüfen und versionieren.
   Parkposition dürfen nicht in Support-Logs erscheinen.
 - Die OpenAPI-Version ist `v0`. Änderungen am Vertrag und am Rate-Limit bleiben ein
   laufendes Risiko.
-- Nur der Enyaq ist mit echten Fixtures abgedeckt. Angaben für Verbrenner, Hybrid und
-  Standheizung beruhen auf Spec und Mock.
+- Nur der Enyaq ist mit echten Fixtures abgedeckt. Für Verbrenner, Hybrid und
+  Standheizung gibt es zusätzlich positive Forumberichte; die automatisierte
+  Abdeckung dieser Fahrzeuge beruht weiterhin auf Spec und Mock.
 
 ## Bewusst außerhalb des Adapters
 
