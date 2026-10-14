@@ -2,7 +2,7 @@
 	"skoda-public-api adapter settings": "Adapter settings for skoda-public-api",
 	"Access": "Access",
 	"API key": "API key",
-	"Created in the MyŠkoda app (version 8.16 or newer) under \"API key\". The key is bound to the vehicles selected there and expires after a while.": "Created in the MyŠkoda app (version 8.16 or newer) under \"API key\". The key is bound to the vehicles selected there and expires after a while.",
+	"Created in the MyŠkoda app (version 8.16 or newer) under \"Profile / Smart Home / API key\". The key is bound to the vehicles selected there and expires after a while.": "Created in the MyŠkoda app (version 8.16 or newer) under \"Profile / Smart Home / API key\". The key is bound to the vehicles selected there and expires after a while.",
 	"Vehicles": "Vehicles",
 	"The API offers no vehicle list - every VIN has to be entered by hand.": "The API offers no vehicle list - every VIN has to be entered by hand.",
 	"VIN": "VIN",

@@ -16,7 +16,7 @@
 		"apiKey": {
 			"type": "password",
 			"label": "API key",
-			"help": "Created in the MyŠkoda app (version 8.16 or newer) under \"API key\". The key is bound to the vehicles selected there and expires after a while.",
+			"help": "Created in the MyŠkoda app (version 8.16 or newer) under \"Profile / Smart Home / API key\". The key is bound to the vehicles selected there and expires after a while.",
 			"visible": true,
 			"repeat": false,
 			"newLine": true,

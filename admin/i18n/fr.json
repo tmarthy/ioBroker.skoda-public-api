@@ -7,7 +7,7 @@
 	"Base interval (min)": "Intervalle de base (min)",
 	"Checks the key against the first vehicle and reports name, key expiry and remaining quota. Costs one of the 20 requests per hour; the instance has to be running.": "Vérifie la clé par rapport au premier véhicule et signale le nom, l'expiration de la clé et le quota restant. Coûte une des 20 requêtes par heure ; l'instance doit être en cours d'exécution.",
 	"Command lifetime (min)": "Durée de vie de la commande (min)",
-	"Created in the MyŠkoda app (version 8.16 or newer) under \"API key\". The key is bound to the vehicles selected there and expires after a while.": "Créé dans l'application MyŠkoda (version 8.16 ou ultérieure) sous « Clé API ». La clé est liée aux véhicules sélectionnés et expire après un certain temps.",
+	"Created in the MyŠkoda app (version 8.16 or newer) under \"Profile / Smart Home / API key\". The key is bound to the vehicles selected there and expires after a while.": "Créé dans l'application MyŠkoda (version 8.16 ou ultérieure) sous « Profil / Maison connectée / Clé API ». La clé est liée aux véhicules sélectionnés et expire après un certain temps.",
 	"Interval while charging or climatising (min)": "Intervalle pendant la charge ou la climatisation (min)",
 	"Label": "Étiquette",
 	"Maximum interval for a sleeping vehicle (min)": "Intervalle maximum pour un véhicule-couchette (min)",

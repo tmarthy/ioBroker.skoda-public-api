@@ -52,7 +52,7 @@ is PV surplus charging with current modulation. Plan accordingly.
 The adapter uses the **official** MyŠkoda Public API — not the reverse-engineered app
 interface that `iobroker.vw-connect` talks to.
 
-1. Open the MyŠkoda app (version 8.16 or newer) and go to **API key**.
+1. Open the MyŠkoda app (version 8.16 or newer) and go to **API key in Profile/Smart Home**.
 2. Select the vehicles the key may access. The key is bound to that selection: a VIN
    that was not selected answers with `403`, no matter how correct it looks.
 3. Copy the key into the adapter instance. It **expires** after a while — the adapter
