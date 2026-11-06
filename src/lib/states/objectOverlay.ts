@@ -136,6 +136,8 @@ const exactOverlay: Readonly<Record<string, OverlayEntry>> = {
 		},
 	},
 	'charging.status.chargeType': { role: 'text' },
+	'charging.status.plugConnectionState': { role: 'text', legacyRoles: ['state'] },
+	'charging.status.plugLockState': { role: 'text', legacyRoles: ['state'] },
 	'charging.isVehicleInSavedLocation': { role: 'indicator' },
 	'charging.settings.availableChargeModes': { role: 'json' },
 

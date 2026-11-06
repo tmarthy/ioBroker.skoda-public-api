@@ -244,6 +244,17 @@ describe('scheduler/PollScheduler => Kadenz unter 20 Requests pro Stunde', () =>
 	});
 
 	describe('manual refresh', () => {
+		it('reads plug states in the existing poll without treating a connected plug as active charging', async () => {
+			mock.loadFixture('synth-plugged-unlocked');
+			const scheduler = buildScheduler();
+			await scheduler.tick();
+			expect(mock.requests).to.have.length(1);
+			expect(scheduler.snapshot()[0]).to.include({ active: false, reason: 'IDLE_INTERVAL' });
+			expect(adapter.val(`${DEFAULT_VIN}.charging.status.plugConnectionState`)).to.equal('CONNECTED');
+			expect(adapter.val(`${DEFAULT_VIN}.charging.status.plugLockState`)).to.equal('UNLOCKED');
+			expect(adapter.states.has(`${DEFAULT_VIN}.charging.enabled`)).to.equal(false);
+		});
+
 		it('coalesces triggers and resumes the regular cadence with parking data', async () => {
 			const scheduler = buildScheduler();
 			await scheduler.tick();

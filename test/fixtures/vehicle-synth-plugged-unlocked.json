@@ -1,0 +1,18 @@
+{
+  "description": "Charging cable connected and unlocked without a published charging state.",
+  "note": "SYNTHETIC - constructed from the API 1.1.0 contract; not a recording from a vehicle.",
+  "status": 200,
+  "body": {
+    "vehicle": {
+      "vin": "TMBJB9NY5RF999999",
+      "charging": {
+        "isVehicleInSavedLocation": false,
+        "carCapturedTimestamp": "2026-11-06T08:00:00Z",
+        "status": {
+          "plugConnectionState": "CONNECTED",
+          "plugLockState": "UNLOCKED"
+        }
+      }
+    }
+  }
+}

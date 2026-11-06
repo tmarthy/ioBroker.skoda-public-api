@@ -27,7 +27,7 @@ import { partFromErrorType } from '../api/parts';
 import { VEHICLE_PARTS, type VehiclePart, type VehicleResponse } from '../api/types';
 import { detectParts, newestCapturedAt } from '../api/vehicleData';
 import type { VehicleQuota } from '../quota/VehicleQuotaManager';
-import { COMMAND_DEFS } from '../states/commandDefs';
+import { COMMAND_DEFS, reportedActivity } from '../states/commandDefs';
 import { translateFallback, type Translate } from '../i18n';
 import type { PollingReason, PollingStatus } from './pollingStatus';
 
@@ -712,7 +712,7 @@ export class PollScheduler {
 				}
 				current = (current as Record<string, unknown>)[key];
 			}
-			return typeof current === 'string' && def.activeStates.includes(current);
+			return reportedActivity(def, current) === true;
 		});
 	}
 

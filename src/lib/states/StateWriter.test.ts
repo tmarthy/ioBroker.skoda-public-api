@@ -70,6 +70,130 @@ describe('states/StateWriter => Antwort in den Objektbaum', () => {
 		expect(beweis).to.equal(true);
 	});
 
+	describe('API 1.1 plug states', () => {
+		const fields = ['plugConnectionState', 'plugLockState'] as const;
+		const choices = {
+			plugConnectionState: { CONNECTED: 'CONNECTED', DISCONNECTED: 'DISCONNECTED' },
+			plugLockState: { LOCKED: 'LOCKED', UNLOCKED: 'UNLOCKED' },
+		};
+
+		it('reads both value pairs independently of a derived charging state', async () => {
+			const response = fixture('synth-plugged-unlocked');
+			await writer.write(VIN, response);
+			expect(adapter.val(`${VIN}.charging.status.plugConnectionState`)).to.equal('CONNECTED');
+			expect(adapter.val(`${VIN}.charging.status.plugLockState`)).to.equal('UNLOCKED');
+			response.vehicle.charging!.status!.plugConnectionState = 'DISCONNECTED';
+			response.vehicle.charging!.status!.plugLockState = 'LOCKED';
+			await writer.write(VIN, response);
+			expect(adapter.val(`${VIN}.charging.status.plugConnectionState`)).to.equal('DISCONNECTED');
+			expect(adapter.val(`${VIN}.charging.status.plugLockState`)).to.equal('LOCKED');
+			expect(adapter.states.has(`${VIN}.charging.enabled`)).to.equal(false);
+			expect(adapter.states.has(`${VIN}.charging.status.state`)).to.equal(false);
+			for (const field of fields) {
+				const common = adapter.objects.get(`${VIN}.charging.status.${field}`)!.common;
+				expect(common).to.include({ type: 'string', role: 'text', read: true, write: false });
+				expect((common as ioBroker.StateCommon).states).to.deep.equal(choices[field]);
+			}
+			expect(adapter.warnings).to.be.empty;
+		});
+
+		for (const field of fields) {
+			it(`retains ${field} with bad quality while missing, including across restart`, async () => {
+				const response = fixture('synth-plugged-unlocked');
+				await writer.write(VIN, response);
+				const id = `${VIN}.charging.status.${field}`;
+				const value = adapter.val(id);
+				delete response.vehicle.charging!.status![field];
+				writer = new StateWriter({ api: adapter });
+				await writer.write(VIN, response);
+				expect(adapter.states.get(id)).to.include({ val: value, ack: true, q: QUALITY_NOT_GOOD });
+				const other = fields.find(key => key !== field)!;
+				expect(adapter.quality(`${VIN}.charging.status.${other}`)).to.equal(0);
+				writer = new StateWriter({ api: adapter });
+				await writer.write(VIN, fixture('synth-plugged-unlocked'));
+				expect(adapter.states.get(id)).to.include({ val: value, ack: true, q: 0 });
+			});
+
+			it(`preserves future ${field} values without guessing or warning`, async () => {
+				const response = fixture('synth-plugged-unlocked');
+				response.vehicle.charging!.status![field] = 'FUTURE_VALUE';
+				await writer.write(VIN, response);
+				expect(adapter.states.get(`${VIN}.charging.status.${field}`)).to.include({
+					val: 'FUTURE_VALUE',
+					ack: true,
+					q: 0,
+				});
+				expect(adapter.warnings).to.be.empty;
+			});
+
+			for (const role of ['state', 'text', 'custom.role']) {
+				it(`migrates existing ${field} metadata (${role}) while preserving user settings`, async () => {
+					const id = `${VIN}.charging.status.${field}`;
+					const [key] = Object.keys(choices[field]);
+					const custom = { 'history.0': { enabled: true } };
+					await adapter.setObjectNotExistsAsync(id, {
+						type: 'state',
+						common: {
+							name: 'My plug',
+							type: 'string',
+							role,
+							read: true,
+							write: false,
+							custom,
+							...(role === 'state'
+								? {}
+								: { states: { [key]: 'My label', FUTURE_VALUE: 'My future label' } }),
+						},
+						native: { retained: true },
+					});
+					await adapter.setStateAsync(id, { val: 'old value', ack: true, q: 1 });
+					await writer.write(VIN, fixture('synth-plugged-unlocked'));
+					const obj = adapter.objects.get(id)!;
+					expect(obj.common).to.include({ name: 'My plug', role: role === 'state' ? 'text' : role });
+					expect(obj.common?.custom).to.deep.equal(custom);
+					expect(obj.native).to.deep.equal({ retained: true });
+					expect((obj.common as ioBroker.StateCommon).states).to.deep.equal({
+						...choices[field],
+						...(role === 'state' ? {} : { [key]: 'My label', FUTURE_VALUE: 'My future label' }),
+					});
+					expect(adapter.states.get(id)).to.include({
+						val: fixture('synth-plugged-unlocked').vehicle.charging!.status![field],
+						ack: true,
+						q: 0,
+					});
+					writer = new StateWriter({ api: adapter });
+					await writer.write(VIN, fixture('synth-plugged-unlocked'));
+					expect(adapter.objects.get(id)).to.deep.equal(obj);
+				});
+			}
+		}
+
+		it('preserves an explicit enum reference during migration', async () => {
+			const id = `${VIN}.charging.status.plugConnectionState`;
+			await adapter.setObjectNotExistsAsync(id, {
+				type: 'state',
+				common: { name: 'My plug', type: 'string', role: 'state', read: true, write: false, states: 'my.enum' },
+				native: {},
+			});
+			await writer.write(VIN, fixture('synth-plugged-unlocked'));
+			expect(adapter.objects.get(id)!.common).to.include({ role: 'text', states: 'my.enum' });
+		});
+
+		for (const state of [undefined, 'FUTURE_STATE', 'UNKNOWN']) {
+			it(`retains the last charging activity as stale when state is ${state}`, async () => {
+				await writer.write(VIN, fixture('charging'));
+				const response = fixture('synth-plugged-unlocked');
+				response.vehicle.charging!.status!.state = state;
+				writer = new StateWriter({ api: adapter });
+				await writer.write(VIN, response);
+				expect(adapter.states.get(`${VIN}.charging.enabled`)).to.include({ val: true, q: QUALITY_NOT_GOOD });
+				expect(adapter.quality(`${VIN}.charging.status.plugConnectionState`)).to.equal(0);
+				await writer.write(VIN, fixture('plugged'));
+				expect(adapter.states.get(`${VIN}.charging.enabled`)).to.include({ val: false, q: 0 });
+			});
+		}
+	});
+
 	it('does not mark persisted local profile drafts as stale vehicle measurements', async () => {
 		const id = `${VIN}.chargingProfiles.profiles.1.edit.name`;
 		await adapter.setStateAsync(id, { val: 'Local draft', ack: true, q: 0 });

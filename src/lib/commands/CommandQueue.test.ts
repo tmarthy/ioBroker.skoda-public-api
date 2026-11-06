@@ -146,6 +146,15 @@ describe('commands/CommandQueue => Soll-Zustand, Coalescing, TTL', () => {
 			const failed = poll('READY_FOR_CHARGING');
 			failed.errors = [{ type: 'CHARGING_UNAVAILABLE' }];
 			queue.updateFromResponse(DEFAULT_VIN, failed);
+			queue.updateFromResponse(DEFAULT_VIN, {
+				vehicle: {
+					charging: {
+						isVehicleInSavedLocation: false,
+						carCapturedTimestamp: new Date(clock).toISOString(),
+						status: { plugConnectionState: 'CONNECTED', plugLockState: 'UNLOCKED' },
+					},
+				},
+			});
 			const nested: any = poll('READY_FOR_CHARGING', clock - MINUTE);
 			nested.vehicle.charging.status.carCapturedTimestamp = new Date(clock).toISOString();
 			queue.updateFromResponse(DEFAULT_VIN, nested);
@@ -778,6 +787,23 @@ describe('commands/CommandQueue => Soll-Zustand, Coalescing, TTL', () => {
 			expect(results()).to.deep.equal(['COALESCED']);
 			expect(mock.requests.filter(r => r.method === 'POST')).to.have.length(0);
 		});
+
+		for (const state of [undefined, 'UNKNOWN', 'FUTURE_STATE']) {
+			it(`sends a stop switch command for unknown charging state ${state} despite plug data`, async () => {
+				queue.updateFromResponse(DEFAULT_VIN, {
+					vehicle: {
+						charging: {
+							isVehicleInSavedLocation: false,
+							status: { state, plugConnectionState: 'CONNECTED', plugLockState: 'UNLOCKED' },
+						},
+					},
+				});
+				await queue.submit(`${DEFAULT_VIN}.charging.enabled`, false);
+				expect(results()).to.deep.equal(['SENT']);
+				expect(mock.requests).to.have.length(1);
+				expect(mock.requests[0].path).to.contain('/charging/stop');
+			});
+		}
 
 		it('sendet doch, wenn der Knopf gedrueckt wird', async () => {
 			await feedPoll();

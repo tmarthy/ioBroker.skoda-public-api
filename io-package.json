@@ -1,8 +1,21 @@
 {
   "common": {
     "name": "skoda-public-api",
-    "version": "0.1.11",
+    "version": "0.1.12",
     "news": {
+      "0.1.12": {
+        "en": "Added plug connection and lock states with metadata migration; unknown charging states no longer suppress stop commands.",
+        "de": "Steckerverbindung und -verriegelung mit Metadatenmigration ergänzt; unbekannte Ladezustände unterdrücken keine Stop-Befehle mehr.",
+        "ru": "Добавлены состояния подключения и блокировки кабеля с миграцией метаданных; неизвестные состояния зарядки больше не подавляют команды остановки.",
+        "pt": "Adicionados estados de ligação e bloqueio do cabo com migração de metadados; estados de carregamento desconhecidos já não impedem comandos de paragem.",
+        "nl": "Aansluit- en vergrendelstatus van de laadstekker toegevoegd met metadatamigratie; onbekende laadstatussen onderdrukken geen stopopdrachten meer.",
+        "fr": "Ajout des états de connexion et de verrouillage du câble avec migration des métadonnées ; les états de charge inconnus ne bloquent plus les commandes d’arrêt.",
+        "it": "Aggiunti gli stati di connessione e blocco del cavo con migrazione dei metadati; gli stati di ricarica sconosciuti non impediscono più i comandi di arresto.",
+        "es": "Añadidos los estados de conexión y bloqueo del cable con migración de metadatos; los estados de carga desconocidos ya no impiden las órdenes de parada.",
+        "pl": "Dodano stany podłączenia i blokady przewodu z migracją metadanych; nieznane stany ładowania nie blokują już poleceń zatrzymania.",
+        "uk": "Додано стани підключення та блокування кабелю з міграцією метаданих; невідомі стани заряджання більше не блокують команди зупинки.",
+        "zh-cn": "新增充电插头连接和锁定状态及元数据迁移；未知充电状态不再阻止停止命令。"
+      },
       "0.1.11": {
         "en": "Fixed the profile-name role and completed connection-state translations, including migration of existing instances.",
         "de": "Rolle des Profilnamens korrigiert und Übersetzungen des Verbindungsstatus einschließlich bestehender Instanzen vervollständigt.",
@@ -80,19 +93,6 @@
         "pl": "Dostosowano proces testowania i archiwum zmian do wymagań kontroli repozytorium",
         "uk": "Процес тестування та архів змін узгоджено з вимогами перевірки репозиторію",
         "zh-cn": "使测试工作流和变更日志归档符合仓库检查器要求"
-      },
-      "0.1.4": {
-        "en": "Added complete backend translations for all supported ioBroker languages",
-        "de": "Vollständige Backend-Übersetzungen für alle unterstützten ioBroker-Sprachen ergänzt",
-        "ru": "Добавлены полные серверные переводы для всех поддерживаемых языков ioBroker",
-        "pt": "Adicionadas traduções completas do backend para todos os idiomas suportados pelo ioBroker",
-        "nl": "Volledige backendvertalingen toegevoegd voor alle ondersteunde ioBroker-talen",
-        "fr": "Ajout des traductions complètes du backend pour toutes les langues prises en charge par ioBroker",
-        "it": "Aggiunte traduzioni complete del backend per tutte le lingue supportate da ioBroker",
-        "es": "Añadidas traducciones completas del backend para todos los idiomas compatibles con ioBroker",
-        "pl": "Dodano kompletne tłumaczenia backendu dla wszystkich języków obsługiwanych przez ioBroker",
-        "uk": "Додано повні переклади серверної частини для всіх мов, які підтримує ioBroker",
-        "zh-cn": "为 ioBroker 支持的所有语言添加了完整的后端翻译"
       }
     },
     "titleLang": {

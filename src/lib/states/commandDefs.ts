@@ -36,6 +36,8 @@ export interface CommandDomainDef {
 	 * wird nur bei `CHARGING`.
 	 */
 	activeStates: readonly string[];
+	/** Known inactive values; missing and future values remain unknown. */
+	inactiveStates?: readonly string[];
 	/** Name des Soll-Schalters im Objektbaum. */
 	label: ObjectNameKey;
 	/** Deutscher Anzeigename des Soll-Schalters. */
@@ -48,6 +50,7 @@ export const COMMAND_DEFS: readonly CommandDomainDef[] = [
 		part: 'charging',
 		statePath: 'status.state',
 		activeStates: ['CHARGING'],
+		inactiveStates: ['CONNECT_CABLE', 'CONSERVING', 'READY_FOR_CHARGING', 'DISCHARGING', 'CHARGING_INTERRUPTED'],
 		label: 'Charging on/off',
 		labelDe: 'Laden ein/aus',
 	},
@@ -56,6 +59,7 @@ export const COMMAND_DEFS: readonly CommandDomainDef[] = [
 		part: 'airConditioning',
 		statePath: 'state',
 		activeStates: ['COOLING', 'HEATING', 'HEATING_AUXILIARY', 'VENTILATION'],
+		inactiveStates: ['OFF', 'COMPLETED'],
 		label: 'Air conditioning on/off',
 		labelDe: 'Klimatisierung ein/aus',
 	},
@@ -64,6 +68,7 @@ export const COMMAND_DEFS: readonly CommandDomainDef[] = [
 		part: 'auxiliaryHeating',
 		statePath: 'state',
 		activeStates: ['PREHEATING', 'HEATING_AUXILIARY', 'VENTILATION'],
+		inactiveStates: ['OFF'],
 		label: 'Auxiliary heating on/off',
 		labelDe: 'Standheizung ein/aus',
 	},
@@ -72,10 +77,28 @@ export const COMMAND_DEFS: readonly CommandDomainDef[] = [
 		part: 'activeVentilation',
 		statePath: 'state',
 		activeStates: ['PREHEATING', 'VENTILATION'],
+		inactiveStates: ['OFF'],
 		label: 'Active ventilation on/off',
 		labelDe: 'Aktive Belüftung ein/aus',
 	},
 ];
+
+/**
+ * Classifies only published on/off states, without guessing from unknown values.
+ *
+ * @param def Domain and its known vehicle states.
+ * @param value Raw value from the response.
+ * @returns Activity, or undefined when the vehicle supplied no known state.
+ */
+export function reportedActivity(def: CommandDomainDef, value: unknown): boolean | undefined {
+	if (typeof value !== 'string') {
+		return undefined;
+	}
+	if (def.activeStates.includes(value)) {
+		return true;
+	}
+	return def.inactiveStates?.includes(value) ? false : undefined;
+}
 
 /**
  * Wie ein Befehl ausgegangen ist (E5).

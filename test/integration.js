@@ -179,6 +179,8 @@ tests.integration(path.join(__dirname, '..'), {
 				harness = getHarness();
 				mock = new MockSkodaApi();
 				mock.vehicleState.charging.settings.availableChargeModes = ['MANUAL', 'TIMER'];
+				mock.vehicleState.charging.status.plugConnectionState = 'DISCONNECTED';
+				mock.vehicleState.charging.status.plugLockState = 'UNLOCKED';
 				baseUrl = await mock.start();
 				await configure(harness);
 				const connectionId = `${INSTANCE}.info.connection`;
@@ -195,6 +197,8 @@ tests.integration(path.join(__dirname, '..'), {
 				// ein unveraenderter Wert, dessen alte Fehlerqualitaet verschwinden muss.
 				for (const [path, val, q, unit] of [
 					['charging.status.chargeType', 'AC', 0],
+					['charging.status.plugConnectionState', 'CONNECTED', 1],
+					['charging.status.plugLockState', 'LOCKED', 1],
 					['odometer.mileageInKm', 30069, 1],
 					['charging.status.battery.remainingCruisingRangeInMeters', 352000, 0, 'm'],
 				]) {
@@ -245,6 +249,21 @@ tests.integration(path.join(__dirname, '..'), {
 				// Der zusaetzliche Zustand aus E7, den die API selbst nicht liefert.
 				const position = await readState(harness, `${VEHICLE}.parkingPosition.position`);
 				expect(position.val).to.match(/^-?\d+(\.\d+)?;-?\d+(\.\d+)?$/);
+			});
+
+			it('upgrades plug-state metadata and reads both optional fields using the startup poll', async () => {
+				for (const [field, value, states] of [
+					['plugConnectionState', 'DISCONNECTED', { CONNECTED: 'CONNECTED', DISCONNECTED: 'DISCONNECTED' }],
+					['plugLockState', 'UNLOCKED', { LOCKED: 'LOCKED', UNLOCKED: 'UNLOCKED' }],
+				]) {
+					const id = `${VEHICLE}.charging.status.${field}`;
+					const state = await readState(harness, id);
+					expect(state).to.include({ val: value, ack: true, q: 0 });
+					const obj = harness.objects.getObjectAsync ? await harness.objects.getObjectAsync(id) : await harness.objects.getObject(id);
+					expect(obj.common).to.include({ type: 'string', role: 'text', read: true, write: false });
+					expect(obj.common.states).to.deep.equal(states);
+				}
+				expect(mock.requests).to.have.length(1);
 			});
 
 			it('reports the next poll, successful response time and waiting reason', async function () {

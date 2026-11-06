@@ -29,6 +29,7 @@ import {
 	CHARGING_MODE_DEF,
 	chargingProfileDef,
 	COMMAND_DEFS,
+	reportedActivity,
 	type CommandDomainDef,
 	type CommandReport,
 	type CommandResult,
@@ -632,21 +633,7 @@ export class CommandQueue {
 	 * @param block Its vehicle response block.
 	 */
 	private confirmationMatches(expected: AwaitingConfirmation, block: Record<string, unknown>): boolean {
-		const def = expected.command.def;
-		if (this.valueFromBlock(def, block) !== expected.desired) {
-			return false;
-		}
-		if (expected.desired !== false || def.numeric || def.setting) {
-			return true;
-		}
-		const state = def.part === 'charging' && isRecord(block.status) ? block.status.state : block.state;
-		const inactive =
-			def.part === 'charging'
-				? ['CONNECT_CABLE', 'CONSERVING', 'READY_FOR_CHARGING', 'DISCHARGING', 'CHARGING_INTERRUPTED']
-				: def.part === 'airConditioning'
-					? ['OFF', 'COMPLETED']
-					: ['OFF'];
-		return typeof state === 'string' && inactive.includes(state);
+		return this.valueFromBlock(expected.command.def, block) === expected.desired;
 	}
 
 	/**
@@ -889,7 +876,7 @@ export class CommandQueue {
 		if (def.numeric) {
 			return typeof current === 'number' ? current : undefined;
 		}
-		return typeof current === 'string' ? def.activeStates.includes(current) : undefined;
+		return reportedActivity(def, current);
 	}
 
 	/**

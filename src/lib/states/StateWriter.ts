@@ -32,6 +32,7 @@ import {
 	CHARGING_MODE_PATH,
 	COMMAND_DEFS,
 	COMMAND_RESULTS,
+	reportedActivity,
 	type CommandReport,
 } from './commandDefs';
 import { generatedChannels, generatedStateDefs } from './objectDefs.generated';
@@ -720,7 +721,7 @@ export class StateWriter {
 				common,
 				native: {},
 			});
-			await this.migrateLegacyRole(id, path, common);
+			await this.migrateStateMetadata(id, path, common);
 			if (path === CHARGING_MODE_PATH) {
 				await this.api.extendObjectAsync(id, { common: { write: true, states: common.states } });
 			}
@@ -759,20 +760,30 @@ export class StateWriter {
 	}
 
 	/**
-	 * Aktualisiert nur bekannte, vom Adapter frueher vergebene und zum Typ
-	 * inkompatible Rollen. Werte, native Daten und sonstige Metadaten bleiben erhalten.
+	 * Migrates known legacy roles and fills missing plug-state choices after codegen.
+	 * Values, custom labels, native data and unrelated metadata remain unchanged.
 	 *
 	 * @param id Relative Objekt-ID inklusive VIN.
 	 * @param path Punktpfad relativ zur VIN.
 	 * @param common Aktuelle Soll-Metadaten.
 	 */
-	private async migrateLegacyRole(id: string, path: string, common: ioBroker.StateCommon): Promise<void> {
+	private async migrateStateMetadata(id: string, path: string, common: ioBroker.StateCommon): Promise<void> {
 		const existing = await this.api.getObjectAsync(id);
 		if (!existing || existing.type !== 'state') {
 			return;
 		}
-		const patch = legacyRoleMigration(path, existing.common, common);
-		if (patch) {
+		const patch = legacyRoleMigration(path, existing.common, common) ?? {};
+		if (path === 'charging.status.plugConnectionState' || path === 'charging.status.plugLockState') {
+			const states = existing.common.states;
+			// A string refers to an external enum; preserve that explicit user setting.
+			if (typeof states !== 'string' && common.states && typeof common.states !== 'string') {
+				const missing = Object.entries(common.states).filter(([key]) => !Object.hasOwn(states ?? {}, key));
+				if (missing.length > 0) {
+					patch.states = { ...states, ...Object.fromEntries(missing) };
+				}
+			}
+		}
+		if (Object.keys(patch).length > 0) {
 			await this.api.extendObjectAsync(id, { common: patch });
 		}
 	}
@@ -952,8 +963,9 @@ export class StateWriter {
 			}
 
 			const current = readPath(block as Record<string, unknown>, def.statePath);
-			if (typeof current === 'string') {
-				await this.writeValue(enabledId, def.activeStates.includes(current));
+			const active = reportedActivity(def, current);
+			if (active !== undefined) {
+				await this.writeValue(enabledId, active);
 			}
 		}
 	}
